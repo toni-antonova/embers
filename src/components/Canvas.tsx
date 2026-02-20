@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ParticleSystem } from '../engine/ParticleSystem';
 import { AudioEngine } from '../services/AudioEngine';
+import { TuningConfig } from '../services/TuningConfig';
 import { UniformBridge } from '../engine/UniformBridge';
 import { UIOverlay } from './UIOverlay';
+import { TuningPanel } from './TuningPanel';
 
 export function Canvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -25,6 +27,19 @@ export function Canvas() {
         audioEngineRef.current = new AudioEngine();
     }
     const audioEngine = audioEngineRef.current;
+
+    // TuningConfig singleton — persists across canvas remounts.
+    // This is the central config that all systems (ParticleSystem,
+    // UniformBridge, AudioEngine, TuningPanel) read from.
+    const tuningConfigRef = useRef<TuningConfig | null>(null);
+    if (!tuningConfigRef.current) {
+        tuningConfigRef.current = new TuningConfig();
+    }
+    const tuningConfig = tuningConfigRef.current;
+
+    // Wire the config into AudioEngine so it can read smoothing alphas.
+    // This uses setConfig() because AudioEngine is created before TuningConfig.
+    audioEngine.setConfig(tuningConfig);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -71,7 +86,8 @@ export function Canvas() {
         // ── PARTICLE SYSTEM ───────────────────────────────────────────────────
         let particles: ParticleSystem;
         try {
-            particles = new ParticleSystem(renderer, 128);
+            // Pass TuningConfig so ParticleSystem can read uniform values each frame.
+            particles = new ParticleSystem(renderer, tuningConfig, 128);
         } catch (e) {
             console.error('ParticleSystem init failed — bumping canvas key for recovery:', e);
             renderer.dispose();
@@ -83,7 +99,8 @@ export function Canvas() {
         particleSystemRef.current = particles;
 
         // ── UNIFORM BRIDGE ────────────────────────────────────────────────────
-        const uniformBridge = new UniformBridge(audioEngine, particles);
+        // Pass TuningConfig so UniformBridge can apply influence multipliers.
+        const uniformBridge = new UniformBridge(audioEngine, particles, tuningConfig);
         uniformBridgeRef.current = uniformBridge;
 
         // ── RESIZE HANDLER ────────────────────────────────────────────────────
@@ -141,6 +158,10 @@ export function Canvas() {
             }
 
             // 1. Motion blur fade: darkens previous frame by a small amount.
+            //    Trail length is controlled by TuningConfig — the fade
+            //    material opacity determines how quickly old frames fade out.
+            //    Lower opacity = longer trails. Higher opacity = shorter trails.
+            fadeMaterial.opacity = tuningConfig.get('trailLength');
             renderer.render(fadeScene, fadeCamera);
             // 2. Clear the depth buffer only — so particles aren't occluded by
             //    the fade quad's depth values (which fill the entire near plane).
@@ -187,6 +208,7 @@ export function Canvas() {
                 style={{ display: 'block', width: '100%', height: '100%' }}
             />
             <UIOverlay audioEngine={audioEngine} />
+            <TuningPanel config={tuningConfig} audioEngine={audioEngine} />
         </div>
     );
 }

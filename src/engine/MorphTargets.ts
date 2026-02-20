@@ -24,11 +24,11 @@ export class MorphTargets {
 
     private generateRing(data: Float32Array, count: number) {
         for (let i = 0; i < count; i++) {
-            const theta = (i / count) * Math.PI * 2; // Even distribution
-            const r = 3.0;
+            const theta = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.08; // Angular jitter
+            const r = 3.0 + (Math.random() - 0.5) * 1.2; // Radial scatter ±0.6
             const x = r * Math.cos(theta);
             const y = r * Math.sin(theta);
-            const z = 0;
+            const z = (Math.random() - 0.5) * 0.5; // Depth scatter
 
             const stride = i * 4;
             data[stride] = x;

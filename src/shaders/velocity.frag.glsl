@@ -20,6 +20,10 @@ uniform vec3 uPointerPos;
 uniform float uPointerActive;
 uniform float uDelta;
 
+// Pointer repulsion — driven by TuningConfig for real-time adjustment.
+uniform float uRepulsionRadius;
+uniform float uRepulsionStrength;
+
 // [Insert Simplex Noise Functions Here - same as before]
 // Simplex 3D Noise 
 // by Ian McEwan, Ashima Arts
@@ -125,58 +129,125 @@ vec3 curlNoise( vec3 p ){
 
 void main() {
     vec2 uv = gl_FragCoord.xy / resolution.xy;
+
+    // ── READ CURRENT STATE ────────────────────────────────────────────
     vec4 selfPosition = texture2D(texturePosition, uv);
     vec4 selfVelocity = texture2D(textureVelocity, uv);
 
     vec3 position = selfPosition.xyz;
     vec3 velocity = selfVelocity.xyz;
 
-    // AUDIO REACTIVE PARAMETERS
-    float tensionFreq = uNoiseFrequency + uTension * 1.5; // Tense = Tighter curls
-    float urgencyAmp = uNoiseAmplitude + uUrgency * 0.8;  // Urgency = Chaos
-    float dynamicDrag = max(0.5, uDrag - uBreathiness * 1.0); // Breathy = Airier
+    // ── CLAMP AUDIO INPUTS ────────────────────────────────────────────
+    // Safety: all audio features must stay in [0, 1].
+    float safeEnergy      = clamp(uEnergy, 0.0, 1.0);
+    float safeTension     = clamp(uTension, 0.0, 1.0);
+    float safeUrgency     = clamp(uUrgency, 0.0, 1.0);
+    float safeBreathiness = clamp(uBreathiness, 0.0, 1.0);
 
-    // Curl noise
-    vec3 curl = curlNoise(position * tensionFreq + uTime * 0.1);
-    
-    // Breathing
-    float phase = uTime * 0.2 * 6.28 + uv.x * 6.28 + uv.y * 3.14;
-    vec3 breathOffset = normalize(position) * sin(phase) * uBreathingAmplitude;
-    
+    // ═══════════════════════════════════════════════════════════════════
+    // FEATURE → VISUAL MAPPING (each feature has ONE primary effect)
+    //
+    //   ENERGY      → ring expansion + breathing amplitude + speed
+    //   TENSION     → curl noise frequency (tighter swirls) + color*
+    //   URGENCY     → noise turbulence amplitude (chaos/jitter)
+    //   BREATHINESS → drag reduction + Z-axis spread (floatier, 3D)
+    //
+    //   * Color is handled in UniformBridge, not here.
+    // ═══════════════════════════════════════════════════════════════════
+
+    // ── TENSION → CURL FREQUENCY ONLY ─────────────────────────────────
+    // Higher tension = tighter curl patterns. This is the ONLY thing
+    // tension does in the shader. Color shift is handled in UniformBridge.
+    // The range 0.8-2.0 goes from lazy swirls to tight, nervous curls.
+    float tensionFreq = uNoiseFrequency + safeTension * 1.2;
+
+    // ── CURL NOISE COMPUTATION ────────────────────────────────────────
+    // Curl noise produces divergence-free vector fields — organic swirls
+    // without convergence. Time offset makes the field evolve.
+    vec3 curl = curlNoise(position * tensionFreq + uTime * 0.15);
+
+    // ── ENERGY → BREATHING + EXPANSION ────────────────────────────────
+    // Energy modulates the morph target position (the particle's "home").
+    // This is inherently safe because the spring always pulls particles
+    // toward the target — they follow it outward but can NEVER escape.
+    //
+    // Three energy effects:
+    //   1. Breathing amplitude: louder → bigger pulse (up to +1.5)
+    //   2. Breathing speed: louder → faster pulse
+    //   3. Ring expansion: louder → ring grows outward (up to 3.5 units)
+    float dynamicBreathingAmp = uBreathingAmplitude + safeEnergy * 1.5;
+    float breathSpeed = 0.2 + safeEnergy * 0.8;
+    float phase = uTime * breathSpeed * 6.28 + uv.x * 6.28 + uv.y * 3.14;
+    vec3 breathOffset = normalize(position) * sin(phase) * dynamicBreathingAmp;
+
+    // ── MORPH TARGET (modified by energy) ─────────────────────────────
     vec3 targetPosRaw = texture2D(tMorphTarget, uv).xyz;
-    vec3 targetPos = targetPosRaw + breathOffset;
+    vec3 radialDir = normalize(targetPosRaw);
+    float energyExpansion = safeEnergy * 3.5;
+    vec3 targetPos = targetPosRaw + breathOffset + radialDir * energyExpansion;
 
-    // Spring Position Force
+    // ── BREATHINESS → Z-AXIS SPREAD ───────────────────────────────────
+    // Breathy speech makes the ring "puff out" in the Z axis, creating
+    // a more 3D, airy appearance. Each particle gets a unique Z offset
+    // based on its UV position so the spread looks organic, not uniform.
+    float zSpread = safeBreathiness * 1.2 * sin(uv.x * 13.37 + uv.y * 7.91);
+    targetPos.z += zSpread;
+
+    // ── SPRING FORCE ──────────────────────────────────────────────────
+    // Hooke's Law: pulls particles toward their audio-modulated home.
+    // This is the fundamental safety net — particles always return.
     vec3 springDir = targetPos - position;
-    
     vec3 springF = springDir * ((1.0 - uAbstraction) * uSpringK);
-    
-    // Noise Influence
-    // Use urgencyAmp instead of static amplitude
-    // High urgency + High abstraction = Maximum chaos
-    float effectiveNoiseAmp = urgencyAmp * (0.1 + 0.9 * uAbstraction); 
+
+    // ── URGENCY → NOISE TURBULENCE ────────────────────────────────────
+    // Urgency (spectral flux) drives the AMPLITUDE of curl noise.
+    // High urgency = rapid speech changes, consonants, transients
+    //              → particles jitter and scatter chaotically.
+    // Low urgency  = sustained vowels, silence
+    //              → particles drift gently.
+    //
+    // Base shimmer (0.06) is always present for organic life.
+    // Urgency can push noise amplitude up to 1.8 — very visible chaos.
+    float baseNoise = uNoiseAmplitude * 0.25;
+    float urgencyNoise = safeUrgency * 1.8;
+    float abstractionNoise = uNoiseAmplitude * uAbstraction;
+    float effectiveNoiseAmp = baseNoise + urgencyNoise + abstractionNoise;
     vec3 noiseF = curl * effectiveNoiseAmp;
-    
+
+    // ── BREATHINESS → DRAG REDUCTION ──────────────────────────────────
+    // Breathy speech makes particles floatier by reducing damping.
+    // Drag range: 2.5 (default, snappy) → 0.5 (very floaty).
+    // This is breathiness's OTHER visual effect (alongside Z-spread).
+    float dynamicDrag = max(0.5, uDrag - safeBreathiness * 2.0);
+
+    // ── SUM ALL FORCES ────────────────────────────────────────────────
     vec3 force = springF + noiseF;
-    
-    // Apply Repulsion
+
+    // ── POINTER REPULSION ─────────────────────────────────────────────
+    // Radius and strength are now uniforms driven by TuningConfig,
+    // so they can be adjusted in real time from the tuning panel.
     vec3 toParticle = position - uPointerPos;
     float dist = length(toParticle);
-    float repulsionRadius = 1.5;
-    float repulsionStrength = 8.0;
 
-    if (dist < repulsionRadius && uPointerActive > 0.5) {
-        vec3 repulsion = normalize(toParticle) * repulsionStrength * smoothstep(repulsionRadius, 0.0, dist);
+    if (dist < uRepulsionRadius && uPointerActive > 0.5) {
+        vec3 repulsion = normalize(toParticle) * uRepulsionStrength
+                       * smoothstep(uRepulsionRadius, 0.0, dist);
         force += repulsion;
     }
 
+    // ── INTEGRATE VELOCITY ────────────────────────────────────────────
     velocity += force * uDelta;
-    
-    // Speed Multiplier from Energy
-    velocity *= (1.0 + uEnergy * 2.0);
 
-    // Drag
-    velocity *= (1.0 - dynamicDrag * uDelta);
+    // ── DRAG (DAMPING) ────────────────────────────────────────────────
+    velocity *= clamp(1.0 - dynamicDrag * uDelta, 0.0, 1.0);
+
+    // ── VELOCITY HARD LIMIT (SAFETY) ──────────────────────────────────
+    // Final safety net: cap particle speed to prevent any edge case
+    // from sending particles to infinity.
+    float speed = length(velocity);
+    if (speed > 10.0) {
+        velocity = normalize(velocity) * 10.0;
+    }
 
     gl_FragColor = vec4(velocity, 1.0);
 }

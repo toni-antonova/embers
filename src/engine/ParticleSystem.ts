@@ -5,6 +5,7 @@ import velocityFrag from '../shaders/velocity.frag.glsl?raw';
 import renderVert from '../shaders/render.vert.glsl?raw';
 import renderFrag from '../shaders/render.frag.glsl?raw';
 import { MorphTargets } from './MorphTargets';
+import { TuningConfig } from '../services/TuningConfig';
 
 export class ParticleSystem {
     renderer: THREE.WebGLRenderer;
@@ -16,8 +17,14 @@ export class ParticleSystem {
     time: number;
     morphTargets: MorphTargets;
 
-    constructor(renderer: THREE.WebGLRenderer, size: number = 128) {
+    // TuningConfig reference — used to read parameter values every frame.
+    // This is the pattern used by game engines: a central config that
+    // all subsystems poll, rather than prop-drilling individual values.
+    private config: TuningConfig;
+
+    constructor(renderer: THREE.WebGLRenderer, config: TuningConfig, size: number = 128) {
         this.renderer = renderer;
+        this.config = config;
         this.size = size;
         this.time = 0;
         this.morphTargets = new MorphTargets(size);
@@ -43,11 +50,11 @@ export class ParticleSystem {
 
         // Uniforms
         this.velocityVariable.material.uniforms.uTime = { value: 0.0 };
-        this.velocityVariable.material.uniforms.uNoiseAmplitude = { value: 0.15 };
+        this.velocityVariable.material.uniforms.uNoiseAmplitude = { value: 0.25 };
         this.velocityVariable.material.uniforms.uNoiseFrequency = { value: 0.8 };
         this.velocityVariable.material.uniforms.uDrag = { value: 2.5 };
         this.velocityVariable.material.uniforms.tMorphTarget = { value: tMorphTarget };
-        this.velocityVariable.material.uniforms.uSpringK = { value: 3.0 };
+        this.velocityVariable.material.uniforms.uSpringK = { value: 1.5 };
         this.velocityVariable.material.uniforms.uAbstraction = { value: 0.0 };
 
         // Feature Uniforms
@@ -57,9 +64,14 @@ export class ParticleSystem {
         this.velocityVariable.material.uniforms.uBreathiness = { value: 0.0 };
 
         // New Uniforms for Breathing & Interaction
-        this.velocityVariable.material.uniforms.uBreathingAmplitude = { value: 0.03 };
+        this.velocityVariable.material.uniforms.uBreathingAmplitude = { value: 0.08 };
         this.velocityVariable.material.uniforms.uPointerPos = { value: new THREE.Vector3(9999, 9999, 9999) };
         this.velocityVariable.material.uniforms.uPointerActive = { value: 0.0 };
+
+        // Repulsion uniforms — driven by TuningConfig for real-time adjustment.
+        // These replace the hardcoded values that were previously in the shader.
+        this.velocityVariable.material.uniforms.uRepulsionRadius = { value: config.get('repulsionRadius') };
+        this.velocityVariable.material.uniforms.uRepulsionStrength = { value: config.get('repulsionStrength') };
 
         this.velocityVariable.material.uniforms.uDelta = { value: 0.016 };
         this.positionVariable.material.uniforms.uDelta = { value: 0.016 };
@@ -98,8 +110,8 @@ export class ParticleSystem {
                 texturePosition: { value: null },
                 textureVelocity: { value: null },
                 uColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
-                uAlpha: { value: 0.9 },
-                uPointSize: { value: 6.0 }
+                uAlpha: { value: 0.6 },
+                uPointSize: { value: 1.5 }
             },
             vertexShader: renderVert,
             fragmentShader: renderFrag,
@@ -143,10 +155,32 @@ export class ParticleSystem {
     update(deltaTime: number) {
         this.time += deltaTime;
 
-        // Update Uniforms
-        this.velocityVariable.material.uniforms.uTime.value = this.time;
+        // ── READ TUNING CONFIG → UPDATE UNIFORMS ─────────────────────
+        // Every frame, we read the latest values from TuningConfig and
+        // push them to the shader uniforms. This is how the TuningPanel
+        // sliders control particle behavior in real time.
+        const velUniforms = this.velocityVariable.material.uniforms;
+        const renderUniforms = (this.particles.material as THREE.ShaderMaterial).uniforms;
+
+        // Physics uniforms (velocity shader)
+        velUniforms.uSpringK.value = this.config.get('springK');
+        velUniforms.uDrag.value = this.config.get('drag');
+        velUniforms.uNoiseAmplitude.value = this.config.get('noiseAmplitude');
+        velUniforms.uNoiseFrequency.value = this.config.get('noiseFrequency');
+        velUniforms.uBreathingAmplitude.value = this.config.get('breathingAmplitude');
+
+        // Pointer interaction uniforms
+        velUniforms.uRepulsionRadius.value = this.config.get('repulsionRadius');
+        velUniforms.uRepulsionStrength.value = this.config.get('repulsionStrength');
+
+        // Appearance uniforms (render shader)
+        renderUniforms.uPointSize.value = this.config.get('pointSize');
+        renderUniforms.uAlpha.value = this.config.get('pointOpacity');
+
+        // Time and delta
+        velUniforms.uTime.value = this.time;
         this.positionVariable.material.uniforms.uDelta.value = deltaTime;
-        this.velocityVariable.material.uniforms.uDelta.value = deltaTime;
+        velUniforms.uDelta.value = deltaTime;
 
         // Update GPGPU
         this.gpuCompute.compute();

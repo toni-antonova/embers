@@ -1,17 +1,47 @@
 import Meyda from 'meyda';
+import { TuningConfig } from './TuningConfig';
 
+/**
+ * AudioFeatures — The normalized, smoothed output of audio analysis.
+ *
+ * Each value ranges from 0.0 (none) to 1.0 (maximum). These are fed
+ * into the shader pipeline via UniformBridge to control particle behavior.
+ */
 export interface AudioFeatures {
-    energy: number;      // smoothed, normalized RMS
-    tension: number;     // smoothed, normalized spectralCentroid
-    urgency: number;     // smoothed, normalized spectralFlux
-    breathiness: number; // smoothed, normalized ZCR / flatness mix
-    flatness: number;    // smoothed, normalized spectralFlatness
+    energy: number;      // RMS loudness → ring expansion + breathing speed
+    tension: number;     // Spectral centroid (brightness) → curl noise tightness + color
+    urgency: number;     // Spectral flux (change rate) → noise turbulence/chaos
+    breathiness: number; // ZCR + flatness blend → drag reduction + airiness
+    flatness: number;    // Spectral flatness (noise vs tone) → used in breathiness blend
 }
 
+/**
+ * AudioEngine — Real-time audio feature extraction from microphone input.
+ *
+ * Uses Meyda (a well-established audio feature extraction library) to
+ * analyze the microphone stream in real-time. Meyda runs a Fast Fourier
+ * Transform (FFT) on each audio buffer and computes feature descriptors.
+ *
+ * Each feature is:
+ *   1. Extracted from the raw Meyda output
+ *   2. Normalized to a [0, 1] range using observed/theoretical ranges
+ *   3. Smoothed with an exponential moving average (EMA) to prevent
+ *      jittery values from making particles stutter
+ *
+ * WHY EMA SMOOTHING:
+ * Raw audio features oscillate wildly frame-to-frame. EMA creates a
+ * "momentum" effect: alpha=0.9 means 90% of the previous value is
+ * retained, making movement gradual. Lower alpha = more responsive.
+ */
 export class AudioEngine {
     audioContext: AudioContext | null = null;
     source: MediaStreamAudioSourceNode | null = null;
     analyzer: any | null = null;
+
+    // Optional reference to TuningConfig — when present, smoothing alphas
+    // are read from config each frame instead of from the hardcoded defaults.
+    // This enables the TuningPanel to control audio responsiveness in real time.
+    private config: TuningConfig | null = null;
 
     features: AudioFeatures = {
         energy: 0,
@@ -21,40 +51,100 @@ export class AudioEngine {
         flatness: 0
     };
 
-    // Smoothing factors
+    /**
+     * Wire up the TuningConfig so smoothing alphas can be adjusted
+     * in real time from the TuningPanel. Called once by Canvas.tsx
+     * after both AudioEngine and TuningConfig are created.
+     */
+    setConfig(config: TuningConfig): void {
+        this.config = config;
+    }
+
+    // ── SMOOTHING FACTORS (EMA alpha) ─────────────────────────────────
+    // Higher alpha = smoother/slower response. Lower = snappier/bouncier.
+    // For a mic-visualizer feel, we want LOW alphas so the ring reacts
+    // instantly to beats, speech, and transients. These are tuned for
+    // "bouncy" rather than "smooth and gradual".
     private alphaRequest = {
-        rms: 0.82,
-        spectralCentroid: 0.91,
-        spectralFlux: 0.72,
-        zcr: 0.85,
-        spectralFlatness: 0.88
+        rms: 0.55,              // Energy: fast response (was 0.82)
+        spectralCentroid: 0.70, // Tension: moderately responsive (was 0.88)
+        spectralFlux: 0.35,     // Urgency: near-instant transient response (was 0.65)
+        zcr: 0.55,              // ZCR component: fast (was 0.80)
+        spectralFlatness: 0.60  // Flatness component: responsive (was 0.85)
     };
 
-    // Normalization tracking
-    private maxRms = 0.01; // Avoid divide by zero
+    // ── NORMALIZATION TRACKING ─────────────────────────────────────────
+    // maxRms auto-calibrates to the loudest sound heard so far.
+    // This way, energy is always relative to the user's mic level.
+    private maxRms = 0.01; // Start small to avoid divide-by-zero
+
+    // prevRms tracks the previous frame's RMS for computing urgency
+    // as a frame-to-frame energy delta (manual spectral flux substitute).
+    // We can't use Meyda's spectralFlux — it silently crashes the entire
+    // callback in some browser/Meyda version combos, killing ALL features.
+    private prevRms = 0;
+
+    // ── DIAGNOSTIC LOGGING ────────────────────────────────────────────
+    // Temporary: logs raw feature values every ~1s so the user can see
+    // if features are being extracted correctly. Remove after debugging.
+    private logCounter = 0;
+    private logInterval = 30; // Log every ~30 frames (~0.5s at 60fps)
 
     async start() {
         if (this.audioContext) return;
 
         try {
+            // ── STEP 1: Get mic access ────────────────────────────────
+            console.log('[AudioEngine] Step 1: Requesting mic access...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-            this.source = this.audioContext.createMediaStreamSource(stream);
+            console.log('[AudioEngine] Step 1: ✅ Mic stream acquired, tracks:', stream.getAudioTracks().length);
 
+            // ── STEP 2: Create AudioContext ───────────────────────────
+            this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            console.log('[AudioEngine] Step 2: AudioContext created, state:', this.audioContext.state);
+
+            // ── STEP 3: RESUME AudioContext ───────────────────────────
+            // CRITICAL: Chrome and most browsers start AudioContext in
+            // "suspended" state. It must be explicitly resumed after a
+            // user gesture. Without this, Meyda never receives audio
+            // buffers and its callback never fires.
+            if (this.audioContext.state === 'suspended') {
+                console.log('[AudioEngine] Step 3: AudioContext suspended, resuming...');
+                await this.audioContext.resume();
+            }
+            console.log('[AudioEngine] Step 3: ✅ AudioContext state:', this.audioContext.state);
+
+            // ── STEP 4: Connect mic stream to AudioContext ────────────
+            this.source = this.audioContext.createMediaStreamSource(stream);
+            console.log('[AudioEngine] Step 4: ✅ MediaStreamSource connected');
+
+            // ── STEP 5: Create Meyda analyzer ─────────────────────────
             this.analyzer = Meyda.createMeydaAnalyzer({
                 audioContext: this.audioContext,
                 source: this.source,
                 bufferSize: 512,
-                // Removed 'spectralFlux' due to browser incompatibility/instability
-                featureExtractors: ['rms', 'spectralCentroid', 'zcr', 'spectralFlatness'],
+                // Feature extractors — DO NOT add 'spectralFlux' here!
+                // Meyda's spectralFlux silently crashes the ScriptProcessorNode
+                // callback in certain browser/version combos, causing ALL
+                // features to stop being processed. Urgency is computed
+                // manually from RMS deltas instead (see processFeatures).
+                featureExtractors: [
+                    'rms',
+                    'spectralCentroid',
+                    'zcr',
+                    'spectralFlatness'
+                ],
                 callback: (features: any) => {
                     this.processFeatures(features);
                 }
             });
 
+            // ── STEP 6: Start analyzer ────────────────────────────────
             this.analyzer.start();
+            console.log('[AudioEngine] Step 6: ✅ Meyda analyzer started');
+            console.log('[AudioEngine] Pipeline ready — [RAW]/[SMOOTH]/[CALIBRATION] logs should appear every ~0.5s');
         } catch (e) {
-            console.error('AudioEngine start failed:', e);
+            console.error('[AudioEngine] ❌ Start failed at some step:', e);
         }
     }
 
@@ -71,6 +161,7 @@ export class AudioEngine {
         this.audioContext = null;
         this.source = null;
         this.analyzer = null;
+        console.log('[AudioEngine] Stopped');
     }
 
     getFeatures(): AudioFeatures {
@@ -80,43 +171,125 @@ export class AudioEngine {
     private processFeatures(raw: any) {
         if (!raw) return;
 
-        // 1. RMS (Energy)
-        // Auto-calibrate max RMS to normalize
+        // ── 1. RMS → ENERGY (loudness) ────────────────────────────────
+        // RMS (Root Mean Square) measures overall signal amplitude.
+        // Auto-calibrate: track the loudest RMS seen and normalize against it.
+        // maxRms decays slowly so the system adapts if the user gets quieter.
         const rms = raw.rms || 0;
         if (rms > this.maxRms) {
             this.maxRms = rms;
         } else {
-            this.maxRms *= 0.999; // Slow decay of max
+            this.maxRms *= 0.998; // Faster decay for quicker sensitivity adaptation (was 0.9995)
         }
         const normRms = Math.min(rms / this.maxRms, 1.0);
-        this.features.energy = this.smooth(this.features.energy, normRms, this.alphaRequest.rms);
+        this.features.energy = this.smooth(
+            this.features.energy, normRms,
+            this.config?.get('audioSmoothing.energy') ?? this.alphaRequest.rms
+        );
 
-        // 2. Spectral Centroid (Tension)
-        // Range: 0 - Nyquist. Speech usually 500-4000Hz is relevant.
-        // Normalize: 0 - 5000Hz approx? bufferSize 512 @ 44.1kHz -> bin width ~86Hz.
+        // ── 2. SPECTRAL CENTROID → TENSION (brightness/pitch) ─────────
+        // Spectral centroid is the "center of mass" of the frequency spectrum.
+        // Meyda returns it as a bin index (0 to bufferSize/2 = 256).
+        // Speech typically sits in bins 5-50 (430Hz-4300Hz at 44.1kHz/512).
+        // Normalizing by 80 maps the typical speech range to ~0.06-0.63.
         const centroid = raw.spectralCentroid || 0;
-        const normCentroid = Math.min(centroid / 100.0, 1.0); // Meyda returns bin index or Hz? Meyda docs say "index of bin". 
-        // With 512 buffer -> 256 bins. max index 255. 0-100 is good range.
-        this.features.tension = this.smooth(this.features.tension, normCentroid, this.alphaRequest.spectralCentroid);
+        const normCentroid = Math.min(centroid / 80.0, 1.0);
+        this.features.tension = this.smooth(
+            this.features.tension, normCentroid,
+            this.config?.get('audioSmoothing.tension') ?? this.alphaRequest.spectralCentroid
+        );
 
-        // 3. Spectral Flux (Urgency) - DISABLED
-        // const flux = raw.spectralFlux || 0;
-        // const normFlux = Math.min(flux / 10.0, 1.0); 
-        // this.features.urgency = this.smooth(this.features.urgency, normFlux, this.alphaRequest.spectralFlux);
-        this.features.urgency = 0; // Temp disable
+        // ── 3. RMS DELTA → URGENCY (rate of loudness change) ──────────
+        // We compute urgency as the absolute frame-to-frame change in RMS.
+        // This is a manual substitute for spectralFlux, which crashes
+        // Meyda's callback in some browsers (see start() comment).
+        //
+        // High delta = speech onset, consonant burst, sudden volume change
+        // Low delta = sustained tone, silence, steady volume
+        //
+        // The delta is normalized by maxRms so it's relative to the user's
+        // mic level. Multiplied by 15.0 to amplify small deltas into the
+        // 0-1 range (typical RMS deltas are tiny: 0.001-0.05).
+        // Higher multiplier = more sensitive to transients (was 8.0).
+        const rmsDelta = Math.abs(rms - this.prevRms);
+        this.prevRms = rms;
+        const normDelta = Math.min((rmsDelta / this.maxRms) * 15.0, 1.0);
+        this.features.urgency = this.smooth(
+            this.features.urgency, normDelta,
+            this.config?.get('audioSmoothing.urgency') ?? this.alphaRequest.spectralFlux
+        );
 
-        // 4. Input ZCR (Breathiness)
+        // ── 4. ZCR + FLATNESS → BREATHINESS (airy vs tonal) ──────────
+        // Zero Crossing Rate (ZCR): counts how often the waveform crosses zero.
+        //   - High ZCR = noise-like (breathy, fricatives like "s", "sh")
+        //   - Low ZCR = tonal (clean vowels, humming)
+        //   - Range: 0 to bufferSize/2 = 256. Speech typically 10-80.
+        //
+        // Spectral Flatness: measures how noise-like vs tonal the spectrum is.
+        //   - 1.0 = white noise (perfectly flat spectrum)
+        //   - 0.0 = pure tone (single frequency peak)
+        //   - Range: 0 to 1. Speech typically 0.01-0.3.
+        //
+        // WHY BLEND BOTH: ZCR alone correlates too much with energy/tension
+        // because all three rise when you speak louder. By blending in
+        // flatness (which measures spectral SHAPE, not amplitude), we get
+        // a feature that truly distinguishes breathy from tonal speech.
         const zcr = raw.zcr || 0;
-        // ZCR range is 0 - (buffer/2). 0 - 256.
-        const normZcr = Math.min(zcr / 128.0, 1.0);
-        this.features.breathiness = this.smooth(this.features.breathiness, normZcr, this.alphaRequest.zcr);
+        const normZcr = Math.min(zcr / 100.0, 1.0); // 0-100 range for speech
+        const smoothedZcr = this.smooth(
+            this.features.breathiness, normZcr,
+            this.config?.get('audioSmoothing.breathiness') ?? this.alphaRequest.zcr
+        );
 
-        // 5. Spectral Flatness
         const flatness = raw.spectralFlatness || 0;
-        const normFlatness = Math.min(flatness, 1.0);
-        this.features.flatness = this.smooth(this.features.flatness, normFlatness, this.alphaRequest.spectralFlatness);
+        const normFlatness = Math.min(flatness / 0.3, 1.0); // 0-0.3 is typical
+        const smoothedFlatness = this.smooth(
+            this.features.flatness, normFlatness, this.alphaRequest.spectralFlatness
+        );
+        this.features.flatness = smoothedFlatness;
+
+        // Blend: 40% ZCR + 60% flatness.
+        // Flatness is weighted higher because it's less correlated with
+        // energy than ZCR is — it responds to the CHARACTER of the sound
+        // rather than just the amplitude.
+        this.features.breathiness = smoothedZcr * 0.4 + smoothedFlatness * 0.6;
+
+        // ── DIAGNOSTIC LOGGING (TEMPORARY) ───────────────────────────
+        // Three-tier logging to pinpoint exactly where signal drops.
+        // Remove this entire block once the pipeline is verified working.
+        this.logCounter++;
+        if (this.logCounter >= this.logInterval) {
+            this.logCounter = 0;
+            // Tier 1: Raw Meyda output BEFORE any normalization or smoothing
+            console.log(
+                `[RAW]  rms:${rms.toFixed(4)} centroid:${centroid.toFixed(1)} ` +
+                `rmsDelta:${rmsDelta.toFixed(4)} zcr:${zcr.toFixed(1)} flatness:${flatness.toFixed(4)}`
+            );
+            // Tier 2: Post-smoothing feature values (what getFeatures() returns)
+            console.log(
+                `[SMOOTH] energy:${this.features.energy.toFixed(3)} ` +
+                `tension:${this.features.tension.toFixed(3)} ` +
+                `urgency:${this.features.urgency.toFixed(3)} ` +
+                `breath:${this.features.breathiness.toFixed(3)}`
+            );
+            // Tier 3: Auto-calibration state — if these are NaN/Infinity/0, that's the bug
+            console.log(
+                `[CALIBRATION] maxRms:${this.maxRms.toFixed(6)} ` +
+                `prevRms:${this.prevRms.toFixed(6)} ` +
+                `normRms:${normRms.toFixed(3)} normDelta:${normDelta.toFixed(3)} ` +
+                `normZcr:${normZcr.toFixed(3)} normFlat:${normFlatness.toFixed(3)}`
+            );
+        }
     }
 
+    /**
+     * Exponential Moving Average (EMA) smoother.
+     *
+     * `alpha` controls the balance between stability and responsiveness:
+     *   - alpha = 0.9 → very smooth, slow to react (90% old + 10% new)
+     *   - alpha = 0.5 → balanced
+     *   - alpha = 0.1 → very responsive, almost no smoothing
+     */
     private smooth(prev: number, curr: number, alpha: number): number {
         return alpha * prev + (1 - alpha) * curr;
     }
