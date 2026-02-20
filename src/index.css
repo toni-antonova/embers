@@ -13,11 +13,100 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-html, body, #root {
+body {
   margin: 0;
   padding: 0;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
+  background-color: #1a1a1a;
+}
+
+#root {
   width: 100%;
   height: 100%;
-  background-color: #1a1a1a;
+}
+
+canvas {
+  display: block;
+}
+
+/* UI Overlay */
+.ui-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* Let clicks pass through to canvas */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.mic-button {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 1rem 2rem;
+  border-radius: 2rem;
+  font-size: 1rem;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  align-self: center;
+  margin-bottom: 2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.mic-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.mic-button.active {
+  background: rgba(255, 100, 100, 0.2);
+  border-color: rgba(255, 100, 100, 0.4);
+  box-shadow: 0 0 20px rgba(255, 50, 50, 0.2);
+}
+
+.debug-panel {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 1rem;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  pointer-events: auto;
+  backdrop-filter: blur(5px);
+}
+
+.debug-row {
+  display: flex;
+  justify-content: space-between;
+  width: 200px;
+  margin-bottom: 0.25rem;
+}
+
+.debug-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  width: 100px;
+  align-self: center;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.debug-fill {
+  height: 100%;
+  background: white;
+  width: 0%;
+  transition: width 0.1s linear;
 }
