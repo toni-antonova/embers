@@ -376,6 +376,85 @@ canvas {
   outline: none;
 }
 
+/* ── SHAPE DROPDOWN ──────────────────────────────────────────────── */
+/*
+ * Custom-styled <select> for the morph target picker.
+ * Native <select> is used over a custom dropdown for accessibility
+ * and mobile support (native pickers work better on touch devices).
+ * We override the default browser appearance to match the dark panel.
+ */
+.tuning-select {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  padding: 6px 28px 6px 10px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  /* Custom arrow indicator (replaces browser default chevron) */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,0.5)'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.tuning-select:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.tuning-select:focus {
+  border-color: rgba(100, 149, 237, 0.6);
+  box-shadow: 0 0 0 2px rgba(100, 149, 237, 0.15);
+}
+
+/* Style the dropdown options (limited browser support, but helps in Chrome) */
+.tuning-select option {
+  background: #2a2a2a;
+  color: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+}
+
+/* ── SHAPE CONTROL ROW ───────────────────────────────────────────── */
+/*
+ * Layout for shape selector rows: label on left, dropdown on right.
+ * Uses the same spacing rhythm as slider rows for visual consistency.
+ */
+.tuning-shape-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tuning-shape-row .tuning-label {
+  flex-shrink: 0;
+  min-width: 60px;
+}
+
+.tuning-shape-row .tuning-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Blend slider row — full-width with value on the right */
+.tuning-blend-row {
+  margin-top: 2px;
+}
+
+.tuning-blend-row .tuning-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
 /* ── BUTTONS ──────────────────────────────────────────────────────── */
 .tuning-btn {
   width: 100%;
@@ -467,4 +546,152 @@ canvas {
   background: rgba(100, 220, 140, 0.1);
   border-color: rgba(100, 220, 140, 0.35);
   color: rgba(140, 240, 170, 1);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TUNING PANEL — TRANSCRIPT DISPLAY
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Container for the transcript text inside the tuning sidebar */
+.tuning-transcript {
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  min-height: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* The actual transcript text — italic for emphasis */
+.tuning-transcript-text {
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.4;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.2s ease;
+}
+
+/* Final transcripts get brighter text to indicate confidence */
+.tuning-transcript-text.final {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Interim transcripts stay dim to show they're still processing */
+.tuning-transcript-text.interim {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Status indicator (✅ final / ⏳ listening...) */
+.tuning-transcript-status {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Placeholder text when not listening yet */
+.tuning-transcript-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.25);
+  font-style: italic;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SPEECH FALLBACK & TRANSCRIPT DISPLAY
+   ══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Text-input fallback shown when the Web Speech API is not available
+ * (e.g., Firefox). Positioned at the bottom of the viewport, styled
+ * to match the dark theme while being clearly interactive.
+ */
+.speech-fallback-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 20;
+  width: min(90vw, 480px);
+}
+
+.speech-fallback-input {
+  flex: 1;
+  padding: 10px 14px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(20, 20, 20, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.speech-fallback-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.speech-fallback-input:focus {
+  border-color: rgba(100, 149, 237, 0.5);
+  box-shadow: 0 0 0 2px rgba(100, 149, 237, 0.1);
+}
+
+.speech-fallback-submit {
+  padding: 10px 16px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(100, 149, 237, 0.2);
+  border: 1px solid rgba(100, 149, 237, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.speech-fallback-submit:hover {
+  background: rgba(100, 149, 237, 0.3);
+  border-color: rgba(100, 149, 237, 0.5);
+  color: white;
+}
+
+/*
+ * Ghost transcript display — shows the last recognized phrase.
+ * Positioned above the mic button as a subtle, ephemeral indicator.
+ * Uses a fade-in animation for smooth appearance.
+ */
+.transcript-display {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(80vw, 600px);
+  text-align: center;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  z-index: 15;
+  animation: transcript-fade-in 0.2s ease;
+}
+
+/* Final transcripts get slightly brighter text */
+.transcript-display.final {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes transcript-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }

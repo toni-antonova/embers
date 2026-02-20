@@ -1,25 +1,65 @@
+/**
+ * UIOverlay — Heads-up display for audio features, mic control, and speech input.
+ *
+ * WHY THIS COMPONENT?
+ * ────────────────────
+ * The UIOverlay sits on top of the WebGL canvas and provides the primary
+ * user-facing controls. It's deliberately minimal and semi-transparent
+ * so it doesn't distract from the particle visualization.
+ *
+ * RESPONSIBILITIES:
+ * ─────────────────
+ * 1. Debug bars: Real-time audio feature levels (energy, tension, urgency, breath)
+ * 2. Mic button: Starts/stops BOTH AudioEngine AND SpeechEngine simultaneously
+ * 3. Transcript display: Shows the last recognized speech as ghost text
+ * 4. Text fallback: Shows a text input when Web Speech API isn't available
+ *
+ * ARCHITECTURE:
+ * ─────────────
+ * - AudioEngine handles HOW speech sounds (Meyda features)
+ * - SpeechEngine handles WHAT is being said (transcription)
+ * - Both start/stop together from the same mic button
+ * - The transcript display uses key-based re-rendering to trigger
+ *   the CSS fade-in animation on each new result
+ */
+
 import { useState, useEffect, useRef } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
+import { SpeechEngine } from '../services/SpeechEngine';
 
+// ── COMPONENT PROPS ──────────────────────────────────────────────────
 interface UIOverlayProps {
     audioEngine: AudioEngine;
+    speechEngine: SpeechEngine;
 }
 
-export function UIOverlay({ audioEngine }: UIOverlayProps) {
+export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
+    // ── STATE ────────────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
     const [features, setFeatures] = useState(audioEngine.getFeatures());
     const rafRef = useRef<number>(0);
 
+    // Text-input fallback state (only used when Web Speech API is unavailable).
+    const [fallbackText, setFallbackText] = useState('');
+
+    // ── MIC TOGGLE ───────────────────────────────────────────────────
+    // Starts/stops BOTH audio analysis AND speech recognition together.
+    // This ensures mic permission is requested once (AudioEngine's
+    // getUserMedia) and both systems share the same lifecycle.
     const toggleMic = async () => {
         if (isListening) {
             audioEngine.stop();
+            speechEngine.stop();
             setIsListening(false);
         } else {
             await audioEngine.start();
+            speechEngine.start();
             setIsListening(true);
         }
     };
 
+    // ── AUDIO FEATURE POLLING ────────────────────────────────────────
+    // Poll features at display refresh rate for the debug bars.
     useEffect(() => {
         const loop = () => {
             if (isListening) {
@@ -31,8 +71,18 @@ export function UIOverlay({ audioEngine }: UIOverlayProps) {
         return () => cancelAnimationFrame(rafRef.current!);
     }, [audioEngine, isListening]);
 
+    // ── TEXT FALLBACK SUBMIT ─────────────────────────────────────────
+    // Handles Enter key and button click for the text-input fallback.
+    const handleFallbackSubmit = () => {
+        if (!fallbackText.trim()) return;
+        speechEngine.submitText(fallbackText);
+        setFallbackText('');
+    };
+
+    // ── RENDER ────────────────────────────────────────────────────────
     return (
         <div className="ui-overlay">
+            {/* ── DEBUG BARS ───────────────────────────────────────── */}
             <div className="debug-panel">
                 <div className="debug-row">
                     <span>Energy</span>
@@ -52,12 +102,43 @@ export function UIOverlay({ audioEngine }: UIOverlayProps) {
                 </div>
             </div>
 
+            {/* ── MIC BUTTON ──────────────────────────────────────── */}
             <button
                 className={`mic-button ${isListening ? 'active' : ''}`}
                 onClick={toggleMic}
             >
                 {isListening ? 'Stop Listening' : 'Start Listening'}
             </button>
+
+            {/* ── TEXT FALLBACK (only when Speech API unavailable) ── */}
+            {/* When the Web Speech API isn't available (Firefox, etc.),
+                show a text input so the user can still type words that
+                get processed by the semantic pipeline. The form only
+                appears when listening is active (or always in fallback). */}
+            {!speechEngine.isSupported && isListening && (
+                <div className="speech-fallback-container">
+                    <input
+                        className="speech-fallback-input"
+                        type="text"
+                        placeholder="Type words here (speech not supported in this browser)..."
+                        value={fallbackText}
+                        onChange={(e) => setFallbackText(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleFallbackSubmit();
+                            }
+                        }}
+                    />
+                    <button
+                        className="speech-fallback-submit"
+                        onClick={handleFallbackSubmit}
+                        disabled={!fallbackText.trim()}
+                    >
+                        Send
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

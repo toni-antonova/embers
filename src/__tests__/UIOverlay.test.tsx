@@ -1,10 +1,12 @@
 /**
- * UIOverlay.test.tsx — Unit tests for the UIOverlay audio debug bars.
+ * UIOverlay.test.tsx — Unit tests for the UIOverlay audio debug bars
+ * and speech engine integration.
  *
  * WHAT WE'RE TESTING:
  * ───────────────────
  * UIOverlay is the debug panel in the top-left that shows 4 audio feature
  * bars (Energy, Tension, Urgency, Breath) plus a start/stop mic button.
+ * The mic button controls both AudioEngine and SpeechEngine simultaneously.
  * These bars are the user's primary visual feedback for whether audio
  * analysis is working — if they're flat, something is broken.
  *
@@ -46,11 +48,27 @@ function createMockAudioEngine(initialFeatures = {
     } as any;
 }
 
+// ── MOCK SPEECH ENGINE ───────────────────────────────────────────────
+// SpeechEngine is the transcription service. UIOverlay starts/stops it
+// alongside AudioEngine. We mock it to avoid Web Speech API dependency.
+function createMockSpeechEngine() {
+    return {
+        isSupported: true,
+        isRunning: false,
+        start: vi.fn(),
+        stop: vi.fn(),
+        onTranscript: vi.fn().mockReturnValue(() => { }), // returns an unsub fn
+        submitText: vi.fn(),
+    } as any;
+}
+
 // ── SETUP / TEARDOWN ─────────────────────────────────────────────────
 let mockAudioEngine: ReturnType<typeof createMockAudioEngine>;
+let mockSpeechEngine: ReturnType<typeof createMockSpeechEngine>;
 
 beforeEach(() => {
     mockAudioEngine = createMockAudioEngine();
+    mockSpeechEngine = createMockSpeechEngine();
     // Mock requestAnimationFrame for the polling loop.
     // UIOverlay uses rAF to update bars — in jsdom, we need to control it.
     vi.useFakeTimers();
@@ -66,7 +84,7 @@ afterEach(() => {
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Labels', () => {
     it('renders all 4 audio feature labels', () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         // These are the labels visible to the user in the debug panel.
         expect(screen.getByText('Energy')).toBeInTheDocument();
@@ -76,7 +94,7 @@ describe('UIOverlay — Labels', () => {
     });
 
     it('renders the correct number of debug rows', () => {
-        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} />);
+        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         // There should be exactly 4 debug rows (one per feature).
         const rows = container.querySelectorAll('.debug-row');
@@ -89,14 +107,14 @@ describe('UIOverlay — Labels', () => {
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Mic Button', () => {
     it('shows "Start Listening" initially', () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         const btn = screen.getByText('Start Listening');
         expect(btn).toBeInTheDocument();
     });
 
     it('toggles to "Stop Listening" after clicking', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         // Click "Start Listening".
         await act(async () => {
@@ -111,7 +129,7 @@ describe('UIOverlay — Mic Button', () => {
     });
 
     it('toggles back to "Start Listening" after stopping', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         // Start → Stop → verify text returns.
         await act(async () => {
@@ -131,7 +149,7 @@ describe('UIOverlay — Mic Button', () => {
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Bar Widths', () => {
     it('bars start at 0% width when features are zero', () => {
-        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} />);
+        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         // All fill bars should have 0% width.
         const fills = container.querySelectorAll('.debug-fill');
@@ -150,7 +168,7 @@ describe('UIOverlay — Bar Widths', () => {
             flatness: 0,
         });
 
-        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} />);
+        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         // Start listening to trigger the rAF polling loop.
         await act(async () => {
@@ -173,7 +191,7 @@ describe('UIOverlay — Bar Widths', () => {
     });
 
     it('each debug row has a bar and fill element', () => {
-        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} />);
+        const { container } = render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
         const rows = container.querySelectorAll('.debug-row');
         rows.forEach(row => {

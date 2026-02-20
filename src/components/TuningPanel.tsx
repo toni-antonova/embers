@@ -23,17 +23,41 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { TuningConfig, PARAM_DEFS } from '../services/TuningConfig';
 import type { ParamDef } from '../services/TuningConfig';
 import { AudioEngine } from '../services/AudioEngine';
+import { MORPH_TARGET_NAMES } from '../engine/MorphTargets';
+import type { TranscriptEvent } from '../services/SpeechEngine';
 
 // ── COMPONENT PROPS ──────────────────────────────────────────────────
 interface TuningPanelProps {
     config: TuningConfig;
     audioEngine: AudioEngine;
+
+    // ── MORPH TARGET SHAPE CONTROLS ──────────────────────────────────
+    // These callback props let the panel trigger shape changes without
+    // needing direct access to ParticleSystem. Canvas.tsx wires these
+    // to particleSystem.setTarget() and .blendTargets().
+    // Optional so existing tests/consumers don't break.
+    currentShape?: string;                                       // Active shape name (for dropdown display)
+    onShapeChange?: (shapeName: string) => void;                 // Fires when primary dropdown changes
+    onBlend?: (shapeA: string, shapeB: string, t: number) => void; // Fires when blend slider moves
+
+    // ── SPEECH TRANSCRIPT ────────────────────────────────────────────
+    // The last recognized speech event, passed down from Canvas.tsx.
+    // Displayed in a dedicated section so the user can see what the
+    // system heard in real time.
+    transcript?: TranscriptEvent | null;
 }
 
-export function TuningPanel({ config, audioEngine }: TuningPanelProps) {
+export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, transcript }: TuningPanelProps) {
     // ── STATE ────────────────────────────────────────────────────────
     // `isOpen` controls the slide-in/out animation.
     const [isOpen, setIsOpen] = useState(false);
+
+    // ── BLEND STATE ─────────────────────────────────────────────────
+    // The "Blend To" secondary shape and the interpolation factor.
+    // These are local to the panel because blending is a UI-only concern —
+    // the actual interpolation happens in ParticleSystem via the onBlend callback.
+    const [blendTarget, setBlendTarget] = useState<string>(MORPH_TARGET_NAMES[1]); // default: 'sphere'
+    const [blendAmount, setBlendAmount] = useState(0);
 
     // `revision` is a counter that increments on every config change,
     // forcing React to re-render and show the latest slider values.
@@ -179,6 +203,118 @@ export function TuningPanel({ config, audioEngine }: TuningPanelProps) {
                 </div>
 
                 <div className="tuning-panel-content">
+                    {/* ── SHAPE SECTION (always at top) ───────────── */}
+                    {/* This section is rendered separately from the auto-generated
+                        parameter sliders because shapes are categorical (dropdown)
+                        rather than numeric (slider). It uses the callback props
+                        from Canvas rather than the TuningConfig system. */}
+                    {onShapeChange && (
+                        <div className="tuning-section">
+                            <div className="tuning-section-title">🔷 Shape</div>
+
+                            {/* Primary shape selector */}
+                            <div className="tuning-shape-row">
+                                <label className="tuning-label" htmlFor="tuning-shape-primary">
+                                    Target
+                                </label>
+                                <select
+                                    id="tuning-shape-primary"
+                                    className="tuning-select"
+                                    value={currentShape || 'ring'}
+                                    onChange={(e) => {
+                                        // When user picks a new primary shape, reset blend
+                                        // to 0 so the shape snaps cleanly to the selection.
+                                        setBlendAmount(0);
+                                        onShapeChange(e.target.value);
+                                    }}
+                                >
+                                    {MORPH_TARGET_NAMES.map(name => (
+                                        <option key={name} value={name}>{name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Blend-to secondary shape selector */}
+                            <div className="tuning-shape-row">
+                                <label className="tuning-label" htmlFor="tuning-shape-blend">
+                                    Blend To
+                                </label>
+                                <select
+                                    id="tuning-shape-blend"
+                                    className="tuning-select"
+                                    value={blendTarget}
+                                    onChange={(e) => {
+                                        setBlendTarget(e.target.value);
+                                        // If blend is non-zero, re-apply with new target.
+                                        if (blendAmount > 0 && onBlend) {
+                                            onBlend(currentShape || 'ring', e.target.value, blendAmount);
+                                        }
+                                    }}
+                                >
+                                    {MORPH_TARGET_NAMES.map(name => (
+                                        <option key={name} value={name}>{name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Blend amount slider (0 = fully primary, 1 = fully secondary) */}
+                            <div className="tuning-blend-row">
+                                <div className="tuning-row-header">
+                                    <label className="tuning-label" htmlFor="tuning-shape-blend-slider">
+                                        Blend
+                                    </label>
+                                    <span className="tuning-current-value">
+                                        {blendAmount.toFixed(2)}
+                                    </span>
+                                </div>
+                                <input
+                                    id="tuning-shape-blend-slider"
+                                    className="tuning-slider"
+                                    type="range"
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    value={blendAmount}
+                                    onChange={(e) => {
+                                        const t = parseFloat(e.target.value);
+                                        setBlendAmount(t);
+                                        if (t === 0) {
+                                            // Snap back to pure primary shape
+                                            onShapeChange(currentShape || 'ring');
+                                        } else if (onBlend) {
+                                            onBlend(currentShape || 'ring', blendTarget, t);
+                                        }
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── SPEECH TRANSCRIPT SECTION ──────────────── */}
+                    {/* Shows what the speech recognition engine heard.
+                        This gives the user immediate feedback that their
+                        speech is being captured, and later will show how
+                        it maps to shapes via the KeywordClassifier. */}
+                    <div className="tuning-section">
+                        <div className="tuning-section-title">🎤 Speech</div>
+                        <div className="tuning-transcript">
+                            {transcript ? (
+                                <>
+                                    <span className={`tuning-transcript-text ${transcript.isFinal ? 'final' : 'interim'}`}>
+                                        "{transcript.text}"
+                                    </span>
+                                    <span className="tuning-transcript-status">
+                                        {transcript.isFinal ? '✅ final' : '⏳ listening...'}
+                                    </span>
+                                </>
+                            ) : (
+                                <span className="tuning-transcript-hint">
+                                    Click "Start Listening" and speak…
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
                     {/* ── PARAMETER SECTIONS ───────────────────────── */}
                     {Array.from(groups.entries()).map(([groupName, defs]) => (
                         <div key={groupName} className="tuning-section">

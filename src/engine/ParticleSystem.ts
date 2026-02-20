@@ -17,6 +17,11 @@ export class ParticleSystem {
     time: number;
     morphTargets: MorphTargets;
 
+    // Track which morph target is currently active.
+    // External systems (SemanticBackend, debug UI) can read this
+    // to know the current shape without querying the texture.
+    currentTarget: string = 'ring';
+
     // TuningConfig reference — used to read parameter values every frame.
     // This is the pattern used by game engines: a central config that
     // all subsystems poll, rather than prop-drilling individual values.
@@ -45,8 +50,8 @@ export class ParticleSystem {
         this.gpuCompute.setVariableDependencies(this.velocityVariable, [this.positionVariable, this.velocityVariable]);
         this.gpuCompute.setVariableDependencies(this.positionVariable, [this.positionVariable, this.velocityVariable]);
 
-        // Generate initial morph target (ring)
-        const tMorphTarget = this.morphTargets.generateTexture('ring');
+        // Get initial morph target (ring) from the pre-baked cache
+        const tMorphTarget = this.morphTargets.getTarget('ring');
 
         // Uniforms
         this.velocityVariable.material.uniforms.uTime = { value: 0.0 };
@@ -195,6 +200,39 @@ export class ParticleSystem {
     setPointer(position: THREE.Vector3, active: boolean) {
         this.velocityVariable.material.uniforms.uPointerPos.value.copy(position);
         this.velocityVariable.material.uniforms.uPointerActive.value = active ? 1.0 : 0.0;
+    }
+
+    /**
+     * Switch to a named morph target.
+     *
+     * The spring forces in velocity.frag.glsl automatically animate the
+     * transition — particles flow smoothly from their current positions
+     * to the new target positions over ~1-2 seconds (controlled by uSpringK).
+     *
+     * @param name - One of the MORPH_TARGET_NAMES (e.g. 'quadruped', 'wave')
+     */
+    setTarget(name: string) {
+        const texture = this.morphTargets.getTarget(name);
+        this.velocityVariable.material.uniforms.tMorphTarget.value = texture;
+        this.currentTarget = name;
+        console.log(`[ParticleSystem] Morph target → "${name}"`);
+    }
+
+    /**
+     * Set a blended morph target interpolated between two shapes.
+     *
+     * Used for the abstraction spectrum: e.g. blend between a concrete
+     * shape (quadruped) and a fluid shape (scatter) based on
+     * abstractionLevel. The result is a temporary lerped texture.
+     *
+     * @param targetA - First shape (blend=0 → 100% this)
+     * @param targetB - Second shape (blend=1 → 100% this)
+     * @param blend   - Interpolation factor [0, 1]
+     */
+    blendTargets(targetA: string, targetB: string, blend: number) {
+        const texture = this.morphTargets.blendTargets(targetA, targetB, blend);
+        this.velocityVariable.material.uniforms.tMorphTarget.value = texture;
+        this.currentTarget = `${targetA}↔${targetB}@${blend.toFixed(2)}`;
     }
 
     resize() {

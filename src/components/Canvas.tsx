@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { ParticleSystem } from '../engine/ParticleSystem';
 import { AudioEngine } from '../services/AudioEngine';
+import { SpeechEngine } from '../services/SpeechEngine';
+import type { TranscriptEvent } from '../services/SpeechEngine';
 import { TuningConfig } from '../services/TuningConfig';
 import { UniformBridge } from '../engine/UniformBridge';
 import { UIOverlay } from './UIOverlay';
@@ -21,12 +23,32 @@ export function Canvas() {
     // errors that occur when reusing a canvas whose context was just force-lost.
     const [canvasKey, setCanvasKey] = useState(0);
 
+    // Track the active morph target shape — drives the TuningPanel dropdown.
+    // This lives in React state (not just ParticleSystem) so the dropdown
+    // value stays in sync with what's actually rendering.
+    const [currentShape, setCurrentShape] = useState('ring');
+
+    // Track the last speech transcript event so we can display it
+    // in the TuningPanel's Speech section.
+    const [lastTranscript, setLastTranscript] = useState<TranscriptEvent | null>(null);
+
     // Keep AudioEngine as a stable singleton (not affected by canvasKey changes).
     const audioEngineRef = useRef<AudioEngine | null>(null);
     if (!audioEngineRef.current) {
         audioEngineRef.current = new AudioEngine();
     }
     const audioEngine = audioEngineRef.current;
+
+    // SpeechEngine singleton — transcribes speech to text.
+    // Follows the same ref-based singleton pattern as AudioEngine.
+    // This is separate from AudioEngine because they serve different
+    // purposes: AudioEngine extracts HOW speech sounds (Meyda features),
+    // SpeechEngine extracts WHAT is being said (text transcription).
+    const speechEngineRef = useRef<SpeechEngine | null>(null);
+    if (!speechEngineRef.current) {
+        speechEngineRef.current = new SpeechEngine();
+    }
+    const speechEngine = speechEngineRef.current;
 
     // TuningConfig singleton — persists across canvas remounts.
     // This is the central config that all systems (ParticleSystem,
@@ -40,6 +62,22 @@ export function Canvas() {
     // Wire the config into AudioEngine so it can read smoothing alphas.
     // This uses setConfig() because AudioEngine is created before TuningConfig.
     audioEngine.setConfig(tuningConfig);
+
+    // ── SPEECH TRANSCRIPT LOGGING ─────────────────────────────────────────
+    // Subscribe to transcript events and log them to the console.
+    // This is the initial wiring — later phases will connect transcripts
+    // to the KeywordClassifier → morph target pipeline.
+    useEffect(() => {
+        const unsub = speechEngine.onTranscript((event) => {
+            // Log with emoji prefix for easy scanning in dev tools
+            const tag = event.isFinal ? '🟢' : '⚪';
+            console.log(`${tag} [Canvas] Transcript: "${event.text}" (final=${event.isFinal})`);
+
+            // Store the transcript so it can be displayed in TuningPanel
+            setLastTranscript(event);
+        });
+        return unsub;
+    }, [speechEngine]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -134,6 +172,40 @@ export function Canvas() {
         window.addEventListener('mouseup', handlePointerLeave);
         window.addEventListener('touchend', handlePointerLeave);
 
+        // ── KEYBOARD SHORTCUTS FOR SHAPE CYCLING (DEV TOOL) ───────────────────
+        // Press 1-9, 0, -, = to cycle through the 12 morph targets.
+        // This is for development/testing — makes it easy to visually verify
+        // each shape without needing the semantic pipeline wired up yet.
+        const shapeKeys: Record<string, string> = {
+            '1': 'ring',
+            '2': 'sphere',
+            '3': 'quadruped',
+            '4': 'humanoid',
+            '5': 'scatter',
+            '6': 'dual-attract',
+            '7': 'wave',
+            '8': 'starburst',
+            '9': 'tree',
+            '0': 'mountain',
+            '-': 'building',
+            '=': 'bird',
+        };
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't intercept if user is typing in an input field
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            const shapeName = shapeKeys[e.key];
+            if (shapeName && particleSystemRef.current) {
+                particleSystemRef.current.setTarget(shapeName);
+                // Sync React state so the TuningPanel dropdown reflects the change.
+                setCurrentShape(shapeName);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+
+        // Expose particle system on window for console debugging:
+        // window.__particles.setTarget('wave')
+        (window as any).__particles = particles;
+
         // ── ANIMATION LOOP ────────────────────────────────────────────────────
         let lastTime = performance.now();
         const planeZ = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -181,6 +253,10 @@ export function Canvas() {
             window.removeEventListener('touchmove', handleTouchMove);
             window.removeEventListener('mouseup', handlePointerLeave);
             window.removeEventListener('touchend', handlePointerLeave);
+            window.removeEventListener('keydown', handleKeyDown);
+
+            // Clean up debug reference
+            delete (window as any).__particles;
 
             fadeMaterial.dispose();
             fadePlane.geometry.dispose();
@@ -199,6 +275,23 @@ export function Canvas() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [canvasKey]);
 
+    // ── SHAPE CHANGE CALLBACKS ────────────────────────────────────────────
+    // These bridge the React TuningPanel UI to the imperative ParticleSystem.
+    // useCallback ensures referential stability so TuningPanel doesn't re-render
+    // unnecessarily.
+    const handleShapeChange = useCallback((shapeName: string) => {
+        if (particleSystemRef.current) {
+            particleSystemRef.current.setTarget(shapeName);
+            setCurrentShape(shapeName);
+        }
+    }, []);
+
+    const handleBlend = useCallback((shapeA: string, shapeB: string, t: number) => {
+        if (particleSystemRef.current) {
+            particleSystemRef.current.blendTargets(shapeA, shapeB, t);
+        }
+    }, []);
+
     return (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             {/* key={canvasKey} forces a new <canvas> DOM node on each remount */}
@@ -207,8 +300,15 @@ export function Canvas() {
                 ref={canvasRef}
                 style={{ display: 'block', width: '100%', height: '100%' }}
             />
-            <UIOverlay audioEngine={audioEngine} />
-            <TuningPanel config={tuningConfig} audioEngine={audioEngine} />
+            <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} />
+            <TuningPanel
+                config={tuningConfig}
+                audioEngine={audioEngine}
+                currentShape={currentShape}
+                onShapeChange={handleShapeChange}
+                onBlend={handleBlend}
+                transcript={lastTranscript}
+            />
         </div>
     );
 }
