@@ -37,6 +37,13 @@ export class UniformBridge {
     // particles return to a calm baseline state (shape, speed 1, white).
     idleMode = false;
 
+    // ── SEMANTIC OVERRIDES ────────────────────────────────────────
+    // SemanticBackend sets these to inject abstraction/noise values
+    // into the shader pipeline. When non-null, they override the
+    // values that would normally come from TuningConfig.
+    abstractionOverride: number | null = null;
+    noiseOverride: number | null = null;
+
     // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
     // Logs the actual uniform values being sent to the shader every ~0.5s.
     // This is the final checkpoint: if [SMOOTH] shows nonzero but
@@ -121,6 +128,17 @@ export class UniformBridge {
         // ── ROLLOFF → RENDER SHADER ───────────────────────────────────
         // Spectral rolloff controls particle edge softness/crispness.
         renderUniforms.uRolloff.value = Math.max(0, Math.min(1, rolloff));
+
+        // ── SEMANTIC OVERRIDES → SHADER UNIFORMS ──────────────────────
+        // SemanticBackend drives abstraction level (temporal crystallization)
+        // and noise amplitude (loosening effect). When overrides are set,
+        // they take precedence over TuningConfig values.
+        if (this.abstractionOverride !== null) {
+            uniforms.uAbstraction.value = Math.max(0, Math.min(1, this.abstractionOverride));
+        }
+        if (this.noiseOverride !== null) {
+            uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, this.noiseOverride));
+        }
 
         // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
         // Tier 3: The actual values on the shader uniforms.

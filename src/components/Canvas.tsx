@@ -6,6 +6,8 @@ import { SpeechEngine } from '../services/SpeechEngine';
 import type { TranscriptEvent } from '../services/SpeechEngine';
 import { TuningConfig } from '../services/TuningConfig';
 import { UniformBridge } from '../engine/UniformBridge';
+import { KeywordClassifier } from '../services/KeywordClassifier';
+import { SemanticBackend } from '../services/SemanticBackend';
 import { UIOverlay } from './UIOverlay';
 import { TuningPanel } from './TuningPanel';
 import type { CameraType, ColorMode } from './TuningPanel';
@@ -72,6 +74,16 @@ export function Canvas() {
     // Wire the config into AudioEngine so it can read smoothing alphas.
     // This uses setConfig() because AudioEngine is created before TuningConfig.
     audioEngine.setConfig(tuningConfig);
+
+    // KeywordClassifier singleton — maps transcript text to semantic states.
+    const classifierRef = useRef<KeywordClassifier | null>(null);
+    if (!classifierRef.current) {
+        classifierRef.current = new KeywordClassifier();
+    }
+    const classifier = classifierRef.current;
+
+    // SemanticBackend ref — created inside useEffect after ParticleSystem exists.
+    const semanticBackendRef = useRef<SemanticBackend | null>(null);
 
     // ── SPEECH TRANSCRIPT LOGGING ─────────────────────────────────────────
     // Subscribe to transcript events and log them to the console.
@@ -168,6 +180,13 @@ export function Canvas() {
         const uniformBridge = new UniformBridge(audioEngine, particles, tuningConfig);
         uniformBridgeRef.current = uniformBridge;
 
+        // ── SEMANTIC BACKEND ──────────────────────────────────────────
+        // Wires Speech → Classification → Morph pipeline.
+        const semanticBackend = new SemanticBackend(
+            speechEngine, classifier, particles, uniformBridge
+        );
+        semanticBackendRef.current = semanticBackend;
+
         // ── RESIZE HANDLER ────────────────────────────────────────────────────
         const handleResize = () => {
             const newAspect = window.innerWidth / window.innerHeight;
@@ -241,6 +260,7 @@ export function Canvas() {
         // Expose particle system on window for console debugging:
         // window.__particles.setTarget('wave')
         (window as any).__particles = particles;
+        (window as any).__semantic = semanticBackendRef.current;
 
         // ── ANIMATION LOOP ────────────────────────────────────────────────────
         let lastTime = performance.now();
@@ -254,6 +274,9 @@ export function Canvas() {
             const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
 
+            // Semantic pipeline runs first — it may set abstraction/noise overrides
+            // that UniformBridge needs to apply in the same frame.
+            semanticBackendRef.current?.update(dt);
             uniformBridgeRef.current?.update();
 
             // Update camera Z position from TuningConfig slider.
@@ -307,8 +330,15 @@ export function Canvas() {
             window.removeEventListener('touchend', handlePointerLeave);
             window.removeEventListener('keydown', handleKeyDown);
 
-            // Clean up debug reference
+            // Clean up debug references
             delete (window as any).__particles;
+            delete (window as any).__semantic;
+
+            // Dispose semantic backend (unsubscribes from SpeechEngine)
+            if (semanticBackendRef.current) {
+                semanticBackendRef.current.dispose();
+                semanticBackendRef.current = null;
+            }
 
             fadeMaterial.dispose();
             fadePlane.geometry.dispose();
