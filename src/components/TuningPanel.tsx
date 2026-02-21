@@ -18,6 +18,15 @@ import type { ParamDef } from '../services/TuningConfig';
 import { AudioEngine } from '../services/AudioEngine';
 import { MORPH_TARGET_NAMES } from '../engine/MorphTargets';
 import type { TranscriptEvent } from '../services/SpeechEngine';
+import type { SemanticEvent } from '../services/SemanticBackend';
+import {
+    accumulateGhostWords,
+    cleanupExpiredWords,
+    ghostWordOpacity,
+} from '../services/GhostTranscript';
+import type { GhostWord } from '../services/GhostTranscript';
+
+const GHOST_CLEANUP_MS = 200;      // Check for expired words every 200ms
 
 // ── TYPES ────────────────────────────────────────────────────────────
 export type CameraType = 'perspective' | 'orthographic';
@@ -66,10 +75,12 @@ interface TuningPanelProps {
     sentimentMovementEnabled?: boolean;
     onSentimentMovementToggle?: (enabled: boolean) => void;
     transcript?: TranscriptEvent | null;
+    /** Latest semantic event — used to detect keywords for ghost transcript highlighting */
+    lastSemanticEvent?: SemanticEvent | null;
     onIdleReset?: () => void;
 }
 
-export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, colorMode, onColorModeChange, sentimentEnabled, onSentimentToggle, sentimentMovementEnabled, onSentimentMovementToggle, transcript, onIdleReset }: TuningPanelProps) {
+export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, colorMode, onColorModeChange, sentimentEnabled, onSentimentToggle, sentimentMovementEnabled, onSentimentMovementToggle, transcript, lastSemanticEvent, onIdleReset }: TuningPanelProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<PanelTab>('visual');
@@ -78,6 +89,41 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
     const [revision, setRevision] = useState(0);
     const [pasteText, setPasteText] = useState('');
     const [copyFeedback, setCopyFeedback] = useState(false);
+
+    // ── GHOST TRANSCRIPT STATE ───────────────────────────────────────
+    const [ghostWords, setGhostWords] = useState<GhostWord[]>([]);
+    const ghostIdCounter = useRef(0);
+    const ghostScrollRef = useRef<HTMLDivElement>(null);
+    const prevTranscriptRef = useRef<string | null>(null);
+
+    // Accumulate words from new final transcripts
+    useEffect(() => {
+        if (!transcript || !transcript.isFinal) return;
+        // Deduplicate — don't re-add the same final transcript text
+        if (transcript.text === prevTranscriptRef.current) return;
+        prevTranscriptRef.current = transcript.text;
+
+        setGhostWords(prev => {
+            const result = accumulateGhostWords(prev, transcript, lastSemanticEvent, ghostIdCounter.current);
+            ghostIdCounter.current = result.nextId;
+            return result.words;
+        });
+    }, [transcript, lastSemanticEvent]);
+
+    // Auto-scroll ghost transcript to bottom when new words arrive
+    useEffect(() => {
+        if (ghostScrollRef.current) {
+            ghostScrollRef.current.scrollTop = ghostScrollRef.current.scrollHeight;
+        }
+    }, [ghostWords]);
+
+    // Periodic cleanup of expired ghost words
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setGhostWords(prev => cleanupExpiredWords(prev));
+        }, GHOST_CLEANUP_MS);
+        return () => clearInterval(timer);
+    }, []);
     const [liveFeatures, setLiveFeatures] = useState({
         energy: 0, tension: 0, urgency: 0, breathiness: 0,
         flatness: 0, textureComplexity: 0, rolloff: 0,
@@ -361,22 +407,28 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                     {/* ════════════════════════════════════════════════ */}
                     {activeTab === 'audio' && (
                         <>
-                            {/* ── SPEECH TRANSCRIPT ─────────────────── */}
+                            {/* ── GHOST TRANSCRIPT ──────────────────── */}
                             <div className="tuning-section">
                                 <div className="tuning-section-title">🎤 Speech</div>
-                                <div className="tuning-transcript">
-                                    {transcript ? (
-                                        <>
-                                            <span className={`tuning-transcript-text ${transcript.isFinal ? 'final' : 'interim'}`}>
-                                                "{transcript.text}"
-                                            </span>
-                                            <span className="tuning-transcript-status">
-                                                {transcript.isFinal ? '✅ final' : '⏳ listening...'}
-                                            </span>
-                                        </>
+                                <div className="ghost-transcript" ref={ghostScrollRef}>
+                                    {ghostWords.length > 0 ? (
+                                        ghostWords.map(gw => {
+                                            const opacity = ghostWordOpacity(gw);
+                                            return (
+                                                <span
+                                                    key={gw.id}
+                                                    className={`ghost-word${gw.isKeyword ? ' keyword' : ''}`}
+                                                    style={{ opacity }}
+                                                >
+                                                    {gw.text}
+                                                </span>
+                                            );
+                                        })
                                     ) : (
-                                        <span className="tuning-transcript-hint">
-                                            Click "Start Listening" and speak…
+                                        <span className="ghost-transcript-hint">
+                                            {transcript && !transcript.isFinal
+                                                ? '⏳ listening…'
+                                                : 'Speak to see words appear…'}
                                         </span>
                                     )}
                                 </div>

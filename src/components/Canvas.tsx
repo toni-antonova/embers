@@ -8,6 +8,7 @@ import { TuningConfig } from '../services/TuningConfig';
 import { UniformBridge } from '../engine/UniformBridge';
 import { KeywordClassifier } from '../services/KeywordClassifier';
 import { SemanticBackend } from '../services/SemanticBackend';
+import type { SemanticEvent } from '../services/SemanticBackend';
 import { UIOverlay } from './UIOverlay';
 import { TuningPanel } from './TuningPanel';
 import type { CameraType, ColorMode } from './TuningPanel';
@@ -32,8 +33,11 @@ export function Canvas() {
     const [currentShape, setCurrentShape] = useState('ring');
 
     // Track the last speech transcript event so we can display it
-    // in the TuningPanel's Speech section.
+    // in the TuningPanel's ghost transcript.
     const [lastTranscript, setLastTranscript] = useState<TranscriptEvent | null>(null);
+
+    // Track the latest semantic event for ghost transcript keyword highlighting.
+    const [lastSemanticEvent, setLastSemanticEvent] = useState<SemanticEvent | null>(null);
 
     // Camera type — perspective (default) or orthographic.
     // Lives in React state so TuningPanel dropdown stays in sync.
@@ -104,6 +108,14 @@ export function Canvas() {
 
             // Store the transcript so it can be displayed in TuningPanel
             setLastTranscript(event);
+
+            // Capture latest semantic event for ghost transcript keyword detection
+            if (event.isFinal && semanticBackendRef.current) {
+                const log = semanticBackendRef.current.getEventLog();
+                if (log.length > 0) {
+                    setLastSemanticEvent(log[log.length - 1]);
+                }
+            }
         });
         return unsub;
     }, [speechEngine]);
@@ -422,6 +434,7 @@ export function Canvas() {
                     }
                 }}
                 transcript={lastTranscript}
+                lastSemanticEvent={lastSemanticEvent}
                 onIdleReset={() => {
                     if (uniformBridgeRef.current) {
                         uniformBridgeRef.current.resetToIdle();

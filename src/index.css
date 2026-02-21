@@ -813,51 +813,72 @@ canvas {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   TUNING PANEL — TRANSCRIPT DISPLAY
+   GHOST TRANSCRIPT — Fading word history in the tuning sidebar
    ══════════════════════════════════════════════════════════════════════ */
 
-/* Container for the transcript text inside the tuning sidebar */
-.tuning-transcript {
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 6px;
-  min-height: 36px;
+/* Scrollable container — words wrap and stack vertically,
+   with auto-scroll to the bottom for latest words */
+.ghost-transcript {
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  min-height: 40px;
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  align-content: flex-end;
+  /* Hide scrollbar — content scrolls but bar is invisible */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-/* The actual transcript text — italic for emphasis */
-.tuning-transcript-text {
-  font-size: 13px;
-  font-style: italic;
-  line-height: 1.4;
-  word-break: break-word;
-  color: rgba(255, 255, 255, 0.5);
-  transition: color 0.2s ease;
+.ghost-transcript::-webkit-scrollbar {
+  display: none;
 }
 
-/* Final transcripts get brighter text to indicate confidence */
-.tuning-transcript-text.final {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-/* Interim transcripts stay dim to show they're still processing */
-.tuning-transcript-text.interim {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-/* Status indicator (✅ final / ⏳ listening...) */
-.tuning-transcript-status {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-}
-
-/* Placeholder text when not listening yet */
-.tuning-transcript-hint {
+/* Individual word — inline pill with smooth opacity transition */
+.ghost-word {
+  display: inline-block;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 0.01em;
+  transition: opacity 0.4s ease-out;
+  animation: ghost-word-in 0.25s ease-out;
+}
+
+/* Keyword highlight — golden glow for words that triggered a morph */
+.ghost-word.keyword {
+  color: rgba(255, 215, 100, 0.95);
+  text-shadow: 0 0 8px rgba(255, 200, 60, 0.4), 0 0 16px rgba(255, 180, 40, 0.15);
+  font-weight: 600;
+}
+
+/* Placeholder text when no words have been spoken yet */
+.ghost-transcript-hint {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.2);
   font-style: italic;
+  align-self: center;
+  width: 100%;
+  text-align: center;
+}
+
+/* Entry animation — words slide up slightly and fade in */
+@keyframes ghost-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
