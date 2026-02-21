@@ -26,7 +26,7 @@ type PanelTab = 'visual' | 'audio';
 
 // ── CONSTANTS ────────────────────────────────────────────────────────
 // Groups that belong in each tab. The order here is the render order.
-const VISUAL_GROUPS = ['🔴 Particle Appearance', '🔵 Physics', '🟡 Pointer Interaction', '📷 Camera'];
+const VISUAL_GROUPS = ['🔴 Particle Appearance', '🔵 Physics', '🟡 Pointer Interaction', '📷 Camera', '🎨 Sentiment Color', '🏃 Sentiment Movement'];
 
 // Feature display names for the audio reactivity grid
 const AUDIO_FEATURE_LABELS: Record<string, string> = {
@@ -61,11 +61,15 @@ interface TuningPanelProps {
     onCameraTypeChange?: (type: CameraType) => void;
     colorMode?: ColorMode;
     onColorModeChange?: (mode: ColorMode) => void;
+    sentimentEnabled?: boolean;
+    onSentimentToggle?: (enabled: boolean) => void;
+    sentimentMovementEnabled?: boolean;
+    onSentimentMovementToggle?: (enabled: boolean) => void;
     transcript?: TranscriptEvent | null;
     onIdleReset?: () => void;
 }
 
-export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, colorMode, onColorModeChange, transcript, onIdleReset }: TuningPanelProps) {
+export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, colorMode, onColorModeChange, sentimentEnabled, onSentimentToggle, sentimentMovementEnabled, onSentimentMovementToggle, transcript, onIdleReset }: TuningPanelProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<PanelTab>('visual');
@@ -300,16 +304,55 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                                             <option value="rainbow">Rainbow</option>
                                         </select>
                                     </div>
+                                    {/* Sentiment toggle — shown only when rainbow is active */}
+                                    {colorMode === 'rainbow' && onSentimentToggle && (
+                                        <div className="tuning-shape-row">
+                                            <label className="tuning-label" htmlFor="tuning-sentiment-toggle">
+                                                Sentiment Color
+                                            </label>
+                                            <input
+                                                id="tuning-sentiment-toggle"
+                                                type="checkbox"
+                                                checked={sentimentEnabled ?? false}
+                                                onChange={(e) => onSentimentToggle(e.target.checked)}
+                                            />
+                                        </div>
+                                    )}
+                                    {/* Sentiment Movement toggle — always visible, any color mode */}
+                                    {onSentimentMovementToggle && (
+                                        <div className="tuning-shape-row">
+                                            <label className="tuning-label" htmlFor="tuning-sentiment-movement-toggle">
+                                                Sentiment Movement
+                                            </label>
+                                            <input
+                                                id="tuning-sentiment-movement-toggle"
+                                                type="checkbox"
+                                                checked={sentimentMovementEnabled ?? false}
+                                                onChange={(e) => onSentimentMovementToggle(e.target.checked)}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
                             {/* ── AUTO-GENERATED VISUAL SLIDERS ───── */}
-                            {Array.from(visualGroups.entries()).map(([groupName, defs]) => (
-                                <div key={groupName} className="tuning-section">
-                                    <div className="tuning-section-title">{groupName}</div>
-                                    {defs.map(renderSlider)}
-                                </div>
-                            ))}
+                            {Array.from(visualGroups.entries())
+                                .filter(([groupName]) => {
+                                    // Hide sentiment sliders when feature is off or not rainbow
+                                    if (groupName === '🎨 Sentiment Color') {
+                                        return sentimentEnabled && colorMode === 'rainbow';
+                                    }
+                                    if (groupName === '🏃 Sentiment Movement') {
+                                        return sentimentMovementEnabled ?? false;
+                                    }
+                                    return true;
+                                })
+                                .map(([groupName, defs]) => (
+                                    <div key={groupName} className="tuning-section">
+                                        <div className="tuning-section-title">{groupName}</div>
+                                        {defs.map(renderSlider)}
+                                    </div>
+                                ))}
                         </>
                     )}
 

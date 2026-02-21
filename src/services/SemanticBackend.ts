@@ -229,6 +229,7 @@ export class SemanticBackend {
         // Clear overrides
         this.uniformBridge.abstractionOverride = null;
         this.uniformBridge.noiseOverride = null;
+        this.uniformBridge.sentimentOverride = null;
         console.log('[SemanticBackend] Disposed');
     }
 
@@ -294,6 +295,9 @@ export class SemanticBackend {
             this._lastState = state;
             this._lastAction = 'hold';
 
+            // Still push sentiment — emotional context applies even without a morph
+            this.uniformBridge.sentimentOverride = state.sentiment;
+
             if (event.isFinal) {
                 this.logEvent(event.text, state, 'hold');
                 console.log(
@@ -339,6 +343,9 @@ export class SemanticBackend {
         this._lastState = state;
         this._lastAction = 'morph';
         this.lastMorphTime = Date.now();
+
+        // Push sentiment for color shifting (warm/cool tint in rainbow mode)
+        this.uniformBridge.sentimentOverride = state.sentiment;
 
         this.logEvent(text, state, 'morph');
     }

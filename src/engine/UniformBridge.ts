@@ -38,11 +38,23 @@ export class UniformBridge {
     idleMode = false;
 
     // ── SEMANTIC OVERRIDES ────────────────────────────────────────
-    // SemanticBackend sets these to inject abstraction/noise values
-    // into the shader pipeline. When non-null, they override the
-    // values that would normally come from TuningConfig.
+    // SemanticBackend sets these to inject abstraction/noise/sentiment
+    // values into the shader pipeline. When non-null, they override
+    // the values that would normally come from TuningConfig.
     abstractionOverride: number | null = null;
     noiseOverride: number | null = null;
+    sentimentOverride: number | null = null;
+
+    // ── SENTIMENT STATE ──────────────────────────────────────────
+    // Toggled from the TuningPanel checkbox (rainbow mode only).
+    sentimentEnabled = false;
+
+    // Sentiment-driven movement toggle — works in ANY color mode.
+    sentimentMovementEnabled = false;
+
+    // Smoothed sentiment value — lerped toward target to prevent
+    // jarring snaps between positive and negative states.
+    private smoothedSentiment = 0;
 
     // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
     // Logs the actual uniform values being sent to the shader every ~0.5s.
@@ -161,6 +173,68 @@ export class UniformBridge {
         // Push the color mode to the render shader. The shader uses this
         // to decide between white (tension-tinted) and rainbow rendering.
         renderUniforms.uColorMode.value = this.colorMode === 'rainbow' ? 1.0 : 0.0;
+
+        // ── SENTIMENT SMOOTHING (shared by color + movement) ─────────
+        // Smoothly interpolate the raw sentiment override toward a stable
+        // value. This runs whenever EITHER Sentiment Color or Sentiment
+        // Movement is active, so movement can work independently of color.
+        {
+            const colorActive = this.sentimentEnabled
+                && this.colorMode === 'rainbow'
+                && this.sentimentOverride !== null;
+            const movActive = this.sentimentMovementEnabled
+                && this.sentimentOverride !== null;
+
+            const target = (colorActive || movActive)
+                ? this.sentimentOverride!
+                : 0;
+
+            // Temporal smoothing — lerp toward target, clamped to [-1, 1]
+            const speed = this.config.get('sentimentSmoothing');
+            const dt = this.particleSystem.velocityVariable.material.uniforms.uDelta.value;
+            this.smoothedSentiment += (target - this.smoothedSentiment) * Math.min(1.0, speed * dt);
+            this.smoothedSentiment = Math.max(-1, Math.min(1, this.smoothedSentiment));
+        }
+
+        // ── SENTIMENT COLOR → RENDER SHADER UNIFORMS ──────────────────
+        // Push smoothed sentiment and tint colors to the fragment shader.
+        {
+            const isColorActive = this.sentimentEnabled
+                && this.colorMode === 'rainbow';
+
+            renderUniforms.uSentiment.value = isColorActive
+                ? this.smoothedSentiment
+                : 0;
+            renderUniforms.uSentimentIntensity.value = this.config.get('sentimentIntensity');
+
+            // Push config-driven tint colors (editable from TuningPanel)
+            renderUniforms.uSentimentWarm.value.set(
+                this.config.get('sentimentWarmR'),
+                this.config.get('sentimentWarmG'),
+                this.config.get('sentimentWarmB'),
+            );
+            renderUniforms.uSentimentCool.value.set(
+                this.config.get('sentimentCoolR'),
+                this.config.get('sentimentCoolG'),
+                this.config.get('sentimentCoolB'),
+            );
+        }
+
+        // ── SENTIMENT MOVEMENT → VELOCITY SHADER UNIFORMS ─────────
+        // Push the same smoothed sentiment to the velocity shader for
+        // physics modulation (LMA Effort framework). Independent of
+        // color mode — works in both white and rainbow.
+        {
+            const velUniforms = this.particleSystem.velocityVariable.material.uniforms;
+            const isMovActive = this.sentimentMovementEnabled
+                && this.sentimentOverride !== null;
+
+            velUniforms.uSentimentMovement.value = isMovActive
+                ? this.smoothedSentiment
+                : 0;
+            velUniforms.uSentimentMovementIntensity.value =
+                this.config.get('sentimentMovementIntensity');
+        }
 
         // ── DERIVED VISUALS ───────────────────────────────────────────
         // In WHITE mode: Tension → Color Shift — calm speech is warm

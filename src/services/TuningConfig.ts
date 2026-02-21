@@ -236,6 +236,59 @@ export const PARAM_DEFS: ParamDef[] = [
         group: '🟡 Pointer Interaction'
     },
 
+    // ── 🎨 SENTIMENT COLOR ───────────────────────────────────────────
+    // Controls the sentiment-driven warm/cool color shift.
+    // Only active when Rainbow color mode + Sentiment toggle are on.
+    {
+        // Boldness of the color shift: 0 = muted (subtle wash), 1 = bold (strong uniform shift).
+        key: 'sentimentIntensity', label: 'Intensity',
+        defaultValue: 0.6, min: 0.0, max: 1.0, step: 0.05,
+        group: '🎨 Sentiment Color'
+    },
+    {
+        // Lerp speed for sentiment transitions. Lower = smoother/slower.
+        key: 'sentimentSmoothing', label: 'Smoothing',
+        defaultValue: 1.5, min: 0.5, max: 5.0, step: 0.1,
+        group: '🎨 Sentiment Color'
+    },
+    {
+        key: 'sentimentWarmR', label: 'Warm R',
+        defaultValue: 1.0, min: 0.0, max: 1.0, step: 0.05,
+        group: '🎨 Sentiment Color'
+    },
+    {
+        key: 'sentimentWarmG', label: 'Warm G',
+        defaultValue: 0.75, min: 0.0, max: 1.0, step: 0.05,
+        group: '🎨 Sentiment Color'
+    },
+    {
+        key: 'sentimentWarmB', label: 'Warm B',
+        defaultValue: 0.3, min: 0.0, max: 1.0, step: 0.05,
+        group: '🎨 Sentiment Color'
+    },
+    {
+        key: 'sentimentCoolR', label: 'Cool R',
+        defaultValue: 0.3, min: 0.0, max: 1.0, step: 0.05,
+        group: '🎨 Sentiment Color'
+    },
+    {
+        key: 'sentimentCoolG', label: 'Cool G',
+        defaultValue: 0.5, min: 0.0, max: 1.0, step: 0.05,
+        group: '🎨 Sentiment Color'
+    },
+    {
+        key: 'sentimentCoolB', label: 'Cool B',
+        defaultValue: 1.0, min: 0.0, max: 1.0, step: 0.05,
+        group: '🎨 Sentiment Color'
+    },
+
+    // ── 🏃 SENTIMENT MOVEMENT ────────────────────────────────────────
+    {
+        key: 'sentimentMovementIntensity', label: 'Intensity',
+        defaultValue: 0.5, min: 0.0, max: 1.0, step: 0.05,
+        group: '🏃 Sentiment Movement'
+    },
+
     // ── 📷 CAMERA ───────────────────────────────────────────────────
     {
         // Camera distance from origin along the Z axis.

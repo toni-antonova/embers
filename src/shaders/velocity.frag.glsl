@@ -32,6 +32,12 @@ uniform float uDelta;
 uniform float uRepulsionRadius;
 uniform float uRepulsionStrength;
 
+// Sentiment Movement — modulates physics via LMA Effort framework.
+// uSentimentMovement: smoothed sentiment value (−1 = angry/sad, +1 = happy)
+// uSentimentMovementIntensity: user-adjustable strength (0 = off, 1 = full)
+uniform float uSentimentMovement;
+uniform float uSentimentMovementIntensity;
+
 // [Insert Simplex Noise Functions Here - same as before]
 // Simplex 3D Noise 
 // by Ian McEwan, Ashima Arts
@@ -163,11 +169,45 @@ void main() {
     //   * Color is handled in UniformBridge, not here.
     // ═══════════════════════════════════════════════════════════════════
 
+    // ── SENTIMENT → MOVEMENT QUALITY (LMA Effort Framework) ──────────
+    // Based on Laban Movement Analysis:
+    //   Positive sentiment → Light weight, Free flow, Sustained time
+    //   Mild negative      → Heavy weight, Bound flow, Sustained time
+    //   Strong negative    → Strong weight, Sudden time, Direct space
+    // References: Shafir et al. (2016), Chi et al. (2000) EMOTE model
+    float sentMov = uSentimentMovement * uSentimentMovementIntensity;
+    float sentAbs = abs(sentMov);
+
+    float smSpringOffset  = 0.0;
+    float smDragOffset    = 0.0;
+    float smNoiseAmpOff   = 0.0;
+    float smNoiseFreqOff  = 0.0;
+    float smBreathOff     = 0.0;
+
+    if (sentMov > 0.0) {
+        // JOY profile: lighter spring, freer flow, calmer noise, bigger breath
+        smSpringOffset  = -sentMov * 1.5;
+        smDragOffset    = -sentMov * 1.0;
+        smNoiseAmpOff   = -sentMov * 0.3;
+        smNoiseFreqOff  = -sentMov * 0.3;
+        smBreathOff     =  sentMov * 0.6;
+    } else if (sentMov < 0.0) {
+        // Negative: interpolate between SAD (mild) and ANGRY (strong)
+        float angerRatio = smoothstep(0.3, 0.8, sentAbs);
+        // SAD: heavy, bound, quiet, slow
+        // ANGRY: firm, snappy, chaotic, tight swirls
+        smSpringOffset  = mix(sentAbs * 1.0,  sentAbs * 0.5, angerRatio);
+        smDragOffset    = mix(sentAbs * 1.0, -sentAbs * 0.5, angerRatio);
+        smNoiseAmpOff   = mix(-sentAbs * 0.1, sentAbs * 1.0, angerRatio);
+        smNoiseFreqOff  = mix(-sentAbs * 0.2, sentAbs * 0.8, angerRatio);
+        smBreathOff     = mix(-sentAbs * 0.3, sentAbs * 0.3, angerRatio);
+    }
+
     // ── TENSION → CURL FREQUENCY ONLY ─────────────────────────────────
     // Higher tension = tighter curl patterns. This is the ONLY thing
     // tension does in the shader. Color shift is handled in UniformBridge.
     // The range 0.8-2.0 goes from lazy swirls to tight, nervous curls.
-    float tensionFreq = uNoiseFrequency + safeTension * 1.2;
+    float tensionFreq = uNoiseFrequency + safeTension * 1.2 + smNoiseFreqOff;
 
     // ── CURL NOISE COMPUTATION ────────────────────────────────────────
     // Curl noise produces divergence-free vector fields — organic swirls
@@ -183,7 +223,7 @@ void main() {
     //   1. Breathing amplitude: louder → bigger pulse (up to +1.5)
     //   2. Breathing speed: louder → faster pulse
     //   3. Ring expansion: louder → ring grows outward (up to 3.5 units)
-    float dynamicBreathingAmp = uBreathingAmplitude + safeEnergy * 1.5;
+    float dynamicBreathingAmp = uBreathingAmplitude + safeEnergy * 1.5 + smBreathOff;
     float breathSpeed = 0.2 + safeEnergy * 0.8;
     float phase = uTime * breathSpeed * 6.28 + uv.x * 6.28 + uv.y * 3.14;
     vec3 breathOffset = normalize(position) * sin(phase) * dynamicBreathingAmp;
@@ -213,7 +253,8 @@ void main() {
     // Hooke's Law: pulls particles toward their audio-modulated home.
     // This is the fundamental safety net — particles always return.
     vec3 springDir = targetPos - position;
-    vec3 springF = springDir * ((1.0 - uAbstraction) * uSpringK);
+    float effectiveSpringK = max(0.5, uSpringK + smSpringOffset);
+    vec3 springF = springDir * ((1.0 - uAbstraction) * effectiveSpringK);
 
     // ── URGENCY → NOISE TURBULENCE ────────────────────────────────────
     // Urgency (spectral flux) drives the AMPLITUDE of curl noise.
@@ -238,14 +279,14 @@ void main() {
     // noise variations so particles shimmer with more detail.
     float textureNoise = uTextureComplexity * 0.4;
 
-    float effectiveNoiseAmp = baseNoise + urgencyNoise + abstractionNoise + textureNoise;
+    float effectiveNoiseAmp = max(0.0, baseNoise + urgencyNoise + abstractionNoise + textureNoise + smNoiseAmpOff);
     vec3 noiseF = curl * effectiveNoiseAmp;
 
     // ── BREATHINESS → DRAG REDUCTION ──────────────────────────────────
     // Breathy speech makes particles floatier by reducing damping.
     // Drag range: 2.5 (default, snappy) → 0.5 (very floaty).
     // This is breathiness's OTHER visual effect (alongside Z-spread).
-    float dynamicDrag = max(0.5, uDrag - safeBreathiness * 2.0);
+    float dynamicDrag = max(0.3, uDrag - safeBreathiness * 2.0 + smDragOffset);
 
     // ── SUM ALL FORCES ────────────────────────────────────────────────
     vec3 force = springF + noiseF;

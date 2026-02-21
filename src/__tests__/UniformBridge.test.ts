@@ -23,6 +23,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UniformBridge } from '../engine/UniformBridge';
 import { TuningConfig } from '../services/TuningConfig';
+import { KeywordClassifier } from '../services/KeywordClassifier';
 
 // ── MOCK FACTORIES ───────────────────────────────────────────────────
 
@@ -57,6 +58,9 @@ function createMockParticleSystem() {
         uUrgencyCurveMode: { value: 0 },
         uUrgencyThresholdLow: { value: 0 },
         uUrgencyThresholdHigh: { value: 0 },
+        uDelta: { value: 0.016 },  // ~60fps timestep for sentiment smoothing
+        uSentimentMovement: { value: 0 },
+        uSentimentMovementIntensity: { value: 0 },
     };
 
     // Render shader uniforms
@@ -69,6 +73,10 @@ function createMockParticleSystem() {
                 set: vi.fn(),
             }
         },
+        uSentiment: { value: 0 },
+        uSentimentIntensity: { value: 0 },
+        uSentimentWarm: { value: { set: vi.fn() } },
+        uSentimentCool: { value: { set: vi.fn() } },
     };
 
     return {
@@ -286,5 +294,207 @@ describe('UniformBridge — Color Mode', () => {
 
         const r = (mockParticles.particles.material as any).uniforms;
         expect(r.uColor.value.set).toHaveBeenCalledWith(1.0, 1.0, 1.0);
+    });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════
+// 6. SENTIMENT COLOR
+// ══════════════════════════════════════════════════════════════════════
+
+describe('Sentiment Color', () => {
+    it('uSentiment stays 0 when sentimentEnabled is false', () => {
+        bridge.colorMode = 'rainbow';
+        bridge.sentimentEnabled = false;
+        bridge.sentimentOverride = 0.8;
+        bridge.update();
+
+        const r = (mockParticles.particles.material as any).uniforms;
+        // smoothedSentiment lerps toward 0 when disabled
+        expect(r.uSentiment.value).toBeCloseTo(0, 1);
+    });
+
+    it('uSentiment stays 0 in white mode even when enabled', () => {
+        bridge.colorMode = 'white';
+        bridge.sentimentEnabled = true;
+        bridge.sentimentOverride = 0.8;
+        bridge.update();
+
+        const r = (mockParticles.particles.material as any).uniforms;
+        expect(r.uSentiment.value).toBeCloseTo(0, 1);
+    });
+
+    it('uSentiment moves toward override in rainbow+enabled', () => {
+        bridge.colorMode = 'rainbow';
+        bridge.sentimentEnabled = true;
+        bridge.sentimentOverride = 0.8;
+
+        // Run several frames to let smoothing converge
+        for (let i = 0; i < 60; i++) bridge.update();
+
+        const r = (mockParticles.particles.material as any).uniforms;
+        // Should have moved substantially toward target (0.8)
+        expect(r.uSentiment.value).toBeGreaterThan(0.3);
+    });
+
+    it('pushes sentimentIntensity from config', () => {
+        bridge.colorMode = 'rainbow';
+        bridge.sentimentEnabled = true;
+        bridge.sentimentOverride = 0.5;
+        bridge.update();
+
+        const r = (mockParticles.particles.material as any).uniforms;
+        expect(r.uSentimentIntensity.value).toBe(config.get('sentimentIntensity'));
+    });
+
+    it('pushes warm/cool tint colors from config', () => {
+        bridge.colorMode = 'rainbow';
+        bridge.sentimentEnabled = true;
+        bridge.sentimentOverride = 0.5;
+        bridge.update();
+
+        const r = (mockParticles.particles.material as any).uniforms;
+        expect(r.uSentimentWarm.value.set).toHaveBeenCalledWith(
+            config.get('sentimentWarmR'),
+            config.get('sentimentWarmG'),
+            config.get('sentimentWarmB'),
+        );
+        expect(r.uSentimentCool.value.set).toHaveBeenCalledWith(
+            config.get('sentimentCoolR'),
+            config.get('sentimentCoolG'),
+            config.get('sentimentCoolB'),
+        );
+    });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════
+// 7. WORD → SENTIMENT → UNIFORM (End-to-End)
+// ══════════════════════════════════════════════════════════════════════
+// These tests verify the full pipeline: a spoken word is classified by
+// KeywordClassifier, the resulting sentiment is fed to UniformBridge,
+// and the shader uniform moves in the correct direction.
+// ══════════════════════════════════════════════════════════════════════
+
+describe('Word → Sentiment Color (end-to-end)', () => {
+    let classifier: KeywordClassifier;
+
+    beforeEach(() => {
+        classifier = new KeywordClassifier();
+    });
+
+    /**
+     * Helper: classify a word, push its sentiment into the bridge,
+     * run enough frames for smoothing to converge, return final
+     * uSentiment value.
+     */
+    function sentimentForWord(word: string): number {
+        const state = classifier.classify(word);
+        bridge.colorMode = 'rainbow';
+        bridge.sentimentEnabled = true;
+        bridge.sentimentOverride = state.sentiment;
+
+        // Run 120 frames (~2s at 60fps) to let smoothing converge
+        for (let i = 0; i < 120; i++) bridge.update();
+
+        return (mockParticles.particles.material as any)
+            .uniforms.uSentiment.value;
+    }
+
+    it('"happy" produces positive sentiment (warm shift)', () => {
+        const s = sentimentForWord('happy');
+        // happy = AFINN +3, normalized to 0.6 — should be clearly positive
+        expect(s).toBeGreaterThan(0.3);
+    });
+
+    it('"angry" produces negative sentiment (cool shift)', () => {
+        const s = sentimentForWord('angry');
+        // angry = AFINN -3, normalized to -0.6 — should be clearly negative
+        expect(s).toBeLessThan(-0.3);
+    });
+
+    it('"sad" produces negative sentiment (cool shift)', () => {
+        const s = sentimentForWord('sad');
+        // sad = AFINN -2, normalized to -0.4
+        expect(s).toBeLessThan(-0.2);
+    });
+
+    it('"ashamed" produces negative sentiment (cool shift)', () => {
+        const s = sentimentForWord('ashamed');
+        // ashamed = AFINN -2, normalized to -0.4
+        expect(s).toBeLessThan(-0.2);
+    });
+
+    it('"anxious" produces negative sentiment (cool shift)', () => {
+        const s = sentimentForWord('anxious');
+        // anxious = AFINN -2, normalized to -0.4
+        expect(s).toBeLessThan(-0.2);
+    });
+
+    it('positive words shift warmer than negative words', () => {
+        const happy = sentimentForWord('happy');
+
+        // Reset bridge between words
+        bridge.sentimentOverride = null;
+        for (let i = 0; i < 120; i++) bridge.update();
+
+        const angry = sentimentForWord('angry');
+
+        // happy should be positive, angry should be negative
+        expect(happy).toBeGreaterThan(0);
+        expect(angry).toBeLessThan(0);
+        // The difference should be substantial
+        expect(happy - angry).toBeGreaterThan(0.5);
+    });
+});
+
+describe('Sentiment Movement', () => {
+    it('uSentimentMovement stays 0 when sentimentMovementEnabled is false', () => {
+        bridge.sentimentMovementEnabled = false;
+        bridge.sentimentOverride = 0.6;
+        bridge.update();
+
+        const v = (mockParticles.velocityVariable.material as any).uniforms;
+        expect(v.uSentimentMovement.value).toBe(0);
+    });
+
+    it('uSentimentMovement tracks smoothedSentiment when enabled', () => {
+        bridge.sentimentMovementEnabled = true;
+        bridge.sentimentOverride = 0.6;
+        // Run multiple updates for smoothing to converge
+        for (let i = 0; i < 60; i++) bridge.update();
+
+        const v = (mockParticles.velocityVariable.material as any).uniforms;
+        expect(v.uSentimentMovement.value).toBeGreaterThan(0.3);
+    });
+
+    it('pushes sentimentMovementIntensity from config', () => {
+        bridge.sentimentMovementEnabled = true;
+        bridge.sentimentOverride = 0.5;
+        bridge.update();
+
+        const v = (mockParticles.velocityVariable.material as any).uniforms;
+        expect(v.uSentimentMovementIntensity.value).toBe(config.get('sentimentMovementIntensity'));
+    });
+
+    it('works independently of color mode (white and rainbow)', () => {
+        bridge.sentimentMovementEnabled = true;
+        bridge.sentimentOverride = 0.6;
+
+        // Test in white mode
+        bridge.colorMode = 'white';
+        for (let i = 0; i < 60; i++) bridge.update();
+        const v = (mockParticles.velocityVariable.material as any).uniforms;
+        const whiteValue = v.uSentimentMovement.value;
+        expect(whiteValue).toBeGreaterThan(0.3);
+
+        // Reset and test in rainbow mode — should get same result
+        bridge.sentimentOverride = null;
+        for (let i = 0; i < 120; i++) bridge.update();
+        bridge.colorMode = 'rainbow';
+        bridge.sentimentOverride = 0.6;
+        for (let i = 0; i < 60; i++) bridge.update();
+        const rainbowValue = v.uSentimentMovement.value;
+        expect(rainbowValue).toBeGreaterThan(0.3);
     });
 });

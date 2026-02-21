@@ -21,6 +21,10 @@ uniform float uAlpha;       // Overall opacity multiplier
 uniform float uColorMode;   // 0.0 = white/tension, 1.0 = rainbow
 uniform float uTime;        // Animation time for rainbow cycling
 uniform float uRolloff;     // Spectral rolloff → edge softness (0=soft, 1=crisp)
+uniform float uSentiment;          // −1 (negative) → +1 (positive), smoothed by UniformBridge
+uniform float uSentimentIntensity; // 0 = muted (no shift), 1 = bold (strong shift)
+uniform vec3 uSentimentWarm;       // Positive sentiment tint color (from config)
+uniform vec3 uSentimentCool;       // Negative sentiment tint color (from config)
 
 varying vec2 vUV;           // Per-particle UV from vertex shader
 
@@ -78,6 +82,17 @@ void main() {
         // - Saturation 0.85 and lightness 0.6 give vivid, bright colors
         float hue = fract(vUV.x + vUV.y * 0.5 + uTime * 0.15);
         finalColor = hsl2rgb(hue, 0.85, 0.6);
+
+        // ── SENTIMENT OVERLAY (warm/cool color shift) ──────────────
+        // When uSentiment > 0: blend toward warm tint (golden glow)
+        // When uSentiment < 0: blend toward cool tint (blue tinge)
+        // uSentimentIntensity controls boldness: 0 = muted, 1 = strong
+        // Mix blend both tints and adds luminance — much more visible
+        // than multiply, which can only darken.
+        float sentAbs = abs(uSentiment);
+        vec3 tint = uSentiment > 0.0 ? uSentimentWarm : uSentimentCool;
+        vec3 tinted = tint * finalColor + tint * 0.3;
+        finalColor = mix(finalColor, tinted, sentAbs * uSentimentIntensity);
     } else {
         // WHITE MODE: use uColor from UniformBridge (tension-tinted white)
         finalColor = uColor;

@@ -86,6 +86,10 @@ export class ParticleSystem {
         this.velocityVariable.material.uniforms.uRepulsionRadius = { value: config.get('repulsionRadius') };
         this.velocityVariable.material.uniforms.uRepulsionStrength = { value: config.get('repulsionStrength') };
 
+        // Sentiment Movement — LMA-based physics modulation driven by speech sentiment.
+        this.velocityVariable.material.uniforms.uSentimentMovement = { value: 0.0 };
+        this.velocityVariable.material.uniforms.uSentimentMovementIntensity = { value: config.get('sentimentMovementIntensity') };
+
         this.velocityVariable.material.uniforms.uDelta = { value: 0.016 };
         this.positionVariable.material.uniforms.uDelta = { value: 0.016 };
 
@@ -127,7 +131,11 @@ export class ParticleSystem {
                 uPointSize: { value: 3.0 },
                 uColorMode: { value: 0.0 },  // 0.0 = white, 1.0 = rainbow
                 uTime: { value: 0.0 },       // For rainbow hue animation
-                uRolloff: { value: 0.5 }     // Spectral rolloff → edge softness
+                uRolloff: { value: 0.5 },    // Spectral rolloff → edge softness
+                uSentiment: { value: 0.0 },           // Sentiment color shift (−1 to +1)
+                uSentimentIntensity: { value: 0.0 },   // Boldness of sentiment shift (0–1)
+                uSentimentWarm: { value: new THREE.Vector3(1.0, 0.75, 0.3) },   // Golden amber
+                uSentimentCool: { value: new THREE.Vector3(0.3, 0.5, 1.0) },    // Ocean blue
             },
             vertexShader: renderVert,
             fragmentShader: renderFrag,

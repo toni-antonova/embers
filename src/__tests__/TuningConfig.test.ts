@@ -295,3 +295,62 @@ describe('TuningConfig — localStorage Persistence', () => {
         expect(config.get('pointSize')).toBe(3.0);
     });
 });
+
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 7: EDGE CASES
+// ══════════════════════════════════════════════════════════════════════
+describe('TuningConfig — Edge Cases', () => {
+    it('full export→import round-trip preserves every single parameter', () => {
+        const configA = new TuningConfig();
+
+        // Modify EVERY parameter to its max value
+        for (const def of PARAM_DEFS) {
+            configA.set(def.key, def.max);
+        }
+        const exported = configA.toJSON();
+
+        // Create fresh config and import
+        localStorage.clear();
+        const configB = new TuningConfig();
+        configB.fromJSON(exported);
+
+        // EVERY parameter should match — not just a spot-check
+        for (const def of PARAM_DEFS) {
+            expect(configB.get(def.key)).toBe(def.max);
+        }
+    });
+
+    it('set() on an unknown key still stores it without crashing', () => {
+        const config = new TuningConfig();
+
+        // Unknown keys bypass clamping but should still be stored
+        expect(() => config.set('inventedKey', 42)).not.toThrow();
+        expect(config.get('inventedKey')).toBe(42);
+    });
+
+    it('listener fires on every set() call even with same value', () => {
+        const config = new TuningConfig();
+        const listener = vi.fn();
+        config.onChange(listener);
+
+        config.set('springK', 5.0);
+        config.set('springK', 5.0); // same value again
+
+        // TuningConfig does NOT deduplicate — both calls fire
+        expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it('resetAll() followed by toJSON() returns defaults', () => {
+        const config = new TuningConfig();
+
+        config.set('pointSize', 7.0);
+        config.set('springK', 9.0);
+        config.resetAll();
+
+        const json = config.toJSON();
+        for (const def of PARAM_DEFS) {
+            expect(json[def.key]).toBe(def.defaultValue);
+        }
+    });
+});

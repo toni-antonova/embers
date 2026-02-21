@@ -44,6 +44,13 @@ export function Canvas() {
     // Also pushed to UniformBridge.colorMode every frame.
     const [colorMode, setColorMode] = useState<ColorMode>('white');
 
+    // Sentiment-driven color toggle — only active in rainbow mode.
+    // When enabled, speech sentiment shifts particle colors warm/cool.
+    const [sentimentEnabled, setSentimentEnabled] = useState(false);
+
+    // Sentiment-driven movement toggle — works in any color mode.
+    const [sentimentMovementEnabled, setSentimentMovementEnabled] = useState(false);
+
     // Keep AudioEngine as a stable singleton (not affected by canvasKey changes).
     const audioEngineRef = useRef<AudioEngine | null>(null);
     if (!audioEngineRef.current) {
@@ -398,6 +405,20 @@ export function Canvas() {
                     // picks it up on the very next frame.
                     if (uniformBridgeRef.current) {
                         uniformBridgeRef.current.colorMode = mode;
+                    }
+                }}
+                sentimentEnabled={sentimentEnabled}
+                onSentimentToggle={(enabled: boolean) => {
+                    setSentimentEnabled(enabled);
+                    if (uniformBridgeRef.current) {
+                        uniformBridgeRef.current.sentimentEnabled = enabled;
+                    }
+                }}
+                sentimentMovementEnabled={sentimentMovementEnabled}
+                onSentimentMovementToggle={(enabled: boolean) => {
+                    setSentimentMovementEnabled(enabled);
+                    if (uniformBridgeRef.current) {
+                        uniformBridgeRef.current.sentimentMovementEnabled = enabled;
                     }
                 }}
                 transcript={lastTranscript}
