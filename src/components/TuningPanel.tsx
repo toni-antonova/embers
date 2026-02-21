@@ -27,6 +27,8 @@ import { MORPH_TARGET_NAMES } from '../engine/MorphTargets';
 import type { TranscriptEvent } from '../services/SpeechEngine';
 
 // ── COMPONENT PROPS ──────────────────────────────────────────────────
+export type CameraType = 'perspective' | 'orthographic';
+
 interface TuningPanelProps {
     config: TuningConfig;
     audioEngine: AudioEngine;
@@ -40,6 +42,12 @@ interface TuningPanelProps {
     onShapeChange?: (shapeName: string) => void;                 // Fires when primary dropdown changes
     onBlend?: (shapeA: string, shapeB: string, t: number) => void; // Fires when blend slider moves
 
+    // ── CAMERA CONTROLS ─────────────────────────────────────────────
+    // Camera type toggle: perspective or orthographic.
+    // Canvas.tsx owns the camera instance; this callback tells it to swap.
+    cameraType?: CameraType;
+    onCameraTypeChange?: (type: CameraType) => void;
+
     // ── SPEECH TRANSCRIPT ────────────────────────────────────────────
     // The last recognized speech event, passed down from Canvas.tsx.
     // Displayed in a dedicated section so the user can see what the
@@ -47,7 +55,7 @@ interface TuningPanelProps {
     transcript?: TranscriptEvent | null;
 }
 
-export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, transcript }: TuningPanelProps) {
+export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, transcript }: TuningPanelProps) {
     // ── STATE ────────────────────────────────────────────────────────
     // `isOpen` controls the slide-in/out animation.
     const [isOpen, setIsOpen] = useState(false);
@@ -314,6 +322,30 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                             )}
                         </div>
                     </div>
+
+                    {/* ── CAMERA TYPE TOGGLE ─────────────────────── */}
+                    {/* Rendered separately because camera type is categorical
+                        (perspective vs orthographic), not numeric. The cameraZ
+                        slider is auto-generated from PARAM_DEFS below. */}
+                    {onCameraTypeChange && (
+                        <div className="tuning-section">
+                            <div className="tuning-section-title">📷 Camera</div>
+                            <div className="tuning-shape-row">
+                                <label className="tuning-label" htmlFor="tuning-camera-type">
+                                    Projection
+                                </label>
+                                <select
+                                    id="tuning-camera-type"
+                                    className="tuning-select"
+                                    value={cameraType || 'perspective'}
+                                    onChange={(e) => onCameraTypeChange(e.target.value as CameraType)}
+                                >
+                                    <option value="perspective">Perspective</option>
+                                    <option value="orthographic">Orthographic</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
 
                     {/* ── PARAMETER SECTIONS ───────────────────────── */}
                     {Array.from(groups.entries()).map(([groupName, defs]) => (

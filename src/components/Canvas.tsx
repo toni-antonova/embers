@@ -8,6 +8,7 @@ import { TuningConfig } from '../services/TuningConfig';
 import { UniformBridge } from '../engine/UniformBridge';
 import { UIOverlay } from './UIOverlay';
 import { TuningPanel } from './TuningPanel';
+import type { CameraType } from './TuningPanel';
 
 export function Canvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -31,6 +32,10 @@ export function Canvas() {
     // Track the last speech transcript event so we can display it
     // in the TuningPanel's Speech section.
     const [lastTranscript, setLastTranscript] = useState<TranscriptEvent | null>(null);
+
+    // Camera type — perspective (default) or orthographic.
+    // Lives in React state so TuningPanel dropdown stays in sync.
+    const [cameraType, setCameraType] = useState<CameraType>('perspective');
 
     // Keep AudioEngine as a stable singleton (not affected by canvasKey changes).
     const audioEngineRef = useRef<AudioEngine | null>(null);
@@ -97,8 +102,25 @@ export function Canvas() {
         const fadePlane = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fadeMaterial);
         fadeScene.add(fadePlane);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 10;
+        // ── CAMERA ────────────────────────────────────────────────────────
+        // Create camera based on current type. The initial Z position comes
+        // from TuningConfig so it's consistent with the slider default.
+        const initialZ = tuningConfig.get('cameraZ');
+        const aspect = window.innerWidth / window.innerHeight;
+
+        let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+        if (cameraType === 'orthographic') {
+            // Orthographic frustum sized to roughly match perspective FOV at the given Z.
+            const frustumHalf = initialZ * Math.tan((75 / 2) * (Math.PI / 180));
+            camera = new THREE.OrthographicCamera(
+                -frustumHalf * aspect, frustumHalf * aspect,
+                frustumHalf, -frustumHalf,
+                0.1, 1000
+            );
+        } else {
+            camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+        }
+        camera.position.z = initialZ;
 
         // ── RENDERER ─────────────────────────────────────────────────────────
         let renderer: THREE.WebGLRenderer;
@@ -143,7 +165,16 @@ export function Canvas() {
 
         // ── RESIZE HANDLER ────────────────────────────────────────────────────
         const handleResize = () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            const newAspect = window.innerWidth / window.innerHeight;
+            if (camera instanceof THREE.PerspectiveCamera) {
+                camera.aspect = newAspect;
+            } else {
+                const frustumHalf = camera.position.z * Math.tan((75 / 2) * (Math.PI / 180));
+                camera.left = -frustumHalf * newAspect;
+                camera.right = frustumHalf * newAspect;
+                camera.top = frustumHalf;
+                camera.bottom = -frustumHalf;
+            }
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
             if (particleSystemRef.current) {
@@ -220,6 +251,22 @@ export function Canvas() {
 
             uniformBridgeRef.current?.update();
 
+            // Update camera Z position from TuningConfig slider.
+            const z = tuningConfig.get('cameraZ');
+            if (camera.position.z !== z) {
+                camera.position.z = z;
+                // For orthographic, rescale frustum when Z changes.
+                if (camera instanceof THREE.OrthographicCamera) {
+                    const fH = z * Math.tan((75 / 2) * (Math.PI / 180));
+                    const a = window.innerWidth / window.innerHeight;
+                    camera.left = -fH * a;
+                    camera.right = fH * a;
+                    camera.top = fH;
+                    camera.bottom = -fH;
+                    camera.updateProjectionMatrix();
+                }
+            }
+
             if (particleSystemRef.current) {
                 if (isPointerActiveRef.current) {
                     raycasterRef.current.setFromCamera(pointerRef.current, camera);
@@ -271,9 +318,9 @@ export function Canvas() {
             renderer.dispose();
             renderer.forceContextLoss();
         };
-        // canvasKey change triggers a full teardown + remount with a fresh canvas element.
+        // canvasKey / cameraType change triggers a full teardown + remount.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [canvasKey]);
+    }, [canvasKey, cameraType]);
 
     // ── SHAPE CHANGE CALLBACKS ────────────────────────────────────────────
     // These bridge the React TuningPanel UI to the imperative ParticleSystem.
@@ -307,6 +354,8 @@ export function Canvas() {
                 currentShape={currentShape}
                 onShapeChange={handleShapeChange}
                 onBlend={handleBlend}
+                cameraType={cameraType}
+                onCameraTypeChange={setCameraType}
                 transcript={lastTranscript}
             />
         </div>

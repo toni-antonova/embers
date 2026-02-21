@@ -163,6 +163,15 @@ export const PARAM_DEFS: ParamDef[] = [
         defaultValue: 8.0, min: 1.0, max: 20.0, step: 1.0,
         group: '🟡 Pointer Interaction'
     },
+
+    // ── 📷 CAMERA ───────────────────────────────────────────────────
+    {
+        // Camera distance from origin along the Z axis.
+        // Higher = more zoomed out, lower = closer to the particles.
+        key: 'cameraZ', label: 'Camera Z Position',
+        defaultValue: 10, min: 1, max: 50, step: 0.5,
+        group: '📷 Camera'
+    },
 ];
 
 // ── LISTENER TYPE ────────────────────────────────────────────────────
