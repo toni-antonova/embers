@@ -18,6 +18,8 @@ import * as THREE from 'three';
  * 4. Writes them into the velocity shader uniforms
  * 5. Derives visual properties like color from the features
  */
+export type ColorMode = 'white' | 'rainbow';
+
 export class UniformBridge {
     audioEngine: AudioEngine;
     particleSystem: ParticleSystem;
@@ -26,6 +28,10 @@ export class UniformBridge {
     // These multipliers let the tuning panel control how much each
     // audio feature affects the particle visuals.
     private config: TuningConfig;
+
+    // Color mode — controls whether particles are white (with subtle tension
+    // tint) or cycling through rainbow hues. Set from TuningPanel via Canvas.
+    colorMode: ColorMode = 'white';
 
     // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
     // Logs the actual uniform values being sent to the shader every ~0.5s.
@@ -84,13 +90,25 @@ export class UniformBridge {
             );
         }
 
+        // ── COLOR MODE → SHADER UNIFORM ──────────────────────────────
+        // Push the color mode to the render shader. The shader uses this
+        // to decide between white (tension-tinted) and rainbow rendering.
+        renderUniforms.uColorMode.value = this.colorMode === 'rainbow' ? 1.0 : 0.0;
+
         // ── DERIVED VISUALS ───────────────────────────────────────────
-        // Tension → Color Shift: calm speech is warm (off-white),
-        // tense/high-pitched speech shifts to cool (blue-white).
-        // This creates a subtle emotional temperature indicator.
-        const coolColor = new THREE.Color(0.85, 0.9, 1.0);   // Blue-white
-        const warmColor = new THREE.Color(1.0, 0.92, 0.8);   // Warm off-white
-        const color = new THREE.Color().lerpColors(warmColor, coolColor, features.tension);
-        renderUniforms.uColor.value.copy(color);
+        // In WHITE mode: Tension → Color Shift — calm speech is warm
+        // (off-white), tense/high-pitched speech shifts to cool (blue-white).
+        // In RAINBOW mode: the shader handles color entirely via HSL,
+        // so we just set a neutral white baseline.
+        if (this.colorMode === 'white') {
+            const coolColor = new THREE.Color(0.85, 0.9, 1.0);   // Blue-white
+            const warmColor = new THREE.Color(1.0, 0.92, 0.8);   // Warm off-white
+            const color = new THREE.Color().lerpColors(warmColor, coolColor, features.tension);
+            renderUniforms.uColor.value.copy(color);
+        } else {
+            // Rainbow mode — the fragment shader handles all coloring via HSL.
+            // Set neutral white so the glow modulation (core*0.5+0.5) stays clean.
+            renderUniforms.uColor.value.set(1.0, 1.0, 1.0);
+        }
     }
 }

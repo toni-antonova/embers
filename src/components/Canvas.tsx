@@ -8,7 +8,7 @@ import { TuningConfig } from '../services/TuningConfig';
 import { UniformBridge } from '../engine/UniformBridge';
 import { UIOverlay } from './UIOverlay';
 import { TuningPanel } from './TuningPanel';
-import type { CameraType } from './TuningPanel';
+import type { CameraType, ColorMode } from './TuningPanel';
 
 export function Canvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -35,7 +35,12 @@ export function Canvas() {
 
     // Camera type — perspective (default) or orthographic.
     // Lives in React state so TuningPanel dropdown stays in sync.
-    const [cameraType, setCameraType] = useState<CameraType>('perspective');
+    const [cameraType, setCameraType] = useState<CameraType>('orthographic');
+
+    // Color mode — white (default) or rainbow.
+    // Lives in React state so TuningPanel dropdown stays in sync.
+    // Also pushed to UniformBridge.colorMode every frame.
+    const [colorMode, setColorMode] = useState<ColorMode>('white');
 
     // Keep AudioEngine as a stable singleton (not affected by canvasKey changes).
     const audioEngineRef = useRef<AudioEngine | null>(null);
@@ -356,6 +361,15 @@ export function Canvas() {
                 onBlend={handleBlend}
                 cameraType={cameraType}
                 onCameraTypeChange={setCameraType}
+                colorMode={colorMode}
+                onColorModeChange={(mode: ColorMode) => {
+                    setColorMode(mode);
+                    // Push immediately to UniformBridge so the shader
+                    // picks it up on the very next frame.
+                    if (uniformBridgeRef.current) {
+                        uniformBridgeRef.current.colorMode = mode;
+                    }
+                }}
                 transcript={lastTranscript}
             />
         </div>

@@ -1,7 +1,11 @@
 uniform sampler2D texturePosition;
 uniform float uPointSize;
+uniform float uTime;
+
+varying vec2 vUV;
 
 void main() {
+    vUV = uv;
     vec4 pos = texture2D(texturePosition, uv);
     
     vec4 mvPosition = modelViewMatrix * vec4(pos.xyz, 1.0);

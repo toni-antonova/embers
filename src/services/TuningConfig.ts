@@ -45,12 +45,12 @@ export const PARAM_DEFS: ParamDef[] = [
     // These control how the particles *look* — size, opacity, trails.
     {
         key: 'pointSize', label: 'Point Size',
-        defaultValue: 1.5, min: 0.5, max: 8, step: 0.5,
+        defaultValue: 3.0, min: 0.5, max: 8, step: 0.5,
         group: '🔴 Particle Appearance'
     },
     {
         key: 'pointOpacity', label: 'Point Opacity',
-        defaultValue: 0.6, min: 0.1, max: 1.0, step: 0.05,
+        defaultValue: 0.7, min: 0.1, max: 1.0, step: 0.05,
         group: '🔴 Particle Appearance'
     },
     {
@@ -58,7 +58,15 @@ export const PARAM_DEFS: ParamDef[] = [
         // Lower opacity = more of the previous frame shows through = longer trails.
         // Higher opacity = previous frame fades faster = shorter/no trails.
         key: 'trailLength', label: 'Trail Length (fade)',
-        defaultValue: 0.08, min: 0.01, max: 0.3, step: 0.01,
+        defaultValue: 0.2, min: 0.01, max: 0.3, step: 0.01,
+        group: '🔴 Particle Appearance'
+    },
+    {
+        // Formation scale multiplier — scales all morph target positions.
+        // 1.0 = default shape size (~3 unit ring radius), 0.5 = half, 2.0 = double.
+        // Works for ALL shapes (ring, sphere, quadruped, etc.), not just ring.
+        key: 'formationScale', label: 'Formation Scale',
+        defaultValue: 1.6, min: 0.2, max: 3.0, step: 0.1,
         group: '🔴 Particle Appearance'
     },
 
@@ -169,7 +177,7 @@ export const PARAM_DEFS: ParamDef[] = [
         // Camera distance from origin along the Z axis.
         // Higher = more zoomed out, lower = closer to the particles.
         key: 'cameraZ', label: 'Camera Z Position',
-        defaultValue: 10, min: 1, max: 50, step: 0.5,
+        defaultValue: 9, min: 1, max: 50, step: 0.5,
         group: '📷 Camera'
     },
 ];

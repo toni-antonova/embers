@@ -28,6 +28,7 @@ import type { TranscriptEvent } from '../services/SpeechEngine';
 
 // ── COMPONENT PROPS ──────────────────────────────────────────────────
 export type CameraType = 'perspective' | 'orthographic';
+export type ColorMode = 'white' | 'rainbow';
 
 interface TuningPanelProps {
     config: TuningConfig;
@@ -48,6 +49,12 @@ interface TuningPanelProps {
     cameraType?: CameraType;
     onCameraTypeChange?: (type: CameraType) => void;
 
+    // ── COLOR MODE ────────────────────────────────────────────────────
+    // White = tension-tinted white (default), Rainbow = HSL cycling.
+    // Canvas.tsx owns the mode; this callback tells it to swap.
+    colorMode?: ColorMode;
+    onColorModeChange?: (mode: ColorMode) => void;
+
     // ── SPEECH TRANSCRIPT ────────────────────────────────────────────
     // The last recognized speech event, passed down from Canvas.tsx.
     // Displayed in a dedicated section so the user can see what the
@@ -55,7 +62,7 @@ interface TuningPanelProps {
     transcript?: TranscriptEvent | null;
 }
 
-export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, transcript }: TuningPanelProps) {
+export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, colorMode, onColorModeChange, transcript }: TuningPanelProps) {
     // ── STATE ────────────────────────────────────────────────────────
     // `isOpen` controls the slide-in/out animation.
     const [isOpen, setIsOpen] = useState(false);
@@ -342,6 +349,29 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                                 >
                                     <option value="perspective">Perspective</option>
                                     <option value="orthographic">Orthographic</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── COLOR MODE TOGGLE ──────────────────────── */}
+                    {/* White = tension-tinted white, Rainbow = HSL cycling
+                        per particle based on angular position. */}
+                    {onColorModeChange && (
+                        <div className="tuning-section">
+                            <div className="tuning-section-title">🎨 Color Mode</div>
+                            <div className="tuning-shape-row">
+                                <label className="tuning-label" htmlFor="tuning-color-mode">
+                                    Mode
+                                </label>
+                                <select
+                                    id="tuning-color-mode"
+                                    className="tuning-select"
+                                    value={colorMode || 'white'}
+                                    onChange={(e) => onColorModeChange(e.target.value as ColorMode)}
+                                >
+                                    <option value="white">White</option>
+                                    <option value="rainbow">Rainbow</option>
                                 </select>
                             </div>
                         </div>

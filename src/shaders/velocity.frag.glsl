@@ -4,6 +4,7 @@ uniform float uNoiseFrequency;
 uniform float uDrag; 
 uniform sampler2D tMorphTarget;
 uniform float uSpringK;
+uniform float uFormationScale;
 uniform float uAbstraction;
 
 // Audio Uniforms
@@ -182,6 +183,9 @@ void main() {
 
     // ── MORPH TARGET (modified by energy) ─────────────────────────────
     vec3 targetPosRaw = texture2D(tMorphTarget, uv).xyz;
+    // Scale the morph target by the formation scale. This is the "ring radius"
+    // slider but works for ALL shapes — 1.0 = default, 0.5 = half, 2.0 = double.
+    targetPosRaw *= uFormationScale;
     vec3 radialDir = normalize(targetPosRaw);
     float energyExpansion = safeEnergy * 3.5;
     vec3 targetPos = targetPosRaw + breathOffset + radialDir * energyExpansion;

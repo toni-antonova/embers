@@ -60,6 +60,7 @@ export class ParticleSystem {
         this.velocityVariable.material.uniforms.uDrag = { value: 2.5 };
         this.velocityVariable.material.uniforms.tMorphTarget = { value: tMorphTarget };
         this.velocityVariable.material.uniforms.uSpringK = { value: 1.5 };
+        this.velocityVariable.material.uniforms.uFormationScale = { value: config.get('formationScale') };
         this.velocityVariable.material.uniforms.uAbstraction = { value: 0.0 };
 
         // Feature Uniforms
@@ -115,8 +116,10 @@ export class ParticleSystem {
                 texturePosition: { value: null },
                 textureVelocity: { value: null },
                 uColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
-                uAlpha: { value: 0.6 },
-                uPointSize: { value: 1.5 }
+                uAlpha: { value: 0.7 },
+                uPointSize: { value: 3.0 },
+                uColorMode: { value: 0.0 },  // 0.0 = white, 1.0 = rainbow
+                uTime: { value: 0.0 }        // For rainbow hue animation
             },
             vertexShader: renderVert,
             fragmentShader: renderFrag,
@@ -178,12 +181,16 @@ export class ParticleSystem {
         velUniforms.uRepulsionRadius.value = this.config.get('repulsionRadius');
         velUniforms.uRepulsionStrength.value = this.config.get('repulsionStrength');
 
+        // Formation scale — scales all morph target positions
+        velUniforms.uFormationScale.value = this.config.get('formationScale');
+
         // Appearance uniforms (render shader)
         renderUniforms.uPointSize.value = this.config.get('pointSize');
         renderUniforms.uAlpha.value = this.config.get('pointOpacity');
 
         // Time and delta
         velUniforms.uTime.value = this.time;
+        renderUniforms.uTime.value = this.time;
         this.positionVariable.material.uniforms.uDelta.value = deltaTime;
         velUniforms.uDelta.value = deltaTime;
 
