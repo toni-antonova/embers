@@ -1,31 +1,8 @@
 /**
  * TuningPanel.test.tsx — Unit tests for the TuningPanel React component.
  *
- * WHAT WE'RE TESTING:
- * ───────────────────
- * TuningPanel is the collapsible sidebar UI that auto-generates sliders
- * from TuningConfig's PARAM_DEFS. It's a React component, so we use
- * React Testing Library (RTL) to render it in a virtual DOM and simulate
- * user interactions.
- *
- * WHY REACT TESTING LIBRARY?
- * ──────────────────────────
- * RTL's philosophy is "test the way users interact with your app."
- * Instead of testing internal state or implementation details, we:
- *   - Find elements by their text, labels, or roles (like a user would)
- *   - Click buttons and type into inputs (simulating real interactions)
- *   - Assert on what the user sees (text, styles, DOM presence)
- *
- * This makes tests resilient to refactoring — if you reorganize the
- * component's internals but the user experience stays the same, the
- * tests still pass.
- *
- * TEST STRATEGY:
- * ──────────────
- * We mock AudioEngine with a simple object that returns zeroes from
- * getFeatures(). TuningConfig is used as a real instance (not mocked)
- * because it's the class under test — we want to ensure the panel
- * correctly reads/writes to it.
+ * Tests the two-tab layout (Visual / Audio), slider rendering, action buttons,
+ * and live audio value display.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -34,23 +11,15 @@ import { TuningPanel } from '../components/TuningPanel';
 import { TuningConfig, PARAM_DEFS } from '../services/TuningConfig';
 
 // ── MOCK AUDIO ENGINE ────────────────────────────────────────────────
-// TuningPanel needs an AudioEngine reference to show live audio values.
-// We mock it with a minimal object that returns zeroed features. This
-// isolates the test from real microphone access and Meyda processing.
 function createMockAudioEngine() {
     return {
         getFeatures: vi.fn().mockReturnValue({
-            energy: 0,
-            tension: 0,
-            urgency: 0,
-            breathiness: 0,
-            flatness: 0,
-            textureComplexity: 0,
-            rolloff: 0,
+            energy: 0, tension: 0, urgency: 0, breathiness: 0,
+            flatness: 0, textureComplexity: 0, rolloff: 0,
         }),
         start: vi.fn(),
         stop: vi.fn(),
-    } as any; // Cast to `any` because we only implement the subset used by TuningPanel.
+    } as any;
 }
 
 // ── SETUP / TEARDOWN ─────────────────────────────────────────────────
@@ -64,7 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    cleanup(); // Unmount all rendered components (prevents DOM leaks).
+    cleanup();
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -73,8 +42,6 @@ afterEach(() => {
 describe('TuningPanel — Panel Controls', () => {
     it('renders the gear button', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
-
-        // The gear button should always be visible (even when panel is closed).
         const gearBtn = screen.getByLabelText('Toggle tuning panel');
         expect(gearBtn).toBeInTheDocument();
     });
@@ -83,12 +50,9 @@ describe('TuningPanel — Panel Controls', () => {
         const { container } = render(
             <TuningPanel config={config} audioEngine={mockAudioEngine} />
         );
-
-        // Panel starts closed (no .open class).
         const panel = container.querySelector('.tuning-panel');
         expect(panel).not.toHaveClass('open');
 
-        // Click gear → panel opens.
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
         expect(panel).toHaveClass('open');
     });
@@ -97,13 +61,10 @@ describe('TuningPanel — Panel Controls', () => {
         const { container } = render(
             <TuningPanel config={config} audioEngine={mockAudioEngine} />
         );
-
-        // Open the panel first.
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
         const panel = container.querySelector('.tuning-panel');
         expect(panel).toHaveClass('open');
 
-        // Click close (✕).
         fireEvent.click(screen.getByLabelText('Close tuning panel'));
         expect(panel).not.toHaveClass('open');
     });
@@ -112,34 +73,46 @@ describe('TuningPanel — Panel Controls', () => {
         const { container } = render(
             <TuningPanel config={config} audioEngine={mockAudioEngine} />
         );
-
-        // Open the panel.
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
         const panel = container.querySelector('.tuning-panel');
         expect(panel).toHaveClass('open');
 
-        // Click the overlay (the semi-transparent backdrop).
         const overlay = container.querySelector('.tuning-overlay');
         expect(overlay).toBeInTheDocument();
         fireEvent.click(overlay!);
         expect(panel).not.toHaveClass('open');
     });
+
+    it('renders Visual and Audio tab pills', () => {
+        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+        fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+
+        expect(screen.getByText('🎨 Visual')).toBeInTheDocument();
+        expect(screen.getByText('🎧 Audio')).toBeInTheDocument();
+    });
+
+    it('Visual tab is active by default', () => {
+        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+        fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+
+        const visualPill = screen.getByText('🎨 Visual');
+        expect(visualPill).toHaveClass('active');
+    });
 });
 
 // ══════════════════════════════════════════════════════════════════════
-// SUITE 2: SLIDER RENDERING & INTERACTION
+// SUITE 2: VISUAL TAB SLIDERS
 // ══════════════════════════════════════════════════════════════════════
-describe('TuningPanel — Sliders', () => {
-    it('renders a slider for every parameter in PARAM_DEFS', () => {
-        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+describe('TuningPanel — Visual Tab Sliders', () => {
+    const visualDefs = PARAM_DEFS.filter(d =>
+        ['🔴 Particle Appearance', '🔵 Physics', '🟡 Pointer Interaction', '📷 Camera'].includes(d.group)
+    );
 
-        // Open the panel so sliders are in the DOM.
+    it('renders a slider for every visual parameter', () => {
+        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
-        // Each param should have a slider input with id="tuning-{key}".
-        // Curve Shaping params are rendered as custom toggles, not sliders.
-        for (const def of PARAM_DEFS) {
-            if (def.group === '⚡ Curve Shaping') continue;
+        for (const def of visualDefs) {
             const slider = document.getElementById(`tuning-${def.key}`);
             expect(slider).toBeInTheDocument();
         }
@@ -149,7 +122,6 @@ describe('TuningPanel — Sliders', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
-        // Check a few known defaults.
         const pointSizeSlider = document.getElementById('tuning-pointSize') as HTMLInputElement;
         expect(pointSizeSlider.value).toBe('3');
 
@@ -161,11 +133,8 @@ describe('TuningPanel — Sliders', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
-        // Simulate changing the point size slider.
         const slider = document.getElementById('tuning-pointSize') as HTMLInputElement;
         fireEvent.change(slider, { target: { value: '4.0' } });
-
-        // The underlying TuningConfig should reflect the new value.
         expect(config.get('pointSize')).toBe(4.0);
     });
 
@@ -173,7 +142,6 @@ describe('TuningPanel — Sliders', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
-        // Verify the pointSize slider's HTML attributes match PARAM_DEFS.
         const pointSizeDef = PARAM_DEFS.find(d => d.key === 'pointSize')!;
         const slider = document.getElementById('tuning-pointSize') as HTMLInputElement;
 
@@ -182,95 +150,123 @@ describe('TuningPanel — Sliders', () => {
         expect(slider.step).toBe(String(pointSizeDef.step));
     });
 
-    it('displays all section headings from PARAM_DEFS groups', () => {
+    it('displays visual section headings', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
-        // Collect unique group names from PARAM_DEFS.
-        // Exclude '⚡ Curve Shaping' — that group is rendered as custom toggles,
-        // not auto-generated sliders with section headings.
-        const uniqueGroups = [...new Set(PARAM_DEFS.map(d => d.group))].filter(g => g !== '⚡ Curve Shaping');
-
-        for (const group of uniqueGroups) {
+        const visualGroupNames = [...new Set(visualDefs.map(d => d.group))];
+        for (const group of visualGroupNames) {
             expect(screen.getByText(group)).toBeInTheDocument();
         }
     });
 });
 
 // ══════════════════════════════════════════════════════════════════════
-// SUITE 3: ACTION BUTTONS
+// SUITE 3: AUDIO TAB
+// ══════════════════════════════════════════════════════════════════════
+describe('TuningPanel — Audio Tab', () => {
+    function openAudioTab() {
+        fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+        fireEvent.click(screen.getByText('🎧 Audio'));
+    }
+
+    it('renders audio reactivity grid with all 7 features', () => {
+        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+        openAudioTab();
+
+        const featureNames = ['Energy', 'Tension', 'Urgency', 'Breathiness', 'Flatness', 'Texture', 'Rolloff'];
+        for (const name of featureNames) {
+            expect(screen.getByText(name)).toBeInTheDocument();
+        }
+    });
+
+    it('renders influence and smoothing sliders for each audio feature', () => {
+        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+        openAudioTab();
+
+        const audioDefs = PARAM_DEFS.filter(d => d.group === '🎚 Audio Reactivity');
+        for (const def of audioDefs) {
+            const slider = document.getElementById(`tuning-${def.key}`);
+            expect(slider).toBeInTheDocument();
+        }
+    });
+
+    it('renders curve shaping section', () => {
+        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+        openAudioTab();
+
+        expect(screen.getByText('⚡ Curve Shaping')).toBeInTheDocument();
+    });
+
+    it('renders the speech section', () => {
+        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+        openAudioTab();
+
+        expect(screen.getByText('🎤 Speech')).toBeInTheDocument();
+    });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 4: ACTION BUTTONS (on Audio tab)
 // ══════════════════════════════════════════════════════════════════════
 describe('TuningPanel — Action Buttons', () => {
+    function openAudioTab() {
+        fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+        fireEvent.click(screen.getByText('🎧 Audio'));
+    }
+
     it('Reset button restores all values to defaults', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
-        fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+        openAudioTab();
 
-        // Change some values via config.
         config.set('pointSize', 5.0);
         config.set('springK', 8.0);
 
-        // Click "Reset All to Defaults".
         fireEvent.click(screen.getByText('Reset All to Defaults'));
-
-        // Config values should be back to defaults.
         expect(config.get('pointSize')).toBe(3.0);
         expect(config.get('springK')).toBe(1.5);
     });
 
     it('Apply Pasted Config button is disabled when textarea is empty', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
-        fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+        openAudioTab();
 
-        // The "Apply Pasted Config" button should be disabled by default
-        // because the textarea is empty.
         const pasteBtn = screen.getByText('Apply Pasted Config');
         expect(pasteBtn).toBeDisabled();
     });
 
     it('pasting valid JSON and clicking Apply updates config', () => {
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
-        fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+        openAudioTab();
 
-        // Type valid JSON into the paste textarea.
         const textarea = screen.getByPlaceholderText('Paste config JSON here...');
         const testJson = JSON.stringify({ pointSize: 6.0, springK: 4.0 });
         fireEvent.change(textarea, { target: { value: testJson } });
 
-        // Click "Apply Pasted Config".
         fireEvent.click(screen.getByText('Apply Pasted Config'));
-
-        // Config should have the pasted values.
         expect(config.get('pointSize')).toBe(6.0);
         expect(config.get('springK')).toBe(4.0);
     });
 });
 
 // ══════════════════════════════════════════════════════════════════════
-// SUITE 4: LIVE AUDIO VALUES
+// SUITE 5: LIVE AUDIO VALUES
 // ══════════════════════════════════════════════════════════════════════
 describe('TuningPanel — Live Audio Values', () => {
-    it('displays live audio values for audio-related parameters', async () => {
-        // Override the mock to return non-zero features.
+    it('displays live audio badges on audio tab', async () => {
         mockAudioEngine.getFeatures.mockReturnValue({
-            energy: 0.75,
-            tension: 0.5,
-            urgency: 0.3,
-            breathiness: 0.1,
-            flatness: 0,
-            textureComplexity: 0,
-            rolloff: 0,
+            energy: 0.75, tension: 0.5, urgency: 0.3, breathiness: 0.1,
+            flatness: 0, textureComplexity: 0, rolloff: 0,
         });
 
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
+        // Open panel and switch to audio tab
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
+        fireEvent.click(screen.getByText('🎧 Audio'));
 
-        // The live values are polled on a 33ms interval (only when open).
-        // Wait for one polling cycle to populate the values.
         await vi.waitFor(() => {
-            // Find the live-value spans — they should show the feature values.
-            const liveValues = document.querySelectorAll('.tuning-live-value');
-            // At least one live value should be displayed.
-            expect(liveValues.length).toBeGreaterThan(0);
+            const liveBadges = document.querySelectorAll('.tuning-audio-live-badge');
+            expect(liveBadges.length).toBeGreaterThan(0);
         }, { timeout: 200 });
     });
 });

@@ -36,6 +36,7 @@ export interface ParamDef {
     max: number;           // Slider maximum
     step: number;          // Slider granularity
     group: string;         // Section heading in the panel
+    feature?: string;      // Audio feature name for compact grid grouping
 }
 
 // ── ALL TUNABLE PARAMETERS ───────────────────────────────────────────
@@ -127,74 +128,74 @@ export const PARAM_DEFS: ParamDef[] = [
     //   Lower = more responsive/jittery (mic visualizer feel)
     //   Higher = smoother/laggier (ambient feel)
     {
-        key: 'audioInfluence.energy', label: 'Energy Influence',
+        key: 'audioInfluence.energy', label: 'Influence',
         defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
-        group: '🟢 Audio → Energy'
+        group: '🎚 Audio Reactivity', feature: 'energy'
     },
     {
-        key: 'audioSmoothing.energy', label: 'Energy Smoothing',
+        key: 'audioSmoothing.energy', label: 'Smoothing',
         defaultValue: 0.55, min: 0.1, max: 0.99, step: 0.01,
-        group: '🟢 Audio → Energy'
+        group: '🎚 Audio Reactivity', feature: 'energy'
     },
     {
-        key: 'audioInfluence.tension', label: 'Tension Influence',
+        key: 'audioInfluence.tension', label: 'Influence',
         defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
-        group: '🟢 Audio → Tension'
+        group: '🎚 Audio Reactivity', feature: 'tension'
     },
     {
-        key: 'audioSmoothing.tension', label: 'Tension Smoothing',
+        key: 'audioSmoothing.tension', label: 'Smoothing',
         defaultValue: 0.70, min: 0.1, max: 0.99, step: 0.01,
-        group: '🟢 Audio → Tension'
+        group: '🎚 Audio Reactivity', feature: 'tension'
     },
     {
-        key: 'audioInfluence.urgency', label: 'Urgency Influence',
+        key: 'audioInfluence.urgency', label: 'Influence',
         defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
-        group: '🟢 Audio → Urgency'
+        group: '🎚 Audio Reactivity', feature: 'urgency'
     },
     {
-        key: 'audioSmoothing.urgency', label: 'Urgency Smoothing',
+        key: 'audioSmoothing.urgency', label: 'Smoothing',
         defaultValue: 0.35, min: 0.1, max: 0.99, step: 0.01,
-        group: '🟢 Audio → Urgency'
+        group: '🎚 Audio Reactivity', feature: 'urgency'
     },
     {
-        key: 'audioInfluence.breathiness', label: 'Breathiness Influence',
+        key: 'audioInfluence.breathiness', label: 'Influence',
         defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
-        group: '🟢 Audio → Breathiness'
+        group: '🎚 Audio Reactivity', feature: 'breathiness'
     },
     {
-        key: 'audioSmoothing.breathiness', label: 'Breathiness Smoothing',
+        key: 'audioSmoothing.breathiness', label: 'Smoothing',
         defaultValue: 0.55, min: 0.1, max: 0.99, step: 0.01,
-        group: '🟢 Audio → Breathiness'
+        group: '🎚 Audio Reactivity', feature: 'breathiness'
     },
     {
-        key: 'audioInfluence.flatness', label: 'Flatness Influence',
+        key: 'audioInfluence.flatness', label: 'Influence',
         defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
-        group: '🟢 Audio → Flatness'
+        group: '🎚 Audio Reactivity', feature: 'flatness'
     },
     {
-        key: 'audioSmoothing.flatness', label: 'Flatness Smoothing',
+        key: 'audioSmoothing.flatness', label: 'Smoothing',
         defaultValue: 0.60, min: 0.1, max: 0.99, step: 0.01,
-        group: '🟢 Audio → Flatness'
+        group: '🎚 Audio Reactivity', feature: 'flatness'
     },
     {
-        key: 'audioInfluence.textureComplexity', label: 'Texture Influence',
+        key: 'audioInfluence.textureComplexity', label: 'Influence',
         defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
-        group: '🟢 Audio → Texture'
+        group: '🎚 Audio Reactivity', feature: 'texture'
     },
     {
-        key: 'audioSmoothing.textureComplexity', label: 'Texture Smoothing',
+        key: 'audioSmoothing.textureComplexity', label: 'Smoothing',
         defaultValue: 0.88, min: 0.1, max: 0.99, step: 0.01,
-        group: '🟢 Audio → Texture'
+        group: '🎚 Audio Reactivity', feature: 'texture'
     },
     {
-        key: 'audioInfluence.rolloff', label: 'Rolloff Influence',
+        key: 'audioInfluence.rolloff', label: 'Influence',
         defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
-        group: '🟢 Audio → Rolloff'
+        group: '🎚 Audio Reactivity', feature: 'rolloff'
     },
     {
-        key: 'audioSmoothing.rolloff', label: 'Rolloff Smoothing',
+        key: 'audioSmoothing.rolloff', label: 'Smoothing',
         defaultValue: 0.88, min: 0.1, max: 0.99, step: 0.01,
-        group: '🟢 Audio → Rolloff'
+        group: '🎚 Audio Reactivity', feature: 'rolloff'
     },
 
     // ── ⚡ AUDIO CURVE MODES ─────────────────────────────────────────
