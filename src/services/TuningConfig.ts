@@ -166,6 +166,16 @@ export const PARAM_DEFS: ParamDef[] = [
         defaultValue: 0.55, min: 0.1, max: 0.99, step: 0.01,
         group: '🟢 Audio → Breathiness'
     },
+    {
+        key: 'audioInfluence.flatness', label: 'Flatness Influence',
+        defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
+        group: '🟢 Audio → Flatness'
+    },
+    {
+        key: 'audioSmoothing.flatness', label: 'Flatness Smoothing',
+        defaultValue: 0.60, min: 0.1, max: 0.99, step: 0.01,
+        group: '🟢 Audio → Flatness'
+    },
 
     // ── 🟡 POINTER INTERACTION ──────────────────────────────────────
     {

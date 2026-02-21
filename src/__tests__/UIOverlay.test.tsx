@@ -106,40 +106,43 @@ describe('UIOverlay — Labels', () => {
 // SUITE 2: MIC BUTTON
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Mic Button', () => {
-    it('shows "Start Listening" initially', () => {
+    it('shows mic button with "Start listening" label initially', () => {
         render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
-        const btn = screen.getByText('Start Listening');
+        const btn = screen.getByLabelText('Start listening');
         expect(btn).toBeInTheDocument();
+        expect(btn).not.toHaveClass('active');
     });
 
-    it('toggles to "Stop Listening" after clicking', async () => {
+    it('toggles to active state after clicking', async () => {
         render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
-        // Click "Start Listening".
+        // Click the mic button.
         await act(async () => {
-            fireEvent.click(screen.getByText('Start Listening'));
+            fireEvent.click(screen.getByLabelText('Start listening'));
         });
 
-        // Button text should change.
-        expect(screen.getByText('Stop Listening')).toBeInTheDocument();
+        // Button should now have active class and updated label.
+        const btn = screen.getByLabelText('Stop listening');
+        expect(btn).toHaveClass('active');
 
         // AudioEngine.start() should have been called.
         expect(mockAudioEngine.start).toHaveBeenCalledTimes(1);
     });
 
-    it('toggles back to "Start Listening" after stopping', async () => {
+    it('toggles back to inactive after stopping', async () => {
         render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
 
-        // Start → Stop → verify text returns.
+        // Start → Stop → verify state returns.
         await act(async () => {
-            fireEvent.click(screen.getByText('Start Listening'));
+            fireEvent.click(screen.getByLabelText('Start listening'));
         });
         await act(async () => {
-            fireEvent.click(screen.getByText('Stop Listening'));
+            fireEvent.click(screen.getByLabelText('Stop listening'));
         });
 
-        expect(screen.getByText('Start Listening')).toBeInTheDocument();
+        const btn = screen.getByLabelText('Start listening');
+        expect(btn).not.toHaveClass('active');
         expect(mockAudioEngine.stop).toHaveBeenCalledTimes(1);
     });
 });
@@ -172,7 +175,7 @@ describe('UIOverlay — Bar Widths', () => {
 
         // Start listening to trigger the rAF polling loop.
         await act(async () => {
-            fireEvent.click(screen.getByText('Start Listening'));
+            fireEvent.click(screen.getByLabelText('Start listening'));
         });
 
         // Advance timers to trigger rAF callbacks.
