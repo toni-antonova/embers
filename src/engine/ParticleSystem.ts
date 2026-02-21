@@ -176,6 +176,7 @@ export class ParticleSystem {
         velUniforms.uNoiseAmplitude.value = this.config.get('noiseAmplitude');
         velUniforms.uNoiseFrequency.value = this.config.get('noiseFrequency');
         velUniforms.uBreathingAmplitude.value = this.config.get('breathingAmplitude');
+        velUniforms.uAbstraction.value = this.config.get('abstraction');
 
         // Pointer interaction uniforms
         velUniforms.uRepulsionRadius.value = this.config.get('repulsionRadius');

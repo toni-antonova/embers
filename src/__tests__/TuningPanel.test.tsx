@@ -147,7 +147,7 @@ describe('TuningPanel — Sliders', () => {
 
         // Check a few known defaults.
         const pointSizeSlider = document.getElementById('tuning-pointSize') as HTMLInputElement;
-        expect(pointSizeSlider.value).toBe('1.5');
+        expect(pointSizeSlider.value).toBe('3');
 
         const springKSlider = document.getElementById('tuning-springK') as HTMLInputElement;
         expect(springKSlider.value).toBe('1.5');
@@ -207,7 +207,7 @@ describe('TuningPanel — Action Buttons', () => {
         fireEvent.click(screen.getByText('Reset All to Defaults'));
 
         // Config values should be back to defaults.
-        expect(config.get('pointSize')).toBe(1.5);
+        expect(config.get('pointSize')).toBe(3.0);
         expect(config.get('springK')).toBe(1.5);
     });
 

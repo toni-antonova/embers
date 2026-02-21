@@ -50,7 +50,7 @@ describe('TuningConfig — Default Values', () => {
         const config = new TuningConfig();
 
         // Spot-check a few known defaults.
-        expect(config.getDefault('pointSize')).toBe(1.5);
+        expect(config.getDefault('pointSize')).toBe(3.0);
         expect(config.getDefault('springK')).toBe(1.5);
         expect(config.getDefault('drag')).toBe(2.5);
     });
@@ -167,7 +167,7 @@ describe('TuningConfig — Reset', () => {
         config.resetAll();
 
         // All values should be back to defaults.
-        expect(config.get('pointSize')).toBe(1.5);
+        expect(config.get('pointSize')).toBe(3.0);
         expect(config.get('springK')).toBe(1.5);
         expect(config.get('drag')).toBe(2.5);
     });
@@ -226,7 +226,7 @@ describe('TuningConfig — JSON Export / Import', () => {
         }).not.toThrow();
 
         // Original values should be unchanged.
-        expect(config.get('pointSize')).toBe(1.5);
+        expect(config.get('pointSize')).toBe(3.0);
     });
 
     it('fromJSON() clamps imported values to valid ranges', () => {
@@ -292,6 +292,6 @@ describe('TuningConfig — localStorage Persistence', () => {
         const config = new TuningConfig();
 
         // Should fall back to defaults.
-        expect(config.get('pointSize')).toBe(1.5);
+        expect(config.get('pointSize')).toBe(3.0);
     });
 });

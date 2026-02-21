@@ -107,6 +107,15 @@ export const PARAM_DEFS: ParamDef[] = [
         defaultValue: 0.08, min: 0.0, max: 0.2, step: 0.005,
         group: '🔵 Physics'
     },
+    {
+        // Abstraction: blends between spring force (shape) and curl noise (drift).
+        // 0 = particles snap firmly to morph target shape.
+        // 1 = particles drift freely with curl noise, ignoring shape.
+        // In between = soft hold with organic motion.
+        key: 'abstraction', label: 'Abstraction (shape→drift)',
+        defaultValue: 0.0, min: 0.0, max: 1.0, step: 0.05,
+        group: '🔵 Physics'
+    },
 
     // ── 🟢 AUDIO → VISUAL MAPPING ──────────────────────────────────
     // Influence: multiplier on how much each audio feature affects visuals.
