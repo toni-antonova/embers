@@ -37,6 +37,8 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
     const [features, setFeatures] = useState(audioEngine.getFeatures());
+    const [denied, setDenied] = useState(false);
+    const deniedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const rafRef = useRef<number>(0);
 
     // Text-input fallback state (only used when Web Speech API is unavailable).
@@ -52,9 +54,19 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
             speechEngine.stop();
             setIsListening(false);
         } else {
-            await audioEngine.start();
-            speechEngine.start();
-            setIsListening(true);
+            try {
+                await audioEngine.start();
+                speechEngine.start();
+                setIsListening(true);
+                setDenied(false);
+            } catch {
+                // Microphone permission denied or unavailable.
+                setDenied(true);
+                // Clear any existing timer
+                if (deniedTimerRef.current) clearTimeout(deniedTimerRef.current);
+                // Auto-dismiss tooltip after 3 seconds.
+                deniedTimerRef.current = setTimeout(() => setDenied(false), 3000);
+            }
         }
     };
 
@@ -114,6 +126,9 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
                 </svg>
                 {!isListening && <span className="mic-slash" />}
             </button>
+            {denied && (
+                <span className="mic-tooltip">Microphone access denied</span>
+            )}
 
             {/* ── TEXT FALLBACK (only when Speech API unavailable) ── */}
             {/* When the Web Speech API isn't available (Firefox, etc.),

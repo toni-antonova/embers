@@ -116,6 +116,36 @@ canvas {
   }
 }
 
+.mic-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 60, 60, 0.2);
+  border: 1px solid rgba(255, 60, 60, 0.4);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: monospace;
+  font-size: 0.7rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  animation: tooltip-fade 0.3s ease;
+  pointer-events: none;
+}
+
+@keyframes tooltip-fade {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 .debug-panel {
   position: absolute;
   top: 1rem;
