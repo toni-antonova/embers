@@ -33,6 +33,10 @@ export class UniformBridge {
     // tint) or cycling through rainbow hues. Set from TuningPanel via Canvas.
     colorMode: ColorMode = 'white';
 
+    // Idle mode — when true, all audio features are zeroed and
+    // particles return to a calm baseline state (shape, speed 1, white).
+    idleMode = false;
+
     // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
     // Logs the actual uniform values being sent to the shader every ~0.5s.
     // This is the final checkpoint: if [SMOOTH] shows nonzero but
@@ -44,6 +48,21 @@ export class UniformBridge {
         this.audioEngine = audioEngine;
         this.particleSystem = particleSystem;
         this.config = config;
+    }
+
+    /**
+     * Smoothly reset all audio-driven effects to idle baseline.
+     * Called by the UI "return to idle" button.
+     */
+    resetToIdle() {
+        this.idleMode = true;
+    }
+
+    /**
+     * Exit idle mode (e.g. when mic is turned on again).
+     */
+    exitIdle() {
+        this.idleMode = false;
     }
 
     update() {
@@ -60,10 +79,24 @@ export class UniformBridge {
         // influence=2 → doubled effect
         // This lets you isolate individual features to see their effect,
         // or boost features that aren't prominent enough.
-        const energy = features.energy * this.config.get('audioInfluence.energy');
-        const tension = features.tension * this.config.get('audioInfluence.tension');
-        const urgency = features.urgency * this.config.get('audioInfluence.urgency');
-        const breathiness = features.breathiness * this.config.get('audioInfluence.breathiness');
+        let energy = features.energy * this.config.get('audioInfluence.energy');
+        let tension = features.tension * this.config.get('audioInfluence.tension');
+        let urgency = features.urgency * this.config.get('audioInfluence.urgency');
+        let breathiness = features.breathiness * this.config.get('audioInfluence.breathiness');
+        let textureComplexity = features.textureComplexity * this.config.get('audioInfluence.textureComplexity');
+        let rolloff = features.rolloff * this.config.get('audioInfluence.rolloff');
+
+        // ── IDLE MODE ─────────────────────────────────────────────────
+        // When idle, zero out all audio features so particles return to
+        // neutral state. The shader's spring force handles smooth return.
+        if (this.idleMode) {
+            energy = 0;
+            tension = 0;
+            urgency = 0;
+            breathiness = 0;
+            textureComplexity = 0;
+            rolloff = 0.5; // Neutral edge softness
+        }
 
         // ── MAP AUDIO FEATURES → SHADER UNIFORMS ──────────────────────
         // All values are clamped to [0, 1] as a safety measure.
@@ -74,6 +107,20 @@ export class UniformBridge {
         uniforms.uTension.value = Math.max(0, Math.min(1, tension));
         uniforms.uUrgency.value = Math.max(0, Math.min(1, urgency));
         uniforms.uBreathiness.value = Math.max(0, Math.min(1, breathiness));
+        uniforms.uTextureComplexity.value = Math.max(0, Math.min(1, textureComplexity));
+
+        // ── CURVE SHAPING MODES → SHADER UNIFORMS ─────────────────────
+        // Push the toggle states and threshold values from TuningConfig
+        // to the velocity shader every frame. These control how energy
+        // and urgency map to visual effects (linear vs shaped curves).
+        uniforms.uEnergyCurveMode.value = this.config.get('energyCurveMode');
+        uniforms.uUrgencyCurveMode.value = this.config.get('urgencyCurveMode');
+        uniforms.uUrgencyThresholdLow.value = this.config.get('urgencyThresholdLow');
+        uniforms.uUrgencyThresholdHigh.value = this.config.get('urgencyThresholdHigh');
+
+        // ── ROLLOFF → RENDER SHADER ───────────────────────────────────
+        // Spectral rolloff controls particle edge softness/crispness.
+        renderUniforms.uRolloff.value = Math.max(0, Math.min(1, rolloff));
 
         // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
         // Tier 3: The actual values on the shader uniforms.
@@ -86,7 +133,9 @@ export class UniformBridge {
                 `[UNIFORMS] uEnergy:${uniforms.uEnergy.value.toFixed(3)} ` +
                 `uTension:${uniforms.uTension.value.toFixed(3)} ` +
                 `uUrgency:${uniforms.uUrgency.value.toFixed(3)} ` +
-                `uBreathiness:${uniforms.uBreathiness.value.toFixed(3)}`
+                `uBreathiness:${uniforms.uBreathiness.value.toFixed(3)} ` +
+                `uTexture:${uniforms.uTextureComplexity.value.toFixed(3)} ` +
+                `uRolloff:${renderUniforms.uRolloff.value.toFixed(3)}`
             );
         }
 

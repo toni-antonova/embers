@@ -578,6 +578,22 @@ canvas {
   color: rgba(160, 210, 255, 1);
 }
 
+.tuning-btn-idle {
+  border-color: rgba(100, 255, 200, 0.2);
+  color: rgba(130, 255, 210, 0.8);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+}
+
+.tuning-btn-idle:hover {
+  background: rgba(100, 255, 200, 0.1);
+  border-color: rgba(100, 255, 200, 0.4);
+  color: rgba(160, 255, 230, 1);
+  box-shadow: 0 0 12px rgba(100, 255, 200, 0.15);
+}
+
 /* ── PASTE CONFIG ─────────────────────────────────────────────────── */
 .tuning-paste-group {
   margin-top: 4px;

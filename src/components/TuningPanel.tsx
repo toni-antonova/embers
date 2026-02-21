@@ -60,9 +60,13 @@ interface TuningPanelProps {
     // Displayed in a dedicated section so the user can see what the
     // system heard in real time.
     transcript?: TranscriptEvent | null;
+
+    // ── IDLE RESET ────────────────────────────────────────────────────
+    // Callback to smoothly reset particles to idle baseline state.
+    onIdleReset?: () => void;
 }
 
-export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, colorMode, onColorModeChange, transcript }: TuningPanelProps) {
+export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, onBlend, cameraType, onCameraTypeChange, colorMode, onColorModeChange, transcript, onIdleReset }: TuningPanelProps) {
     // ── STATE ────────────────────────────────────────────────────────
     // `isOpen` controls the slide-in/out animation.
     const [isOpen, setIsOpen] = useState(false);
@@ -87,7 +91,8 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
 
     // Live audio feature values for display next to audio sliders.
     const [liveFeatures, setLiveFeatures] = useState({
-        energy: 0, tension: 0, urgency: 0, breathiness: 0
+        energy: 0, tension: 0, urgency: 0, breathiness: 0,
+        textureComplexity: 0, rolloff: 0
     });
 
     // Ref for the panel div to detect outside clicks.
@@ -117,6 +122,8 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                 tension: f.tension,
                 urgency: f.urgency,
                 breathiness: f.breathiness,
+                textureComplexity: f.textureComplexity,
+                rolloff: f.rolloff,
             });
         }, 33); // ~30fps
 
@@ -162,8 +169,11 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
 
     // ── GROUP PARAMETERS BY SECTION ──────────────────────────────────
     // Group PARAM_DEFS by their `group` field to render sections.
+    // Exclude '⚡ Curve Shaping' — those params are rendered as custom
+    // toggles/selects above, not auto-generated sliders.
     const groups = new Map<string, ParamDef[]>();
     for (const def of PARAM_DEFS) {
+        if (def.group === '⚡ Curve Shaping') continue;
         if (!groups.has(def.group)) groups.set(def.group, []);
         groups.get(def.group)!.push(def);
     }
@@ -174,6 +184,8 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
         if (key === 'audioInfluence.tension' || key === 'audioSmoothing.tension') return liveFeatures.tension;
         if (key === 'audioInfluence.urgency' || key === 'audioSmoothing.urgency') return liveFeatures.urgency;
         if (key === 'audioInfluence.breathiness' || key === 'audioSmoothing.breathiness') return liveFeatures.breathiness;
+        if (key === 'audioInfluence.textureComplexity' || key === 'audioSmoothing.textureComplexity') return liveFeatures.textureComplexity;
+        if (key === 'audioInfluence.rolloff' || key === 'audioSmoothing.rolloff') return liveFeatures.rolloff;
         return null;
     };
 
@@ -374,6 +386,104 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                                     <option value="rainbow">Rainbow</option>
                                 </select>
                             </div>
+                        </div>
+                    )}
+
+                    {/* ── CURVE SHAPING TOGGLES ────────────────────── */}
+                    {/* Energy and urgency curve modes as custom toggles.
+                        The threshold sliders below urgency show/hide
+                        based on which mode is active. */}
+                    <div className="tuning-section">
+                        <div className="tuning-section-title">⚡ Curve Shaping</div>
+
+                        {/* Energy Mode */}
+                        <div className="tuning-shape-row">
+                            <label className="tuning-label" htmlFor="tuning-energy-curve">
+                                Energy Curve
+                            </label>
+                            <select
+                                id="tuning-energy-curve"
+                                className="tuning-select"
+                                value={config.get('energyCurveMode') === 1 ? 'power' : 'linear'}
+                                onChange={(e) => {
+                                    config.set('energyCurveMode', e.target.value === 'power' ? 1.0 : 0.0);
+                                }}
+                            >
+                                <option value="linear">Linear (×3.5)</option>
+                                <option value="power">Power (^1.5)</option>
+                            </select>
+                        </div>
+
+                        {/* Urgency Mode */}
+                        <div className="tuning-shape-row">
+                            <label className="tuning-label" htmlFor="tuning-urgency-curve">
+                                Urgency Curve
+                            </label>
+                            <select
+                                id="tuning-urgency-curve"
+                                className="tuning-select"
+                                value={config.get('urgencyCurveMode') === 1 ? 'smoothstep' : 'linear'}
+                                onChange={(e) => {
+                                    config.set('urgencyCurveMode', e.target.value === 'smoothstep' ? 1.0 : 0.0);
+                                }}
+                            >
+                                <option value="linear">Linear (×1.8)</option>
+                                <option value="smoothstep">Smoothstep (threshold)</option>
+                            </select>
+                        </div>
+
+                        {/* Urgency thresholds — only shown in smoothstep mode */}
+                        {config.get('urgencyCurveMode') === 1 && (
+                            <>
+                                <div className="tuning-row">
+                                    <div className="tuning-row-header">
+                                        <label className="tuning-label" htmlFor="tuning-urgency-thr-low">
+                                            Threshold Low
+                                        </label>
+                                        <span className="tuning-current-value">
+                                            {config.get('urgencyThresholdLow').toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <input
+                                        id="tuning-urgency-thr-low"
+                                        className="tuning-slider"
+                                        type="range"
+                                        min={0} max={1} step={0.05}
+                                        value={config.get('urgencyThresholdLow')}
+                                        onChange={(e) => config.set('urgencyThresholdLow', parseFloat(e.target.value))}
+                                    />
+                                </div>
+                                <div className="tuning-row">
+                                    <div className="tuning-row-header">
+                                        <label className="tuning-label" htmlFor="tuning-urgency-thr-high">
+                                            Threshold High
+                                        </label>
+                                        <span className="tuning-current-value">
+                                            {config.get('urgencyThresholdHigh').toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <input
+                                        id="tuning-urgency-thr-high"
+                                        className="tuning-slider"
+                                        type="range"
+                                        min={0} max={1} step={0.05}
+                                        value={config.get('urgencyThresholdHigh')}
+                                        onChange={(e) => config.set('urgencyThresholdHigh', parseFloat(e.target.value))}
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* ── IDLE RESET BUTTON ─────────────────────────── */}
+                    {onIdleReset && (
+                        <div className="tuning-section">
+                            <button
+                                className="tuning-btn tuning-btn-idle"
+                                onClick={onIdleReset}
+                            >
+                                ◎ Return to Idle
+                            </button>
                         </div>
                     )}
 

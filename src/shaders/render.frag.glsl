@@ -20,6 +20,7 @@ uniform vec3 uColor;        // Base particle color (set by UniformBridge)
 uniform float uAlpha;       // Overall opacity multiplier
 uniform float uColorMode;   // 0.0 = white/tension, 1.0 = rainbow
 uniform float uTime;        // Animation time for rainbow cycling
+uniform float uRolloff;     // Spectral rolloff → edge softness (0=soft, 1=crisp)
 
 varying vec2 vUV;           // Per-particle UV from vertex shader
 
@@ -50,13 +51,16 @@ void main() {
     // Discard pixels outside the circle (turns square quad into circle)
     if (dist > 0.5) discard;
 
-    // Core: bright center, fades by distance 0.15 from center
-    // This creates the sharp inner dot
-    float core = 1.0 - smoothstep(0.0, 0.15, dist);
+    // ── ROLLOFF → EDGE SOFTNESS ───────────────────────────────────
+    // High rolloff (bright/crisp voice) = tight core, sharp edges
+    // Low rolloff (muffled/warm voice) = diffuse glow, soft edges
+    float edgeSoftness = mix(0.45, 0.15, uRolloff);
 
-    // Glow: wider halo, fades from 0.1 to 0.5 from center
-    // This creates the soft outer glow
-    float glow = 1.0 - smoothstep(0.1, 0.5, dist);
+    // Core: bright center, fades by edge softness from center
+    float core = 1.0 - smoothstep(0.0, edgeSoftness, dist);
+
+    // Glow: wider halo, fades from edge softness to 0.5
+    float glow = 1.0 - smoothstep(edgeSoftness * 0.67, 0.5, dist);
 
     // Combine: core contributes 80% brightness, glow 40%
     float alpha = (core * 0.8 + glow * 0.4) * uAlpha;

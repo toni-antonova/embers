@@ -371,6 +371,11 @@ export function Canvas() {
                     }
                 }}
                 transcript={lastTranscript}
+                onIdleReset={() => {
+                    if (uniformBridgeRef.current) {
+                        uniformBridgeRef.current.resetToIdle();
+                    }
+                }}
             />
         </div>
     );

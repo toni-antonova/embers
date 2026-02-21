@@ -8,11 +8,13 @@ import { TuningConfig } from './TuningConfig';
  * into the shader pipeline via UniformBridge to control particle behavior.
  */
 export interface AudioFeatures {
-    energy: number;      // RMS loudness → ring expansion + breathing speed
-    tension: number;     // Spectral centroid (brightness) → curl noise tightness + color
-    urgency: number;     // Spectral flux (change rate) → noise turbulence/chaos
-    breathiness: number; // ZCR + flatness blend → drag reduction + airiness
-    flatness: number;    // Spectral flatness (noise vs tone) → used in breathiness blend
+    energy: number;            // RMS loudness → ring expansion + breathing speed
+    tension: number;           // Spectral centroid (brightness) → curl noise tightness + color
+    urgency: number;           // Spectral flux (change rate) → noise turbulence/chaos
+    breathiness: number;       // ZCR + flatness blend → drag reduction + airiness
+    flatness: number;          // Spectral flatness (noise vs tone) → used in breathiness blend
+    textureComplexity: number; // MFCC variance → vocal texture richness → noise variation
+    rolloff: number;           // Spectral rolloff → voice brightness → particle edge crispness
 }
 
 /**
@@ -48,7 +50,9 @@ export class AudioEngine {
         tension: 0,
         urgency: 0,
         breathiness: 0,
-        flatness: 0
+        flatness: 0,
+        textureComplexity: 0,
+        rolloff: 0
     };
 
     /**
@@ -132,7 +136,9 @@ export class AudioEngine {
                     'rms',
                     'spectralCentroid',
                     'zcr',
-                    'spectralFlatness'
+                    'spectralFlatness',
+                    'mfcc',
+                    'spectralRolloff'
                 ],
                 callback: (features: any) => {
                     this.processFeatures(features);
@@ -253,6 +259,36 @@ export class AudioEngine {
         // energy than ZCR is — it responds to the CHARACTER of the sound
         // rather than just the amplitude.
         this.features.breathiness = smoothedZcr * 0.4 + smoothedFlatness * 0.6;
+
+        // ── 5. MFCCs → TEXTURE COMPLEXITY (vocal richness) ────────────
+        // MFCCs (Mel-Frequency Cepstral Coefficients) capture the spectral
+        // "shape" of the voice. Computing the VARIANCE of 13 coefficients
+        // gives a single number: how texturally complex the sound is.
+        // High variance = rich harmonic content (singing, complex vowels)
+        // Low variance = simple/flat sound (hums, silence)
+        const mfccArray = raw.mfcc as number[] | undefined;
+        if (mfccArray && mfccArray.length > 0) {
+            const mfccMean = mfccArray.reduce((a: number, b: number) => a + b, 0) / mfccArray.length;
+            const mfccVariance = mfccArray.reduce((a: number, b: number) => a + Math.pow(b - mfccMean, 2), 0) / mfccArray.length;
+            // Typical variance range is 0-500, map to 0-1
+            const normTexture = Math.min(mfccVariance / 300, 1.0);
+            this.features.textureComplexity = this.smooth(
+                this.features.textureComplexity, normTexture,
+                this.config?.get('audioSmoothing.textureComplexity') ?? 0.88
+            );
+        }
+
+        // ── 6. SPECTRAL ROLLOFF → VOICE BRIGHTNESS ────────────────────
+        // Spectral rolloff is the frequency below which 85% of the spectral
+        // energy is concentrated. High rolloff = bright/crisp voice,
+        // low rolloff = muffled/warm voice.
+        // Typical speech range: 1000-8000 Hz.
+        const rolloffHz = raw.spectralRolloff || 0;
+        const normRolloff = Math.min(Math.max((rolloffHz - 1000) / 7000, 0), 1.0);
+        this.features.rolloff = this.smooth(
+            this.features.rolloff, normRolloff,
+            this.config?.get('audioSmoothing.rolloff') ?? 0.88
+        );
 
         // ── DIAGNOSTIC LOGGING (TEMPORARY) ───────────────────────────
         // Three-tier logging to pinpoint exactly where signal drops.

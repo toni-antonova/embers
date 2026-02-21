@@ -176,6 +176,50 @@ export const PARAM_DEFS: ParamDef[] = [
         defaultValue: 0.60, min: 0.1, max: 0.99, step: 0.01,
         group: '🟢 Audio → Flatness'
     },
+    {
+        key: 'audioInfluence.textureComplexity', label: 'Texture Influence',
+        defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
+        group: '🟢 Audio → Texture'
+    },
+    {
+        key: 'audioSmoothing.textureComplexity', label: 'Texture Smoothing',
+        defaultValue: 0.88, min: 0.1, max: 0.99, step: 0.01,
+        group: '🟢 Audio → Texture'
+    },
+    {
+        key: 'audioInfluence.rolloff', label: 'Rolloff Influence',
+        defaultValue: 1.0, min: 0.0, max: 2.0, step: 0.1,
+        group: '🟢 Audio → Rolloff'
+    },
+    {
+        key: 'audioSmoothing.rolloff', label: 'Rolloff Smoothing',
+        defaultValue: 0.88, min: 0.1, max: 0.99, step: 0.01,
+        group: '🟢 Audio → Rolloff'
+    },
+
+    // ── ⚡ AUDIO CURVE MODES ─────────────────────────────────────────
+    // Toggle between current linear mapping and Prompt-4 curve shaping.
+    // 0.0 = linear (current), 1.0 = power/smoothstep (Prompt-4)
+    {
+        key: 'energyCurveMode', label: 'Energy Curve Mode',
+        defaultValue: 0.0, min: 0.0, max: 1.0, step: 1.0,
+        group: '⚡ Curve Shaping'
+    },
+    {
+        key: 'urgencyCurveMode', label: 'Urgency Curve Mode',
+        defaultValue: 0.0, min: 0.0, max: 1.0, step: 1.0,
+        group: '⚡ Curve Shaping'
+    },
+    {
+        key: 'urgencyThresholdLow', label: 'Urgency Threshold Low',
+        defaultValue: 0.3, min: 0.0, max: 1.0, step: 0.05,
+        group: '⚡ Curve Shaping'
+    },
+    {
+        key: 'urgencyThresholdHigh', label: 'Urgency Threshold High',
+        defaultValue: 0.8, min: 0.0, max: 1.0, step: 0.05,
+        group: '⚡ Curve Shaping'
+    },
 
     // ── 🟡 POINTER INTERACTION ──────────────────────────────────────
     {

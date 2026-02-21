@@ -12,6 +12,13 @@ uniform float uEnergy;
 uniform float uTension;
 uniform float uUrgency;
 uniform float uBreathiness;
+uniform float uTextureComplexity;
+
+// Curve shaping mode uniforms
+uniform float uEnergyCurveMode;     // 0.0 = linear, 1.0 = power curve
+uniform float uUrgencyCurveMode;    // 0.0 = linear, 1.0 = smoothstep threshold
+uniform float uUrgencyThresholdLow; // Lower edge of smoothstep (default 0.3)
+uniform float uUrgencyThresholdHigh;// Upper edge of smoothstep (default 0.8)
 
 // Breathing
 uniform float uBreathingAmplitude;
@@ -187,7 +194,12 @@ void main() {
     // slider but works for ALL shapes — 1.0 = default, 0.5 = half, 2.0 = double.
     targetPosRaw *= uFormationScale;
     vec3 radialDir = normalize(targetPosRaw);
-    float energyExpansion = safeEnergy * 3.5;
+    // ── ENERGY → EXPANSION (dual-mode) ────────────────────────────
+    // Linear mode: safeEnergy * 3.5 (current, responsive)
+    // Power mode:  pow(energy, 1.5) * 3.0 (Prompt-4, quiets small values)
+    float linearExpansion = safeEnergy * 3.5;
+    float powerExpansion = pow(safeEnergy, 1.5) * 3.0;
+    float energyExpansion = mix(linearExpansion, powerExpansion, uEnergyCurveMode);
     vec3 targetPos = targetPosRaw + breathOffset + radialDir * energyExpansion;
 
     // ── BREATHINESS → Z-AXIS SPREAD ───────────────────────────────────
@@ -212,10 +224,21 @@ void main() {
     //
     // Base shimmer (0.06) is always present for organic life.
     // Urgency can push noise amplitude up to 1.8 — very visible chaos.
+    // ── URGENCY → NOISE TURBULENCE (dual-mode) ───────────────────
+    // Linear mode: safeUrgency * 1.8 (current, always responsive)
+    // Smoothstep mode: gated by threshold, mild speech has NO effect
     float baseNoise = uNoiseAmplitude * 0.25;
-    float urgencyNoise = safeUrgency * 1.8;
+    float linearUrgency = safeUrgency * 1.8;
+    float smoothstepUrgency = smoothstep(uUrgencyThresholdLow, uUrgencyThresholdHigh, safeUrgency) * 0.8;
+    float urgencyNoise = mix(linearUrgency, smoothstepUrgency, uUrgencyCurveMode);
     float abstractionNoise = uNoiseAmplitude * uAbstraction;
-    float effectiveNoiseAmp = baseNoise + urgencyNoise + abstractionNoise;
+
+    // ── TEXTURE COMPLEXITY → SECOND NOISE OCTAVE ─────────────────
+    // MFCCs capture vocal richness. High complexity = add higher-frequency
+    // noise variations so particles shimmer with more detail.
+    float textureNoise = uTextureComplexity * 0.4;
+
+    float effectiveNoiseAmp = baseNoise + urgencyNoise + abstractionNoise + textureNoise;
     vec3 noiseF = curl * effectiveNoiseAmp;
 
     // ── BREATHINESS → DRAG REDUCTION ──────────────────────────────────

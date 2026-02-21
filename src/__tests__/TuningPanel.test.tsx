@@ -45,6 +45,8 @@ function createMockAudioEngine() {
             urgency: 0,
             breathiness: 0,
             flatness: 0,
+            textureComplexity: 0,
+            rolloff: 0,
         }),
         start: vi.fn(),
         stop: vi.fn(),
@@ -135,7 +137,9 @@ describe('TuningPanel — Sliders', () => {
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
         // Each param should have a slider input with id="tuning-{key}".
+        // Curve Shaping params are rendered as custom toggles, not sliders.
         for (const def of PARAM_DEFS) {
+            if (def.group === '⚡ Curve Shaping') continue;
             const slider = document.getElementById(`tuning-${def.key}`);
             expect(slider).toBeInTheDocument();
         }
@@ -183,7 +187,9 @@ describe('TuningPanel — Sliders', () => {
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
         // Collect unique group names from PARAM_DEFS.
-        const uniqueGroups = [...new Set(PARAM_DEFS.map(d => d.group))];
+        // Exclude '⚡ Curve Shaping' — that group is rendered as custom toggles,
+        // not auto-generated sliders with section headings.
+        const uniqueGroups = [...new Set(PARAM_DEFS.map(d => d.group))].filter(g => g !== '⚡ Curve Shaping');
 
         for (const group of uniqueGroups) {
             expect(screen.getByText(group)).toBeInTheDocument();
@@ -251,6 +257,8 @@ describe('TuningPanel — Live Audio Values', () => {
             urgency: 0.3,
             breathiness: 0.1,
             flatness: 0,
+            textureComplexity: 0,
+            rolloff: 0,
         });
 
         render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);

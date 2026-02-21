@@ -68,6 +68,13 @@ export class ParticleSystem {
         this.velocityVariable.material.uniforms.uTension = { value: 0.0 };
         this.velocityVariable.material.uniforms.uUrgency = { value: 0.0 };
         this.velocityVariable.material.uniforms.uBreathiness = { value: 0.0 };
+        this.velocityVariable.material.uniforms.uTextureComplexity = { value: 0.0 };
+
+        // Curve shaping mode uniforms — toggled from sidebar
+        this.velocityVariable.material.uniforms.uEnergyCurveMode = { value: 0.0 };
+        this.velocityVariable.material.uniforms.uUrgencyCurveMode = { value: 0.0 };
+        this.velocityVariable.material.uniforms.uUrgencyThresholdLow = { value: 0.3 };
+        this.velocityVariable.material.uniforms.uUrgencyThresholdHigh = { value: 0.8 };
 
         // New Uniforms for Breathing & Interaction
         this.velocityVariable.material.uniforms.uBreathingAmplitude = { value: 0.08 };
@@ -119,7 +126,8 @@ export class ParticleSystem {
                 uAlpha: { value: 0.7 },
                 uPointSize: { value: 3.0 },
                 uColorMode: { value: 0.0 },  // 0.0 = white, 1.0 = rainbow
-                uTime: { value: 0.0 }        // For rainbow hue animation
+                uTime: { value: 0.0 },       // For rainbow hue animation
+                uRolloff: { value: 0.5 }     // Spectral rolloff → edge softness
             },
             vertexShader: renderVert,
             fragmentShader: renderFrag,
