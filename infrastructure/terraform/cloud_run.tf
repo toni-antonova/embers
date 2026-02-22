@@ -69,6 +69,19 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
         name  = "MODEL_CACHE_DIR"
         value = "/home/appuser/models"
       }
+      env {
+        name = "API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "ALLOWED_ORIGINS"
+        value = var.allowed_origins
+      }
       # Note: PORT is set automatically by Cloud Run — do not specify it here.
 
       # ── Resource Limits ──────────────────────────────────────────────────

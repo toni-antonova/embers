@@ -8,20 +8,40 @@
 from contextlib import asynccontextmanager
 
 import structlog
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
+from app.auth import APIKeyMiddleware
 from app.cache.shape_cache import ShapeCache
 from app.config import get_settings
 from app.exceptions import register_exception_handlers
 from app.logging_config import configure_logging
 from app.middleware import RequestContextMiddleware
 from app.models.registry import ModelRegistry
+from app.rate_limit import limiter
 from app.routes import debug, generate, health
 from app.services.pipeline import PipelineOrchestrator
 
 logger = structlog.get_logger(__name__)
+
+
+async def _rate_limit_exceeded_handler(
+    request: Request, exc: RateLimitExceeded
+) -> JSONResponse:
+    """Return a structured JSON 429 consistent with LumenError responses."""
+    logger.warning(
+        "rate_limit_exceeded",
+        path=request.url.path,
+        method=request.method,
+        detail=str(exc.detail),
+    )
+    return JSONResponse(
+        status_code=429,
+        content={"error": f"Rate limit exceeded: {exc.detail}"},
+    )
 
 
 @asynccontextmanager
@@ -64,6 +84,17 @@ async def lifespan(app: FastAPI):
     await cache.disconnect()
 
 
+def _parse_origins(allowed_origins: str) -> list[str]:
+    """Parse comma-separated origin string into a list.
+
+    Returns ``["*"]`` if the input is empty (development mode).
+    Strips whitespace from each origin.
+    """
+    if not allowed_origins.strip():
+        return ["*"]
+    return [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
+
+
 def create_app() -> FastAPI:
     """Application factory. Invoked by: uvicorn app.main:create_app --factory
 
@@ -81,19 +112,44 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware (outermost applied first)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # Restrict in production
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # ── Attach rate limiter to app state (required by slowapi) ───────────────
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    # ── Middleware stack ─────────────────────────────────────────────────────
+    # Starlette applies middleware in reverse order of add_middleware calls.
+    # The execution order for an incoming request is:
+    #   CORS → APIKey → RequestContext → route handler
+    #
+    # This ensures:
+    #   1. CORS handles OPTIONS preflight before auth (no API key on preflight)
+    #   2. APIKey rejects unauthenticated requests before they reach business logic
+    #   3. RequestContext logs timing and attaches request ID to all responses
+
+    # Innermost — runs last, logs timing + request ID
     app.add_middleware(RequestContextMiddleware)
 
-    # Exception handlers
+    # Middle — API key gate (disabled when api_key is empty)
+    api_key_value = settings.api_key.get_secret_value()
+    if api_key_value:
+        app.add_middleware(APIKeyMiddleware, api_key=api_key_value)
+        logger.info("api_key_auth_enabled")
+    else:
+        logger.warning("api_key_auth_disabled", reason="API_KEY env var not set")
+
+    # Outermost — CORS headers + preflight handling
+    origins = _parse_origins(settings.allowed_origins)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["POST", "GET", "OPTIONS"],
+        allow_headers=["Content-Type", "X-API-Key"],
+    )
+
+    # ── Exception handlers ───────────────────────────────────────────────────
     register_exception_handlers(app)
 
-    # Routes
+    # ── Routes ───────────────────────────────────────────────────────────────
     app.include_router(health.router, tags=["health"])
     app.include_router(generate.router, tags=["generate"])
     if settings.enable_debug_routes:

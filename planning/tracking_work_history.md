@@ -2525,3 +2525,96 @@ Also updated debug endpoint test: `assert status_code == 400` → `503` to match
 </details>
 
 </details>
+
+---
+
+<details>
+<summary><strong>44. API Key Authentication + Rate Limiting + CORS Tightening</strong></summary>
+
+**Date:** 2026-02-22
+
+<details>
+<summary><strong>Issue</strong></summary>
+
+The Cloud Run endpoint was publicly accessible with no authentication. Anyone who discovered the URL could hit `/generate` or `/debug/generate-image` and run up GPU costs. CORS was set to `allow_origins=["*"]`.
+
+</details>
+
+<details>
+<summary><strong>Solution</strong></summary>
+
+Implemented a 3-layer defense: API key middleware, rate limiting, and tightened CORS.
+
+**1. API Key Middleware** (`app/auth.py`)
+- `APIKeyMiddleware` using Starlette `BaseHTTPMiddleware` (consistent with existing `RequestContextMiddleware`)
+- Uses `secrets.compare_digest()` for constant-time comparison — prevents timing side-channel attacks
+- Exempt paths: `/health`, `/health/ready`, `/` (Cloud Run probes must work without auth)
+- Returns structured JSON 401 matching the `LumenError` response format
+- Disabled when `API_KEY` env var is empty (local dev / test environments)
+- Rejected requests logged via structlog (`auth_rejected` event)
+
+**2. Rate Limiting** (`app/rate_limit.py`, `app/routes/generate.py`)
+- `slowapi` (already a dependency) with `get_remote_address` key function
+- `/generate` endpoint capped at 60 requests/minute per IP
+- Custom 429 handler returns structured JSON (not slowapi's default plaintext)
+- Limiter extracted to `app/rate_limit.py` to avoid circular imports between `main.py` and route modules
+
+**3. CORS Tightening** (`app/main.py`)
+- `allowed_origins` config field: comma-separated string for env var compatibility
+- Empty = `["*"]` (dev), set via `ALLOWED_ORIGINS` env var in production
+- `allow_methods` restricted to `["POST", "GET", "OPTIONS"]`
+- `allow_headers` restricted to `["Content-Type", "X-API-Key"]`
+
+**4. Config** (`app/config.py`)
+- `api_key: SecretStr` — prevents leaking into logs, `repr()`, or `model_dump()`
+- `allowed_origins: str` — comma-separated CORS origins
+- `rate_limit: str` — slowapi format (default `"60/minute"`)
+
+**5. Middleware Stack Order** (`app/main.py`)
+Documented execution order: CORS → APIKey → RequestContext → route. This ensures:
+- CORS handles OPTIONS preflight before auth (preflight requests don't carry custom headers)
+- APIKey rejects unauthorized requests before they reach business logic
+- RequestContext logs timing and attaches request ID to all responses
+
+**6. Terraform** — Secret Manager integration:
+- `secrets.tf`: Secret Manager secret + version with `lifecycle { ignore_changes }` for manual key rotation
+- `main.tf`: Enabled `secretmanager.googleapis.com` API
+- `variables.tf`: Added `api_key` (sensitive) and `allowed_origins` variables
+- `cloud_run.tf`: `API_KEY` env var from Secret Manager `secret_key_ref`, `ALLOWED_ORIGINS` plain env var
+- `iam.tf`: `roles/secretmanager.secretAccessor` grant for Cloud Run SA
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `app/auth.py` | **NEW** — APIKeyMiddleware with `secrets.compare_digest` |
+| `app/rate_limit.py` | **NEW** — Extracted slowapi Limiter instance |
+| `app/config.py` | Added `api_key: SecretStr`, `allowed_origins`, `rate_limit` |
+| `app/main.py` | Rewrote middleware stack, CORS, slowapi 429 handler |
+| `app/routes/generate.py` | Added `@limiter.limit("60/minute")` + `Request` param |
+| `tests/test_auth.py` | **NEW** — 9 tests: auth enabled (7) + auth disabled (2) |
+| `terraform/secrets.tf` | **NEW** — Secret Manager secret + version |
+| `terraform/main.tf` | Added `secretmanager.googleapis.com` API |
+| `terraform/variables.tf` | Added `api_key`, `allowed_origins` variables |
+| `terraform/cloud_run.tf` | Added `API_KEY` (secret ref) + `ALLOWED_ORIGINS` env vars |
+| `terraform/iam.tf` | Added `secretmanager.secretAccessor` IAM grant |
+
+</details>
+
+<details>
+<summary><strong>Outcome</strong></summary>
+
+- Endpoint no longer publicly exploitable ✅
+- API key validated with constant-time comparison ✅
+- Rate limiting caps abuse at 60 req/min per IP ✅
+- CORS configurable per environment ✅
+- Health probes still work without auth ✅
+- Auth disabled in test/dev when `API_KEY` is unset ✅
+- Secret key never stored in Terraform state (Secret Manager reference) ✅
+
+</details>
+
+</details>

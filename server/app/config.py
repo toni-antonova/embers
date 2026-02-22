@@ -5,6 +5,7 @@
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,19 @@ class Settings(BaseSettings):
     cache_bucket: str = "lumen-shape-cache-dev"
     model_cache_dir: str = "/home/appuser/models"
     port: int = 8080
+
+    # ── Security ─────────────────────────────────────────────────────────────
+    # SecretStr prevents the key from leaking into logs, repr(), or
+    # model_dump(). Access via settings.api_key.get_secret_value().
+    # Empty string = auth disabled (local dev / test).
+    api_key: SecretStr = SecretStr("")
+
+    # Comma-separated origins for CORS (e.g. "https://app.example.com,http://localhost:5173").
+    # Empty string = allow all origins (development only).
+    allowed_origins: str = ""
+
+    # Rate limit on /generate endpoint (slowapi format, e.g. "60/minute").
+    rate_limit: str = "60/minute"
 
     # ── Feature flags ────────────────────────────────────────────────────────
     skip_model_load: bool = False  # True for testing without GPU

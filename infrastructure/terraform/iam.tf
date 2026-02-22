@@ -28,3 +28,11 @@ resource "google_artifact_registry_repository_iam_member" "docker_reader" {
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
+
+# ── Secret Manager: read API key at container startup ────────────────────────
+
+resource "google_secret_manager_secret_iam_member" "api_key_accessor" {
+  secret_id = google_secret_manager_secret.api_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}

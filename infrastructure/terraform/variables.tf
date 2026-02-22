@@ -47,3 +47,15 @@ variable "container_image" {
   type        = string
   default     = ""
 }
+
+variable "api_key" {
+  description = "API key for authenticating client requests. Set in terraform.tfvars (gitignored)."
+  type        = string
+  sensitive   = true
+}
+
+variable "allowed_origins" {
+  description = "Comma-separated CORS origins (e.g. 'https://app.example.com,http://localhost:5173'). Empty = allow all."
+  type        = string
+  default     = ""
+}
