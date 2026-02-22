@@ -34,10 +34,13 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
 
     # ── GPU-required annotations ─────────────────────────────────────────────
     annotations = {
-      "run.googleapis.com/gpu-type"          = var.gpu_type
-      "run.googleapis.com/cpu-throttling"     = "false"
-      "run.googleapis.com/startup-cpu-boost"  = "true"
+      "run.googleapis.com/gpu-type"              = var.gpu_type
+      "run.googleapis.com/cpu-throttling"         = "false"
+      "run.googleapis.com/startup-cpu-boost"      = "true"
     }
+
+    # ── Disable GPU zonal redundancy (avoids separate quota requirement) ─────
+    gpu_zonal_redundancy_disabled = true
 
     # ── Request timeout ──────────────────────────────────────────────────────
     timeout = "60s"
@@ -63,10 +66,7 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
         name  = "MODEL_CACHE_DIR"
         value = "/home/appuser/models"
       }
-      env {
-        name  = "PORT"
-        value = "8080"
-      }
+      # Note: PORT is set automatically by Cloud Run — do not specify it here.
 
       # ── Resource Limits ──────────────────────────────────────────────────
       resources {
