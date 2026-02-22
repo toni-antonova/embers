@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# IAM — Service Accounts & Role Bindings
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Cloud Run Service Account ────────────────────────────────────────────────
+
+resource "google_service_account" "cloud_run_sa" {
+  account_id   = "${var.service_name}-sa"
+  display_name = "Lumen Pipeline Cloud Run Service Account"
+  description  = "Least-privilege SA for the Lumen ML pipeline on Cloud Run"
+
+  depends_on = [google_project_service.required_apis]
+}
+
+# ── Storage: read/write cached shapes ────────────────────────────────────────
+
+resource "google_storage_bucket_iam_member" "cache_bucket_admin" {
+  bucket = google_storage_bucket.shape_cache.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
+# ── Artifact Registry: pull container images ─────────────────────────────────
+
+resource "google_artifact_registry_repository_iam_member" "docker_reader" {
+  location   = google_artifact_registry_repository.docker_repo.location
+  repository = google_artifact_registry_repository.docker_repo.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
