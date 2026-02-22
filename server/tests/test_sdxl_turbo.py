@@ -136,6 +136,24 @@ class TestSDXLTurboGenerate:
         call_kwargs = mock_pipe.call_args.kwargs
         assert call_kwargs["num_inference_steps"] == 1
 
+    def test_generate_oom_clears_cache_and_reraises(self):
+        """OOM handler should call torch.cuda.empty_cache() then re-raise."""
+        mock_pipe = _make_mock_pipeline()
+        # Simulate CUDA OOM — use a RuntimeError subclass since torch may be mocked
+        oom_error = type("OutOfMemoryError", (RuntimeError,), {})("CUDA out of memory")
+
+        # Patch torch.cuda.OutOfMemoryError to match our synthetic error class
+        mock_torch = sys.modules["torch"]
+        mock_torch.cuda.OutOfMemoryError = type(oom_error)
+        mock_pipe.side_effect = oom_error
+
+        model, _ = _create_model(mock_pipe)
+
+        with pytest.raises(type(oom_error)):
+            model.generate("a test prompt")
+
+        mock_torch.cuda.empty_cache.assert_called_once()
+
 
 # ── Prompt integration ──────────────────────────────────────────────────────
 
@@ -178,13 +196,13 @@ class TestSDXLPromptIntegration:
 class TestDebugGenerateImageEndpoint:
     """Test the POST /debug/generate-image endpoint."""
 
-    def test_returns_400_when_model_not_loaded(self, client):
-        """Should return 400 when SDXL Turbo is not loaded (test mode)."""
+    def test_returns_503_when_model_not_loaded(self, client):
+        """Should return 503 via ModelNotLoadedError when SDXL Turbo is not loaded."""
         response = client.post(
             "/debug/generate-image",
             json={"text": "horse"},
         )
-        assert response.status_code == 400
+        assert response.status_code == 503
         assert "not loaded" in response.json()["error"]
 
     def test_returns_png_when_model_loaded(self, client, mock_registry):

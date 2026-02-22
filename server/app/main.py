@@ -5,8 +5,9 @@
 # The --factory flag tells uvicorn to call create_app() for the app instance.
 # ─────────────────────────────────────────────────────────────────────────────
 
-import logging
 from contextlib import asynccontextmanager
+
+import structlog
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +21,7 @@ from app.models.registry import ModelRegistry
 from app.routes import debug, generate, health
 from app.services.pipeline import PipelineOrchestrator
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager

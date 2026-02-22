@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from app.cache.shape_cache import ShapeCache
 from app.dependencies import get_cache, get_model_registry
+from app.exceptions import ModelNotLoadedError
 from app.models.registry import ModelRegistry
 from app.pipeline.prompt_templates import get_canonical_prompt
 from app.pipeline.template_matcher import get_template
@@ -109,14 +110,10 @@ async def generate_image(
     This lets you visually verify that SDXL produces good reference
     images before wiring in the mesh generator (Prompt 04).
 
-    Returns 400 if SDXL Turbo is not loaded (e.g., skip_model_load=True).
+    Raises ModelNotLoadedError (503) if SDXL Turbo is not loaded.
     """
     if not registry.has("sdxl_turbo"):
-        return Response(
-            content='{"error": "SDXL Turbo not loaded (skip_model_load=True?)"}',
-            status_code=400,
-            media_type="application/json",
-        )
+        raise ModelNotLoadedError("sdxl_turbo")
 
     template = get_template(request.text)
     prompt = get_canonical_prompt(request.text, template.template_type)

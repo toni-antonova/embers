@@ -12,16 +12,14 @@
 # Speed: ~1 second per 512×512 image at 4 steps
 # ─────────────────────────────────────────────────────────────────────────────
 
-from __future__ import annotations
-
-import logging
 import time
 
 import PIL.Image
+import structlog
 import torch
 from diffusers import AutoPipelineForText2Image
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 _MODEL_ID = "stabilityai/sdxl-turbo"
@@ -52,10 +50,7 @@ class SDXLTurboModel:
         subsequent starts load from disk.
         """
         self._device = device
-        logger.info(
-            "sdxl_turbo_loading",
-            extra={"model_id": _MODEL_ID, "device": device},
-        )
+        logger.info("sdxl_turbo_loading", model_id=_MODEL_ID, device=device)
         t0 = time.perf_counter()
 
         self._pipe = AutoPipelineForText2Image.from_pretrained(
@@ -75,10 +70,8 @@ class SDXLTurboModel:
         )
         logger.info(
             "sdxl_turbo_loaded",
-            extra={
-                "load_time_s": round(elapsed, 2),
-                "vram_gb": round(vram_used, 2),
-            },
+            load_time_s=round(elapsed, 2),
+            vram_gb=round(vram_used, 2),
         )
 
     # ── Protocol properties ─────────────────────────────────────────────────
@@ -124,10 +117,7 @@ class SDXLTurboModel:
             )
         except torch.cuda.OutOfMemoryError:
             torch.cuda.empty_cache()
-            logger.error(
-                "sdxl_turbo_oom",
-                extra={"prompt_len": len(prompt), "steps": num_steps},
-            )
+            logger.error("sdxl_turbo_oom", prompt_len=len(prompt), steps=num_steps)
             raise
 
         image: PIL.Image.Image = result.images[0]
@@ -135,11 +125,9 @@ class SDXLTurboModel:
 
         logger.info(
             "sdxl_turbo_generated",
-            extra={
-                "prompt_len": len(prompt),
-                "steps": num_steps,
-                "size": f"{image.width}x{image.height}",
-                "time_ms": elapsed_ms,
-            },
+            prompt_len=len(prompt),
+            steps=num_steps,
+            size=f"{image.width}x{image.height}",
+            time_ms=elapsed_ms,
         )
         return image

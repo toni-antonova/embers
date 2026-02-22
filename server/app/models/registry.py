@@ -3,12 +3,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-import logging
 from typing import Any, Callable
+
+import structlog
 
 from app.config import Settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ModelRegistry:
@@ -31,10 +32,10 @@ class ModelRegistry:
         Actual model loading will be added in Prompts 03 and 04.
         """
         if self._settings.skip_model_load:
-            logger.info("SKIP_MODEL_LOAD=true — skipping model loading")
+            logger.info("skip_model_load", reason="SKIP_MODEL_LOAD=true")
             return
 
-        logger.info("Primary model loading — models will be added in subsequent prompts")
+        logger.info("primary_model_loading")
         self._log_vram()
 
     def register(self, name: str, model: Any) -> None:
@@ -42,7 +43,7 @@ class ModelRegistry:
         self._models[name] = model
         if name not in self._loaded_names:
             self._loaded_names.append(name)
-        logger.info(f"Model '{name}' registered")
+        logger.info("model_registered", model=name)
         self._log_vram()
 
     def get(self, name: str) -> Any:
@@ -54,7 +55,7 @@ class ModelRegistry:
     def get_or_load(self, name: str, factory: Callable[[], Any]) -> Any:
         """Get model, or lazy-load it using the factory if not yet loaded."""
         if name not in self._models:
-            logger.info(f"Lazy-loading model '{name}'...")
+            logger.info("lazy_loading_model", model=name)
             model = factory()
             self.register(name, model)
         return self._models[name]
@@ -81,6 +82,6 @@ class ModelRegistry:
             if torch.cuda.is_available():
                 allocated = torch.cuda.memory_allocated() / 1e9
                 total = torch.cuda.get_device_properties(0).total_mem / 1e9
-                logger.info(f"GPU VRAM: {allocated:.1f}GB / {total:.1f}GB")
+                logger.info("gpu_vram", allocated_gb=round(allocated, 1), total_gb=round(total, 1))
         except ImportError:
             pass

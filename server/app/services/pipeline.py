@@ -11,8 +11,9 @@
 
 
 import asyncio
-import logging
 import time
+
+import structlog
 
 import numpy as np
 
@@ -26,7 +27,7 @@ from app.pipeline.prompt_templates import get_canonical_prompt
 from app.pipeline.template_matcher import get_template
 from app.schemas import BoundingBox, GenerateRequest, GenerateResponse
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PipelineOrchestrator:
@@ -58,8 +59,10 @@ class PipelineOrchestrator:
         # 2. Template lookup
         template = get_template(request.text)
         logger.info(
-            f"Generating: text='{request.text}' "
-            f"template={template.template_type} parts={template.num_parts}"
+            "generating",
+            text=request.text,
+            template=template.template_type,
+            parts=template.num_parts,
         )
 
         # 3. Generate with timeout + GPU error recovery
@@ -106,8 +109,11 @@ class PipelineOrchestrator:
         await self._cache.set(request.text, response)
 
         logger.info(
-            f"Generated '{request.text}' in {elapsed}ms "
-            f"(pipeline={pipeline_used}, parts={template.num_parts})"
+            "generated",
+            text=request.text,
+            time_ms=elapsed,
+            pipeline=pipeline_used,
+            parts=template.num_parts,
         )
         return response
 
@@ -134,21 +140,22 @@ class PipelineOrchestrator:
 
         # Canonical prompt
         prompt = get_canonical_prompt(text, template.template_type)
-        logger.info(f"Canonical prompt: '{prompt}'")
+        logger.info("canonical_prompt", prompt=prompt)
 
         # ── Step 1: Image generation (SDXL Turbo) ───────────────────────────
         pipeline_used = "mock"
 
         if self._registry.has("sdxl_turbo"):
             sdxl = self._registry.get("sdxl_turbo")
-            image = sdxl.generate(prompt)
+            reference_image = sdxl.generate(prompt)
             logger.info(
-                f"SDXL image generated: {image.width}x{image.height} "
-                f"for '{text}'"
+                "sdxl_image_generated",
+                size=f"{reference_image.width}x{reference_image.height}",
+                text=text,
             )
             pipeline_used = "sdxl_turbo+mock"
-            # Image will be consumed by PartCrafter in Prompt 04.
-            # For now, we discard it and return mock geometry below.
+            # TODO(prompt-04): pass reference_image to PartCrafter for mesh generation.
+            # For now, mock geometry is returned below.
 
         # ── Step 2: Mock point cloud (replaced by mesh gen in Prompt 04) ────
         theta = rng.uniform(0, 2 * np.pi, total_points)

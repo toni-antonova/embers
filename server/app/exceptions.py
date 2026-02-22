@@ -3,12 +3,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-import logging
-
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ── Exception hierarchy ──────────────────────────────────────────────────────
@@ -69,7 +68,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(LumenError)
     async def lumen_error_handler(request: Request, exc: LumenError) -> JSONResponse:
-        logger.error(f"LumenError: {exc.message}", exc_info=exc)
+        logger.error("lumen_error", error=exc.message, error_type=type(exc).__name__, exc_info=exc)
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": exc.message, "type": type(exc).__name__},
@@ -77,7 +76,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.error(f"Unhandled error: {exc}", exc_info=True)
+        logger.error("unhandled_error", error=str(exc), exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"error": "Internal server error", "type": "UnhandledError"},

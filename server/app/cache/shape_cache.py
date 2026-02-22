@@ -9,14 +9,14 @@
 
 import asyncio
 import hashlib
-import logging
 import re
 
+import structlog
 from cachetools import LRUCache
 
 from app.schemas import GenerateResponse
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ── Stop words stripped during key normalization ─────────────────────────────
 _ARTICLES = frozenset({"a", "an", "the"})
@@ -46,7 +46,7 @@ class ShapeCache:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, self._connect_sync)
         else:
-            logger.info("No CACHE_BUCKET set — running with memory-only cache")
+            logger.info("cache_memory_only", reason="no CACHE_BUCKET set")
 
     def _connect_sync(self) -> None:
         """Synchronous Cloud Storage connection."""
@@ -55,9 +55,9 @@ class ShapeCache:
 
             self._client = storage.Client()
             self._bucket = self._client.bucket(self._bucket_name)
-            logger.info(f"Cache connected to gs://{self._bucket_name}")
+            logger.info("cache_connected", bucket=f"gs://{self._bucket_name}")
         except Exception as e:
-            logger.warning(f"Cloud Storage unavailable ({e}). Memory-only cache active.")
+            logger.warning("cache_storage_unavailable", error=str(e))
 
     async def disconnect(self) -> None:
         """Close Cloud Storage client."""
@@ -97,7 +97,7 @@ class ShapeCache:
         # Tier 1: Memory
         if key in self._memory:
             self._memory_hits += 1
-            logger.debug(f"Cache HIT (memory): '{text}' → {key}")
+            logger.debug("cache_hit", tier="memory", text=text, key=key)
             return self._memory[key]
 
         # Tier 2: Cloud Storage
@@ -107,11 +107,11 @@ class ShapeCache:
             if result is not None:
                 self._storage_hits += 1
                 self._memory[key] = result  # Promote to memory
-                logger.debug(f"Cache HIT (storage): '{text}' → {key}")
+                logger.debug("cache_hit", tier="storage", text=text, key=key)
                 return result
 
         self._misses += 1
-        logger.debug(f"Cache MISS: '{text}' → {key}")
+        logger.debug("cache_miss", text=text, key=key)
         return None
 
     def _get_from_storage(self, key: str) -> GenerateResponse | None:
@@ -121,7 +121,7 @@ class ShapeCache:
             if blob.exists():
                 return GenerateResponse.model_validate_json(blob.download_as_text())
         except Exception as e:
-            logger.warning(f"Cache read failed for {key}: {e}")
+            logger.warning("cache_read_failed", key=key, error=str(e))
         return None
 
     # ── Set ──────────────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ class ShapeCache:
                 content_type="application/json",
             )
         except Exception as e:
-            logger.warning(f"Cache write failed for {key}: {e}")
+            logger.warning("cache_write_failed", key=key, error=str(e))
 
     # ── Stats ────────────────────────────────────────────────────────────────
 
@@ -168,4 +168,4 @@ class ShapeCache:
     def clear_memory(self) -> None:
         """Clear the in-memory cache. Does not affect Cloud Storage."""
         self._memory.clear()
-        logger.info("In-memory cache cleared")
+        logger.info("cache_cleared")
