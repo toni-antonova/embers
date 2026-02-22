@@ -5,13 +5,18 @@
 # These will be used in Prompts 03/04 for step-by-step pipeline debugging.
 # ─────────────────────────────────────────────────────────────────────────────
 
+import io
 import time
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
+from pydantic import BaseModel
 
 from app.cache.shape_cache import ShapeCache
 from app.dependencies import get_cache, get_model_registry
 from app.models.registry import ModelRegistry
+from app.pipeline.prompt_templates import get_canonical_prompt
+from app.pipeline.template_matcher import get_template
 from app.schemas import HealthDetailResponse
 
 router = APIRouter()
@@ -83,3 +88,45 @@ async def cache_clear(
     """Clear the in-memory cache. Cloud Storage is not affected."""
     cache.clear_memory()
     return {"status": "cleared"}
+
+
+# ── SDXL Turbo debug endpoint ───────────────────────────────────────────────
+
+
+class GenerateImageRequest(BaseModel):
+    """Request body for the debug image generation endpoint."""
+
+    text: str
+
+
+@router.post("/generate-image")
+async def generate_image(
+    request: GenerateImageRequest,
+    registry: ModelRegistry = Depends(get_model_registry),
+) -> Response:
+    """Generate a reference image via SDXL Turbo and return as PNG.
+
+    This lets you visually verify that SDXL produces good reference
+    images before wiring in the mesh generator (Prompt 04).
+
+    Returns 400 if SDXL Turbo is not loaded (e.g., skip_model_load=True).
+    """
+    if not registry.has("sdxl_turbo"):
+        return Response(
+            content='{"error": "SDXL Turbo not loaded (skip_model_load=True?)"}',
+            status_code=400,
+            media_type="application/json",
+        )
+
+    template = get_template(request.text)
+    prompt = get_canonical_prompt(request.text, template.template_type)
+
+    sdxl = registry.get("sdxl_turbo")
+    image = sdxl.generate(prompt)
+
+    # Encode PIL image → PNG bytes
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    buf.seek(0)
+
+    return Response(content=buf.read(), media_type="image/png")

@@ -37,6 +37,13 @@ async def lifespan(app: FastAPI):
     registry = ModelRegistry(settings)
     registry.load_primary()
 
+    # Load SDXL Turbo (gated behind skip_model_load for test environments)
+    if not settings.skip_model_load:
+        from app.models.sdxl_turbo import SDXLTurboModel
+
+        sdxl = SDXLTurboModel(device="cuda")
+        registry.register("sdxl_turbo", sdxl)
+
     # Initialize cache
     cache = ShapeCache(bucket_name=settings.cache_bucket)
     await cache.connect()

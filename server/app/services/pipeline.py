@@ -123,19 +123,34 @@ class PipelineOrchestrator:
     ) -> tuple[np.ndarray, np.ndarray, str]:
         """Synchronous generation. Runs in a thread pool.
 
-        Subsequent prompts (03, 04, 10) will replace this with real
-        model inference. For now, returns a deterministic mock shape.
+        Uses SDXL Turbo for image generation when available.
+        Mesh generation (PartCrafter / Hunyuan3D) will be added in Prompt 04.
+        For now, generates a real image but returns mock point cloud data.
         """
         total_points = self._settings.max_points
 
         # Deterministic RNG so same noun → same mock shape
         rng = np.random.default_rng(hash(text) % (2**32))
 
-        # Canonical prompt (logged for debugging, used by real models later)
+        # Canonical prompt
         prompt = get_canonical_prompt(text, template.template_type)
         logger.info(f"Canonical prompt: '{prompt}'")
 
-        # Mock: noisy sphere
+        # ── Step 1: Image generation (SDXL Turbo) ───────────────────────────
+        pipeline_used = "mock"
+
+        if self._registry.has("sdxl_turbo"):
+            sdxl = self._registry.get("sdxl_turbo")
+            image = sdxl.generate(prompt)
+            logger.info(
+                f"SDXL image generated: {image.width}x{image.height} "
+                f"for '{text}'"
+            )
+            pipeline_used = "sdxl_turbo+mock"
+            # Image will be consumed by PartCrafter in Prompt 04.
+            # For now, we discard it and return mock geometry below.
+
+        # ── Step 2: Mock point cloud (replaced by mesh gen in Prompt 04) ────
         theta = rng.uniform(0, 2 * np.pi, total_points)
         phi = rng.uniform(0, np.pi, total_points)
         r = 0.8 + rng.normal(0, 0.1, total_points)
@@ -151,4 +166,4 @@ class PipelineOrchestrator:
         positions, _ = normalize_positions(positions)
         part_ids = rng.integers(0, template.num_parts, total_points).astype(np.uint8)
 
-        return positions, part_ids, "mock"
+        return positions, part_ids, pipeline_used
