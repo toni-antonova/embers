@@ -18,6 +18,7 @@ from app.logging_config import configure_logging
 from app.middleware import RequestContextMiddleware
 from app.models.registry import ModelRegistry
 from app.routes import debug, generate, health
+from app.services.pipeline import PipelineOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,13 @@ async def lifespan(app: FastAPI):
     await cache.connect()
 
     # Store in app.state — accessed via dependency functions in dependencies.py
+    # Create the pipeline orchestrator (lifecycle-managed, not per-request)
+    orchestrator = PipelineOrchestrator(registry, cache, settings)
+
     app.state.model_registry = registry
     app.state.shape_cache = cache
     app.state.settings = settings
+    app.state.pipeline_orchestrator = orchestrator
 
     yield  # App is running, serving requests
 

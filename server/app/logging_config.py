@@ -42,8 +42,15 @@ def configure_logging(log_level: str = "INFO", json_output: bool = True) -> None
         wrapper_class=structlog.stdlib.BoundLogger,
     )
 
+    # ProcessorFormatter receives pre-processed events from structlog.
+    # Only remove_processors_meta + renderer here — shared_processors already
+    # ran in structlog.configure(). Adding them again would double-process
+    # (e.g., duplicate timestamps, double log-level tags).
     formatter = structlog.stdlib.ProcessorFormatter(
-        processors=[*shared_processors, renderer],
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ],
     )
 
     handler = logging.StreamHandler(sys.stdout)

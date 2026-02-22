@@ -11,6 +11,7 @@ from fastapi import Request
 from app.cache.shape_cache import ShapeCache
 from app.config import Settings
 from app.models.registry import ModelRegistry
+from app.services.pipeline import PipelineOrchestrator
 
 
 def get_model_registry(request: Request) -> ModelRegistry:
@@ -26,3 +27,8 @@ def get_cache(request: Request) -> ShapeCache:
 def get_settings_dep(request: Request) -> Settings:
     """Inject Settings into endpoints via Depends()."""
     return request.app.state.settings
+
+
+def get_pipeline_orchestrator(request: Request) -> PipelineOrchestrator:
+    """Inject PipelineOrchestrator into endpoints via Depends()."""
+    return request.app.state.pipeline_orchestrator

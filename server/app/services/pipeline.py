@@ -73,14 +73,17 @@ class PipelineOrchestrator:
                 request.text, self._settings.generation_timeout_seconds
             )
         except Exception as e:
-            # Check for CUDA OOM
-            if "out of memory" in str(e).lower():
-                try:
-                    import torch
+            # Catch CUDA OOM directly — more precise than string matching
+            _is_oom = False
+            try:
+                import torch
 
+                if isinstance(e, torch.cuda.OutOfMemoryError):
                     torch.cuda.empty_cache()
-                except ImportError:
-                    pass
+                    _is_oom = True
+            except ImportError:
+                pass
+            if _is_oom:
                 raise GPUOutOfMemoryError() from e
             raise GenerationFailedError(request.text, str(e)) from e
 
