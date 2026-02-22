@@ -1,0 +1,50 @@
+shell: bash
+
+commands:
+  install:
+    description: Install all dependencies including dev and ml extras
+    cmd: uv sync --all-extras
+
+  test:
+    description: Run test suite
+    cmd: uv run pytest tests/ -v
+
+  test-cov:
+    description: Run tests with coverage
+    cmd: uv run pytest tests/ -v --cov=app --cov-report=term-missing
+
+  format:
+    description: Format code with ruff
+    cmd: uv run ruff format app/ tests/
+
+  lint:
+    description: Lint code with ruff
+    cmd: uv run ruff check app/ tests/
+
+  lint-fix:
+    description: Lint and auto-fix
+    cmd: uv run ruff check --fix app/ tests/
+
+  typecheck:
+    description: Run mypy type checking
+    cmd: uv run mypy app/
+
+  validate:
+    description: Run all checks (format check + lint + typecheck + test)
+    cmd: |
+      uv run ruff format --check app/ tests/
+      uv run ruff check app/ tests/
+      uv run mypy app/
+      uv run pytest tests/ -v
+
+  serve:
+    description: Run server locally with hot reload
+    cmd: uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8080 --reload
+
+  build:
+    description: Build Docker image
+    cmd: docker build -t lumen-server .
+
+  lock:
+    description: Regenerate lock file after dependency changes
+    cmd: uv lock
