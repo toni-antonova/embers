@@ -28,6 +28,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # ---- Non-root user ----
 RUN useradd -m appuser
+RUN mkdir -p /home/appuser/server && chown appuser:appuser /home/appuser/server
 USER appuser
 WORKDIR /home/appuser/server
 
