@@ -45,6 +45,7 @@
  */
 
 import { CONCRETE_NOUNS, ABSTRACT_CONCEPTS, ACTION_MODIFIERS } from '../data/keywords';
+import type { KeywordMapping } from '../data/keywords';
 import { AFINN_SUBSET, AFINN_MAX_SCORE } from '../data/sentiment';
 
 // ══════════════════════════════════════════════════════════════════════
@@ -231,5 +232,14 @@ export class KeywordClassifier implements SemanticBackend {
             dominantWord: '',          // no keyword matched
             confidence: 0.1,           // very low — almost a no-op
         };
+    }
+
+    /**
+     * Look up the full KeywordMapping for a word, including hierarchy data.
+     * Returns null if the word is not in any dictionary.
+     */
+    lookupKeyword(word: string): KeywordMapping | null {
+        const normalized = word.toLowerCase().replace(/[^a-z]/g, '');
+        return CONCRETE_NOUNS[normalized] || ABSTRACT_CONCEPTS[normalized] || null;
     }
 }

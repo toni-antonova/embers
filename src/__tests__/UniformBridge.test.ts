@@ -67,6 +67,8 @@ function createMockParticleSystem() {
     const renderUniforms = {
         uRolloff: { value: 0 },
         uColorMode: { value: 0 },
+        uTension: { value: 0 },
+        uEnergy: { value: 0 },
         uColor: {
             value: {
                 copy: vi.fn(),
@@ -74,9 +76,7 @@ function createMockParticleSystem() {
             }
         },
         uSentiment: { value: 0 },
-        uSentimentIntensity: { value: 0 },
-        uSentimentWarm: { value: { set: vi.fn() } },
-        uSentimentCool: { value: { set: vi.fn() } },
+        uEmotionalIntensity: { value: 0 },
     };
 
     return {
@@ -281,19 +281,33 @@ describe('UniformBridge — Color Mode', () => {
     });
 
     it('rainbow mode sets uColorMode to 1', () => {
-        bridge.colorMode = 'rainbow';
+        bridge.colorMode = 'color';
         bridge.update();
 
         const r = (mockParticles.particles.material as any).uniforms;
         expect(r.uColorMode.value).toBe(1.0);
     });
 
-    it('rainbow mode sets neutral white base color', () => {
-        bridge.colorMode = 'rainbow';
+    it('always sets neutral white base color (shader does tinting)', () => {
+        bridge.colorMode = 'white';
         bridge.update();
 
         const r = (mockParticles.particles.material as any).uniforms;
         expect(r.uColor.value.set).toHaveBeenCalledWith(1.0, 1.0, 1.0);
+    });
+
+    it('maps tension to render shader for warm/cool color', () => {
+        bridge.update();
+        const r = (mockParticles.particles.material as any).uniforms;
+        // tension=0.3 from mock audio engine, influence=1.0
+        expect(r.uTension.value).toBeCloseTo(0.3, 2);
+    });
+
+    it('maps energy to render shader for brightness glow', () => {
+        bridge.update();
+        const r = (mockParticles.particles.material as any).uniforms;
+        // energy=0.5 from mock audio engine, influence=1.0
+        expect(r.uEnergy.value).toBeCloseTo(0.5, 2);
     });
 });
 
@@ -304,7 +318,7 @@ describe('UniformBridge — Color Mode', () => {
 
 describe('Sentiment Color', () => {
     it('uSentiment stays 0 when sentimentEnabled is false', () => {
-        bridge.colorMode = 'rainbow';
+        bridge.colorMode = 'color';
         bridge.sentimentEnabled = false;
         bridge.sentimentOverride = 0.8;
         bridge.update();
@@ -314,18 +328,20 @@ describe('Sentiment Color', () => {
         expect(r.uSentiment.value).toBeCloseTo(0, 1);
     });
 
-    it('uSentiment stays 0 in white mode even when enabled', () => {
+    it('uSentiment works in white mode when enabled (not rainbow-only)', () => {
         bridge.colorMode = 'white';
         bridge.sentimentEnabled = true;
         bridge.sentimentOverride = 0.8;
-        bridge.update();
+        // Run several frames
+        for (let i = 0; i < 60; i++) bridge.update();
 
         const r = (mockParticles.particles.material as any).uniforms;
-        expect(r.uSentiment.value).toBeCloseTo(0, 1);
+        // Should have moved toward target since sentiment now works in both modes
+        expect(r.uSentiment.value).toBeGreaterThan(0.3);
     });
 
-    it('uSentiment moves toward override in rainbow+enabled', () => {
-        bridge.colorMode = 'rainbow';
+    it('uSentiment moves toward override when enabled', () => {
+        bridge.colorMode = 'color';
         bridge.sentimentEnabled = true;
         bridge.sentimentOverride = 0.8;
 
@@ -335,35 +351,6 @@ describe('Sentiment Color', () => {
         const r = (mockParticles.particles.material as any).uniforms;
         // Should have moved substantially toward target (0.8)
         expect(r.uSentiment.value).toBeGreaterThan(0.3);
-    });
-
-    it('pushes sentimentIntensity from config', () => {
-        bridge.colorMode = 'rainbow';
-        bridge.sentimentEnabled = true;
-        bridge.sentimentOverride = 0.5;
-        bridge.update();
-
-        const r = (mockParticles.particles.material as any).uniforms;
-        expect(r.uSentimentIntensity.value).toBe(config.get('sentimentIntensity'));
-    });
-
-    it('pushes warm/cool tint colors from config', () => {
-        bridge.colorMode = 'rainbow';
-        bridge.sentimentEnabled = true;
-        bridge.sentimentOverride = 0.5;
-        bridge.update();
-
-        const r = (mockParticles.particles.material as any).uniforms;
-        expect(r.uSentimentWarm.value.set).toHaveBeenCalledWith(
-            config.get('sentimentWarmR'),
-            config.get('sentimentWarmG'),
-            config.get('sentimentWarmB'),
-        );
-        expect(r.uSentimentCool.value.set).toHaveBeenCalledWith(
-            config.get('sentimentCoolR'),
-            config.get('sentimentCoolG'),
-            config.get('sentimentCoolB'),
-        );
     });
 });
 
@@ -390,7 +377,7 @@ describe('Word → Sentiment Color (end-to-end)', () => {
      */
     function sentimentForWord(word: string): number {
         const state = classifier.classify(word);
-        bridge.colorMode = 'rainbow';
+        bridge.colorMode = 'color';
         bridge.sentimentEnabled = true;
         bridge.sentimentOverride = state.sentiment;
 
@@ -491,7 +478,7 @@ describe('Sentiment Movement', () => {
         // Reset and test in rainbow mode — should get same result
         bridge.sentimentOverride = null;
         for (let i = 0; i < 120; i++) bridge.update();
-        bridge.colorMode = 'rainbow';
+        bridge.colorMode = 'color';
         bridge.sentimentOverride = 0.6;
         for (let i = 0; i < 60; i++) bridge.update();
         const rainbowValue = v.uSentimentMovement.value;

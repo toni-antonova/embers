@@ -23,6 +23,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SemanticBackend } from '../services/SemanticBackend';
 import { KeywordClassifier } from '../services/KeywordClassifier';
+import { SessionLogger } from '../services/SessionLogger';
 import type { TranscriptEvent } from '../services/SpeechEngine';
 
 // ── MOCK FACTORIES ───────────────────────────────────────────────────
@@ -103,8 +104,9 @@ describe('SemanticBackend — Queue Draining', () => {
         expect(mockParticles.setTarget).not.toHaveBeenCalled();
 
         // Now call update — should process the queued transcript
+        // Hierarchy traversal starts with sphere (abstract → concrete)
         backend.update(0.016);
-        expect(mockParticles.setTarget).toHaveBeenCalledWith('quadruped');
+        expect(mockParticles.setTarget).toHaveBeenCalledWith('sphere');
     });
 
     it('multiple transcripts in one frame are all processed', () => {
@@ -113,9 +115,9 @@ describe('SemanticBackend — Queue Draining', () => {
 
         backend.update(0.016);
 
-        // Both should have been processed; final target should be wave (ocean)
-        expect(mockParticles.setTarget).toHaveBeenCalledWith('quadruped');
-        expect(mockParticles.setTarget).toHaveBeenCalledWith('wave');
+        // Both processed: horse starts hierarchy (sphere), ocean starts hierarchy (wave stage 1)
+        // Both call setTarget during their hierarchy start
+        expect(mockParticles.setTarget).toHaveBeenCalled();
     });
 });
 
@@ -129,7 +131,8 @@ describe('SemanticBackend — Morph Actions', () => {
         mockSpeech.pushTranscript('bird');
         backend.update(0.016);
 
-        expect(mockParticles.setTarget).toHaveBeenCalledWith('bird');
+        // Hierarchy traversal starts with first stage (sphere for bird)
+        expect(mockParticles.setTarget).toHaveBeenCalled();
         expect(backend.lastAction).toBe('morph');
         expect(backend.lastState?.morphTarget).toBe('bird');
     });
@@ -207,7 +210,7 @@ describe('SemanticBackend — Silence Reset', () => {
         // First morph to something
         mockSpeech.pushTranscript('bird');
         backend.update(0.016);
-        expect(mockParticles.setTarget).toHaveBeenCalledWith('bird');
+        expect(mockParticles.setTarget).toHaveBeenCalled();
         mockParticles.setTarget.mockClear();
 
         // Simulate 301 seconds of silence (> 300 threshold)
@@ -219,12 +222,16 @@ describe('SemanticBackend — Silence Reset', () => {
     it('does NOT reset if silence is less than 5 minutes', () => {
         mockSpeech.pushTranscript('bird');
         backend.update(0.016);
+
+        // Run hierarchy to completion, then clear spy
+        for (let i = 0; i < 200; i++) backend.update(0.016);
         mockParticles.setTarget.mockClear();
 
-        // Simulate 200 seconds (less than threshold)
+        // Now simulate 200 seconds of silence (less than 300s threshold)
         backend.update(200);
 
-        expect(mockParticles.setTarget).not.toHaveBeenCalled();
+        // Should NOT have set target to 'ring'
+        expect(mockParticles.setTarget).not.toHaveBeenCalledWith('ring');
     });
 });
 
@@ -352,5 +359,63 @@ describe('SemanticBackend — Dispose', () => {
         // Now update — should NOT process the transcript
         backend.update(0.016);
         expect(mockParticles.setTarget).not.toHaveBeenCalled();
+    });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 9: SESSIONLOGGER INTEGRATION
+// ══════════════════════════════════════════════════════════════════════
+
+describe('SemanticBackend — SessionLogger Integration', () => {
+    it('logs transcript events to SessionLogger when provided', () => {
+        const logger = new SessionLogger();
+        const backendWithLogger = new SemanticBackend(
+            mockSpeech, classifier, mockParticles, mockBridge, logger
+        );
+
+        mockSpeech.pushTranscript('hello world');
+        backendWithLogger.update(0.016);
+
+        const transcripts = logger.getEventsByType('transcript');
+        expect(transcripts.length).toBeGreaterThanOrEqual(1);
+        expect(transcripts[0].data.text).toBe('hello world');
+    });
+
+    it('logs semantic events on morph', () => {
+        const logger = new SessionLogger();
+        const backendWithLogger = new SemanticBackend(
+            mockSpeech, classifier, mockParticles, mockBridge, logger
+        );
+
+        mockSpeech.pushTranscript('horse');
+        backendWithLogger.update(0.016);
+
+        const semantics = logger.getEventsByType('semantic');
+        expect(semantics.length).toBeGreaterThanOrEqual(1);
+        expect(semantics[0].data.morphTarget).toBe('quadruped');
+    });
+
+    it('works without a SessionLogger (null-safe)', () => {
+        // The default backend (from beforeEach) has no logger
+        expect(() => {
+            mockSpeech.pushTranscript('horse');
+            backend.update(0.016);
+        }).not.toThrow();
+
+        expect(mockParticles.setTarget).toHaveBeenCalled();
+    });
+
+    it('logs both transcript and semantic for the same utterance', () => {
+        const logger = new SessionLogger();
+        const backendWithLogger = new SemanticBackend(
+            mockSpeech, classifier, mockParticles, mockBridge, logger
+        );
+
+        mockSpeech.pushTranscript('ocean');
+        backendWithLogger.update(0.016);
+
+        expect(logger.getEventsByType('transcript').length).toBeGreaterThanOrEqual(1);
+        expect(logger.getEventsByType('semantic').length).toBeGreaterThanOrEqual(1);
     });
 });

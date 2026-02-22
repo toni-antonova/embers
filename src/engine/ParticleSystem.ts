@@ -129,13 +129,13 @@ export class ParticleSystem {
                 uColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
                 uAlpha: { value: 0.7 },
                 uPointSize: { value: 3.0 },
-                uColorMode: { value: 0.0 },  // 0.0 = white, 1.0 = rainbow
-                uTime: { value: 0.0 },       // For rainbow hue animation
+                uColorMode: { value: 0.0 },  // 0.0 = white, 1.0 = color (sentiment)
+                uTime: { value: 0.0 },       // For subtle hue animation
                 uRolloff: { value: 0.5 },    // Spectral rolloff → edge softness
-                uSentiment: { value: 0.0 },           // Sentiment color shift (−1 to +1)
-                uSentimentIntensity: { value: 0.0 },   // Boldness of sentiment shift (0–1)
-                uSentimentWarm: { value: new THREE.Vector3(1.0, 0.75, 0.3) },   // Golden amber
-                uSentimentCool: { value: new THREE.Vector3(0.3, 0.5, 1.0) },    // Ocean blue
+                uTension: { value: 0.0 },    // Spectral centroid → warm/cool color
+                uEnergy: { value: 0.0 },      // RMS → brightness boost
+                uSentiment: { value: 0.0 },   // Sentiment color shift (−1 to +1)
+                uEmotionalIntensity: { value: 0.0 }, // Emotional intensity (0=sad, 1=angry)
             },
             vertexShader: renderVert,
             fragmentShader: renderFrag,

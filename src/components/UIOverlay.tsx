@@ -23,7 +23,7 @@
  *   the CSS fade-in animation on each new result
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
 import { SpeechEngine } from '../services/SpeechEngine';
 
@@ -36,10 +36,8 @@ interface UIOverlayProps {
 export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
-    const [features, setFeatures] = useState(audioEngine.getFeatures());
     const [denied, setDenied] = useState(false);
     const deniedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const rafRef = useRef<number>(0);
 
     // Text-input fallback state (only used when Web Speech API is unavailable).
     const [fallbackText, setFallbackText] = useState('');
@@ -70,18 +68,7 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
         }
     };
 
-    // ── AUDIO FEATURE POLLING ────────────────────────────────────────
-    // Poll features at display refresh rate for the debug bars.
-    useEffect(() => {
-        const loop = () => {
-            if (isListening) {
-                setFeatures({ ...audioEngine.getFeatures() });
-            }
-            rafRef.current = requestAnimationFrame(loop);
-        };
-        loop();
-        return () => cancelAnimationFrame(rafRef.current!);
-    }, [audioEngine, isListening]);
+
 
     // ── TEXT FALLBACK SUBMIT ─────────────────────────────────────────
     // Handles Enter key and button click for the text-input fallback.
@@ -94,25 +81,6 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
     // ── RENDER ────────────────────────────────────────────────────────
     return (
         <div className="ui-overlay">
-            {/* ── DEBUG BARS ───────────────────────────────────────── */}
-            <div className="debug-panel">
-                <div className="debug-row">
-                    <span>Energy</span>
-                    <div className="debug-bar"><div className="debug-fill" style={{ width: `${features.energy * 100}%` }}></div></div>
-                </div>
-                <div className="debug-row">
-                    <span>Tension</span>
-                    <div className="debug-bar"><div className="debug-fill" style={{ width: `${features.tension * 100}%` }}></div></div>
-                </div>
-                <div className="debug-row">
-                    <span>Urgency</span>
-                    <div className="debug-bar"><div className="debug-fill" style={{ width: `${features.urgency * 100}%` }}></div></div>
-                </div>
-                <div className="debug-row">
-                    <span>Breath</span>
-                    <div className="debug-bar"><div className="debug-fill" style={{ width: `${features.breathiness * 100}%` }}></div></div>
-                </div>
-            </div>
 
             {/* ── MIC BUTTON ──────────────────────────────────────── */}
             <button

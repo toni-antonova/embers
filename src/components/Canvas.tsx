@@ -12,6 +12,9 @@ import type { SemanticEvent } from '../services/SemanticBackend';
 import { UIOverlay } from './UIOverlay';
 import { TuningPanel } from './TuningPanel';
 import type { CameraType, ColorMode } from './TuningPanel';
+import { WorkspaceEngine } from '../engine/WorkspaceEngine';
+import { AnalysisPanel } from './AnalysisPanel';
+import { SessionLogger } from '../services/SessionLogger';
 
 export function Canvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,12 +46,12 @@ export function Canvas() {
     // Lives in React state so TuningPanel dropdown stays in sync.
     const [cameraType, setCameraType] = useState<CameraType>('orthographic');
 
-    // Color mode — white (default) or rainbow.
+    // Color mode — white (default) or color (sentiment-driven).
     // Lives in React state so TuningPanel dropdown stays in sync.
     // Also pushed to UniformBridge.colorMode every frame.
     const [colorMode, setColorMode] = useState<ColorMode>('white');
 
-    // Sentiment-driven color toggle — only active in rainbow mode.
+    // Sentiment-driven color toggle — only active in color mode.
     // When enabled, speech sentiment shifts particle colors warm/cool.
     const [sentimentEnabled, setSentimentEnabled] = useState(false);
 
@@ -93,6 +96,19 @@ export function Canvas() {
     }
     const classifier = classifierRef.current;
 
+    // WorkspaceEngine singleton — tracks cognitive state.
+    const workspaceEngineRef = useRef<WorkspaceEngine | null>(null);
+    if (!workspaceEngineRef.current) {
+        workspaceEngineRef.current = new WorkspaceEngine();
+    }
+    const workspaceEngine = workspaceEngineRef.current;
+
+    // SessionLogger singleton — records timestamped events for post-hoc analysis.
+    const sessionLoggerRef = useRef<SessionLogger | null>(null);
+    if (!sessionLoggerRef.current) {
+        sessionLoggerRef.current = new SessionLogger();
+    }
+
     // SemanticBackend ref — created inside useEffect after ParticleSystem exists.
     const semanticBackendRef = useRef<SemanticBackend | null>(null);
 
@@ -115,6 +131,11 @@ export function Canvas() {
                 if (log.length > 0) {
                     setLastSemanticEvent(log[log.length - 1]);
                 }
+            }
+
+            // Register speech event in WorkspaceEngine to reset idle state
+            if (workspaceEngineRef.current) {
+                workspaceEngineRef.current.registerSpeech();
             }
         });
         return unsub;
@@ -196,13 +217,13 @@ export function Canvas() {
 
         // ── UNIFORM BRIDGE ────────────────────────────────────────────────────
         // Pass TuningConfig so UniformBridge can apply influence multipliers.
-        const uniformBridge = new UniformBridge(audioEngine, particles, tuningConfig);
+        const uniformBridge = new UniformBridge(audioEngine, particles, tuningConfig, workspaceEngine);
         uniformBridgeRef.current = uniformBridge;
 
         // ── SEMANTIC BACKEND ──────────────────────────────────────────
         // Wires Speech → Classification → Morph pipeline.
         const semanticBackend = new SemanticBackend(
-            speechEngine, classifier, particles, uniformBridge
+            speechEngine, classifier, particles, uniformBridge, sessionLoggerRef.current
         );
         semanticBackendRef.current = semanticBackend;
 
@@ -286,12 +307,46 @@ export function Canvas() {
         const planeZ = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
         const targetVec = new THREE.Vector3();
 
+        // Accumulators for periodic session logging
+        let logAudioAccum = 0;
+        let logWorkspaceAccum = 0;
+
         const animate = () => {
             animationFrameIdRef.current = requestAnimationFrame(animate);
 
             const now = performance.now();
             const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
+
+            // ── SESSION LOGGER: periodic audio (200ms) & workspace (500ms) ───
+            logAudioAccum += dt;
+            logWorkspaceAccum += dt;
+            if (logAudioAccum >= 0.2) {
+                logAudioAccum = 0;
+                const f = audioEngine.getFeatures();
+                sessionLoggerRef.current?.log('audio', {
+                    energy: f.energy, tension: f.tension, urgency: f.urgency,
+                    breathiness: f.breathiness, flatness: f.flatness,
+                });
+            }
+            if (logWorkspaceAccum >= 0.5) {
+                logWorkspaceAccum = 0;
+                const ws = workspaceEngineRef.current?.getState();
+                if (ws) {
+                    sessionLoggerRef.current?.log('workspace', {
+                        coherence: ws.coherence, entropy: ws.entropy, arousal: ws.arousal,
+                        abstractionLevel: ws.abstractionLevel, dominantConcept: ws.dominantConcept,
+                        timeSinceLastUtterance: ws.timeSinceLastUtterance,
+                    });
+                }
+            }
+
+            // WorkspaceEngine updates system's cognitive state metrics
+            workspaceEngineRef.current?.update(
+                dt,
+                audioEngine.getFeatures(),
+                semanticBackendRef.current?.lastState || null
+            );
 
             // Semantic pipeline runs first — it may set abstraction/noise overrides
             // that UniformBridge needs to apply in the same frame.
@@ -440,6 +495,14 @@ export function Canvas() {
                         uniformBridgeRef.current.resetToIdle();
                     }
                 }}
+            />
+            <AnalysisPanel
+                audioEngine={audioEngineRef.current}
+                workspaceEngine={workspaceEngineRef.current}
+                semanticBackend={semanticBackendRef.current}
+                particleSystem={particleSystemRef.current}
+                lastTranscript={lastTranscript}
+                sessionLogger={sessionLoggerRef.current}
             />
         </div>
     );

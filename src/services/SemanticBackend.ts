@@ -43,8 +43,10 @@ import { SpeechEngine } from './SpeechEngine';
 import type { TranscriptEvent } from './SpeechEngine';
 import { KeywordClassifier } from './KeywordClassifier';
 import type { SemanticState } from './KeywordClassifier';
+import type { KeywordMapping } from '../data/keywords';
 import { ParticleSystem } from '../engine/ParticleSystem';
 import { UniformBridge } from '../engine/UniformBridge';
+import type { SessionLogger } from './SessionLogger';
 
 // ── SEMANTIC EVENT LOG ───────────────────────────────────────────────
 // Every semantic decision is logged for session replay / debugging.
@@ -68,12 +70,17 @@ const ABSTRACTION_DRIFT_RATE = 0.05;   // Rate abstraction rises when no keyword
 const IDLE_ABSTRACTION_RISE = 0.002;   // Rate abstraction drifts up during silence reset
 const DEFAULT_SHAPE = 'ring';
 
+// Hierarchy traversal stage timing (seconds)
+const HIERARCHY_STAGE_DELAYS = [0.0, 0.5, 1.5]; // T+0s, T+0.5s, T+1.5s
+const HIERARCHY_ABSTRACTIONS = [0.9, 0.5];       // Stages 0 and 1 use these; stage 2 uses the keyword's own
+
 export class SemanticBackend {
     // ── DEPENDENCIES ─────────────────────────────────────────────────
     private speechEngine: SpeechEngine;
     private classifier: KeywordClassifier;
     private particleSystem: ParticleSystem;
     private uniformBridge: UniformBridge;
+    private sessionLogger: SessionLogger | null;
 
     // ── STATE ────────────────────────────────────────────────────────
     private currentTarget: string = DEFAULT_SHAPE;
@@ -106,16 +113,26 @@ export class SemanticBackend {
     private _lastState: SemanticState | null = null;
     private _lastAction: string = '';
 
+    // ── HIERARCHY TRAVERSAL STATE ─────────────────────────────────────
+    private hierarchyActive: boolean = false;
+    private hierarchyElapsed: number = 0;
+    private hierarchyStageIndex: number = 0;
+    private hierarchyMapping: KeywordMapping | null = null;
+    private hierarchyFinalAbstraction: number = 0.5;
+    private _hierarchyLabel: string = '';
+
     constructor(
         speechEngine: SpeechEngine,
         classifier: KeywordClassifier,
         particleSystem: ParticleSystem,
         uniformBridge: UniformBridge,
+        sessionLogger?: SessionLogger | null,
     ) {
         this.speechEngine = speechEngine;
         this.classifier = classifier;
         this.particleSystem = particleSystem;
         this.uniformBridge = uniformBridge;
+        this.sessionLogger = sessionLogger || null;
 
         // Subscribe to transcript events — callback only queues, never mutates state
         this.unsubscribe = this.speechEngine.onTranscript(
@@ -183,8 +200,44 @@ export class SemanticBackend {
 
             if (this.loosenTimer <= 0) {
                 this.isLoosening = false;
-                this.uniformBridge.noiseOverride = null; // Return to config value
+                this.uniformBridge.noiseOverride = null;
                 console.log('[SemanticBackend] Loosening complete');
+            }
+        }
+
+        // ── HIERARCHY TRAVERSAL TICK ──────────────────────────────────
+        if (this.hierarchyActive && this.hierarchyMapping) {
+            this.hierarchyElapsed += dt;
+
+            while (
+                this.hierarchyStageIndex < 3 &&
+                this.hierarchyElapsed >= HIERARCHY_STAGE_DELAYS[this.hierarchyStageIndex]
+            ) {
+                const stage = this.hierarchyStageIndex;
+                const mapping = this.hierarchyMapping;
+
+                const stageTarget = mapping.hierarchy[stage];
+                if (stageTarget !== this.currentTarget) {
+                    this.currentTarget = stageTarget;
+                    this.particleSystem.setTarget(stageTarget);
+                    console.log(
+                        `[SemanticBackend] \u2728 Hierarchy stage ${stage}: ${stageTarget} ` +
+                        `(label="${mapping.hierarchyLabels[stage]}")`
+                    );
+                }
+
+                if (stage < 2) {
+                    this.targetAbstraction = HIERARCHY_ABSTRACTIONS[stage];
+                } else {
+                    this.targetAbstraction = this.hierarchyFinalAbstraction;
+                }
+
+                this._hierarchyLabel = mapping.hierarchyLabels[stage];
+                this.hierarchyStageIndex++;
+            }
+
+            if (this.hierarchyStageIndex >= 3) {
+                this.hierarchyActive = false;
             }
         }
     }
@@ -218,6 +271,13 @@ export class SemanticBackend {
     }
 
     /**
+     * Get current hierarchy label (for ghost transcript / analysis panel).
+     */
+    get hierarchyLabel(): string {
+        return this._hierarchyLabel;
+    }
+
+    /**
      * Clean up subscriptions.
      */
     dispose(): void {
@@ -230,6 +290,7 @@ export class SemanticBackend {
         this.uniformBridge.abstractionOverride = null;
         this.uniformBridge.noiseOverride = null;
         this.uniformBridge.sentimentOverride = null;
+        this.uniformBridge.emotionalIntensityOverride = null;
         console.log('[SemanticBackend] Disposed');
     }
 
@@ -264,6 +325,9 @@ export class SemanticBackend {
         // Reset silence timer on ANY transcript (interim or final)
         this.timeSinceLastUtterance = 0;
 
+        // Log transcript event
+        this.sessionLogger?.log('transcript', { text: event.text, isFinal: event.isFinal });
+
         if (state.confidence > threshold) {
             // ── INTERIM DEBOUNCE ─────────────────────────────────────
             // Interim results can fire 3-4x/sec with fluctuating confidence.
@@ -297,6 +361,7 @@ export class SemanticBackend {
 
             // Still push sentiment — emotional context applies even without a morph
             this.uniformBridge.sentimentOverride = state.sentiment;
+            this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
 
             if (event.isFinal) {
                 this.logEvent(event.text, state, 'hold');
@@ -317,37 +382,58 @@ export class SemanticBackend {
      * saying "horse ocean" rapidly) create fluid redirects, not jarring snaps.
      */
     private applyMorph(state: SemanticState, text: string): void {
-        // Only change target if it's different from current
-        if (state.morphTarget !== this.currentTarget) {
-            this.currentTarget = state.morphTarget;
-            this.particleSystem.setTarget(state.morphTarget);
+        const mapping = this.classifier.lookupKeyword(state.dominantWord);
+
+        if (mapping) {
+            // Start hierarchy traversal (overwrites any in-progress one)
+            this.hierarchyActive = true;
+            this.hierarchyElapsed = 0;
+            this.hierarchyStageIndex = 0;
+            this.hierarchyMapping = mapping;
+            this.hierarchyFinalAbstraction = state.abstractionLevel;
+            this._hierarchyLabel = mapping.hierarchyLabels[0];
+
+            if (state.emotionalIntensity > 0.5) {
+                this.hierarchyFinalAbstraction = Math.max(0.0,
+                    this.hierarchyFinalAbstraction - (state.emotionalIntensity - 0.5) * 0.3
+                );
+            }
+
             console.log(
-                `[SemanticBackend] 🎯 MORPH → "${state.morphTarget}" ` +
-                `(word="${state.dominantWord}", conf=${state.confidence.toFixed(2)})`
+                `[SemanticBackend] \ud83c\udfaf HIERARCHY START \u2192 "${state.morphTarget}" ` +
+                `(word="${state.dominantWord}", stages=${mapping.hierarchy.join('\u2192')})`
             );
-        }
+        } else {
+            // Fallback: no mapping found, direct morph
+            if (state.morphTarget !== this.currentTarget) {
+                this.currentTarget = state.morphTarget;
+                this.particleSystem.setTarget(state.morphTarget);
+            }
+            this.targetAbstraction = state.abstractionLevel;
 
-        // Animate abstraction toward the classification's level.
-        // Concrete nouns → low abstraction (solid shape).
-        // Abstract concepts → higher abstraction (more fluid).
-        this.targetAbstraction = state.abstractionLevel;
-
-        // Feed emotional intensity back — high emotion = lower abstraction
-        // (more "crystallized", sharper movements).
-        if (state.emotionalIntensity > 0.5) {
-            this.targetAbstraction = Math.max(0.0,
-                this.targetAbstraction - (state.emotionalIntensity - 0.5) * 0.3
-            );
+            if (state.emotionalIntensity > 0.5) {
+                this.targetAbstraction = Math.max(0.0,
+                    this.targetAbstraction - (state.emotionalIntensity - 0.5) * 0.3
+                );
+            }
         }
 
         this._lastState = state;
         this._lastAction = 'morph';
         this.lastMorphTime = Date.now();
 
-        // Push sentiment for color shifting (warm/cool tint in rainbow mode)
         this.uniformBridge.sentimentOverride = state.sentiment;
-
+        this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
         this.logEvent(text, state, 'morph');
+
+        // Log semantic event
+        this.sessionLogger?.log('semantic', {
+            dominantWord: state.dominantWord,
+            morphTarget: state.morphTarget,
+            abstractionLevel: state.abstractionLevel,
+            sentiment: state.sentiment,
+            confidence: state.confidence,
+        });
     }
 
     /**

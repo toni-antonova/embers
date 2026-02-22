@@ -52,7 +52,7 @@ describe('TuningConfig — Default Values', () => {
         // Spot-check a few known defaults.
         expect(config.getDefault('pointSize')).toBe(3.0);
         expect(config.getDefault('springK')).toBe(1.5);
-        expect(config.getDefault('drag')).toBe(2.5);
+        expect(config.getDefault('drag')).toBe(3.5);
     });
 
     it('getDefault() returns 0 for unknown keys', () => {
@@ -169,7 +169,7 @@ describe('TuningConfig — Reset', () => {
         // All values should be back to defaults.
         expect(config.get('pointSize')).toBe(3.0);
         expect(config.get('springK')).toBe(1.5);
-        expect(config.get('drag')).toBe(2.5);
+        expect(config.get('drag')).toBe(3.5);
     });
 
     it('resetAll() notifies listeners for each parameter', () => {

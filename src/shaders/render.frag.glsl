@@ -11,26 +11,30 @@
 // This makes particles look like luminous points rather than hard discs.
 //
 // COLOR MODES:
-// - White: particles use uColor (set by UniformBridge, subtle tension tint)
-// - Rainbow: particles cycle through HSL hues based on time + UV position,
-//   giving each particle a unique hue that shifts over time.
+//   White (0): Subtle tension-driven warm↔cool tint on white base.
+//   Color (1): Sentiment-driven monotone coloring.
+//     - Happy (positive sentiment)     → yellow-orange
+//     - Sad   (negative, low intensity) → blue
+//     - Angry (negative, high intensity)→ red
+//     - Neutral                         → soft warm white
+//     Base hue shifts with per-particle variation for organic feel.
 // ═══════════════════════════════════════════════════════════════════════
 
-uniform vec3 uColor;        // Base particle color (set by UniformBridge)
+uniform vec3 uColor;        // Base particle color (fallback)
 uniform float uAlpha;       // Overall opacity multiplier
-uniform float uColorMode;   // 0.0 = white/tension, 1.0 = rainbow
-uniform float uTime;        // Animation time for rainbow cycling
+uniform float uColorMode;   // 0.0 = white/tension, 1.0 = color (sentiment)
+uniform float uTime;        // Animation time for subtle hue drift
 uniform float uRolloff;     // Spectral rolloff → edge softness (0=soft, 1=crisp)
-uniform float uSentiment;          // −1 (negative) → +1 (positive), smoothed by UniformBridge
-uniform float uSentimentIntensity; // 0 = muted (no shift), 1 = bold (strong shift)
-uniform vec3 uSentimentWarm;       // Positive sentiment tint color (from config)
-uniform vec3 uSentimentCool;       // Negative sentiment tint color (from config)
+
+// Color channel uniforms
+uniform float uTension;     // 0–1, from spectral centroid (0=relaxed, 1=tense)
+uniform float uSentiment;   // −1 to +1, from keyword classifier
+uniform float uEnergy;      // 0–1, from RMS
+uniform float uEmotionalIntensity; // 0–1, from classifier (high = angry, low = sad)
 
 varying vec2 vUV;           // Per-particle UV from vertex shader
 
 // ── HSL → RGB CONVERSION ─────────────────────────────────────────────
-// Standard HSL to RGB, needed because GLSL only works in RGB space.
-// H, S, L are all in [0, 1] range.
 vec3 hsl2rgb(float h, float s, float l) {
     float c = (1.0 - abs(2.0 * l - 1.0)) * s;
     float hp = h * 6.0;
@@ -56,50 +60,72 @@ void main() {
     if (dist > 0.5) discard;
 
     // ── ROLLOFF → EDGE SOFTNESS ───────────────────────────────────
-    // High rolloff (bright/crisp voice) = tight core, sharp edges
-    // Low rolloff (muffled/warm voice) = diffuse glow, soft edges
     float edgeSoftness = mix(0.45, 0.15, uRolloff);
-
-    // Core: bright center, fades by edge softness from center
     float core = 1.0 - smoothstep(0.0, edgeSoftness, dist);
-
-    // Glow: wider halo, fades from edge softness to 0.5
     float glow = 1.0 - smoothstep(edgeSoftness * 0.67, 0.5, dist);
-
-    // Combine: core contributes 80% brightness, glow 40%
     float alpha = (core * 0.8 + glow * 0.4) * uAlpha;
-
-    // Discard nearly-invisible fragments for performance
     if (alpha < 0.01) discard;
 
-    // ── COLOR SELECTION ───────────────────────────────────────────
+    // ── COLOR SYSTEM ──────────────────────────────────────────────
     vec3 finalColor;
-    if (uColorMode > 0.5) {
-        // RAINBOW MODE: each particle gets a unique hue based on its UV
-        // position (angle around the formation), shifting over time.
-        // - vUV.x + vUV.y creates angular variation across the grid
-        // - uTime * 0.15 makes the rainbow slowly rotate
-        // - Saturation 0.85 and lightness 0.6 give vivid, bright colors
-        float hue = fract(vUV.x + vUV.y * 0.5 + uTime * 0.15);
-        finalColor = hsl2rgb(hue, 0.85, 0.6);
 
-        // ── SENTIMENT OVERLAY (warm/cool color shift) ──────────────
-        // When uSentiment > 0: blend toward warm tint (golden glow)
-        // When uSentiment < 0: blend toward cool tint (blue tinge)
-        // uSentimentIntensity controls boldness: 0 = muted, 1 = strong
-        // Mix blend both tints and adds luminance — much more visible
-        // than multiply, which can only darken.
+    if (uColorMode > 0.5) {
+        // ── COLOR MODE: Sentiment-driven monotone coloring ────────
+        //
+        // Determine the emotional hue:
+        //   Happy  (sentiment > 0):  hue ~0.10 (yellow-orange)
+        //   Sad    (sentiment < 0, low intensity):  hue ~0.60 (blue)
+        //   Angry  (sentiment < 0, high intensity): hue ~0.00 (red)
+        //   Neutral: hue ~0.08 (warm white-ish)
+
         float sentAbs = abs(uSentiment);
-        vec3 tint = uSentiment > 0.0 ? uSentimentWarm : uSentimentCool;
-        vec3 tinted = tint * finalColor + tint * 0.3;
-        finalColor = mix(finalColor, tinted, sentAbs * uSentimentIntensity);
+        float hue;
+        float sat;
+        float lit;
+
+        if (uSentiment > 0.05) {
+            // HAPPY: yellow-orange
+            hue = 0.10;  // ~36° yellow-orange
+            sat = 0.7 * sentAbs;
+            lit = 0.65 + sentAbs * 0.1;
+        } else if (uSentiment < -0.05) {
+            // NEGATIVE: blend between blue (sad) and red (angry) by intensity
+            float sadHue = 0.60;   // 216° blue
+            float angryHue = 0.0;  // 0° red
+            hue = mix(sadHue, angryHue, uEmotionalIntensity);
+            sat = 0.6 * sentAbs;
+            lit = 0.55 + sentAbs * 0.1;
+        } else {
+            // NEUTRAL: soft warm white
+            hue = 0.08;
+            sat = 0.05;
+            lit = 0.75;
+        }
+
+        // Per-particle hue variation for organic feel (very subtle ±0.03)
+        float hueVariation = (vUV.x * 0.37 + vUV.y * 0.23 + uTime * 0.02);
+        hue += (fract(hueVariation) - 0.5) * 0.06;
+
+        finalColor = hsl2rgb(fract(hue), sat, lit);
     } else {
-        // WHITE MODE: use uColor from UniformBridge (tension-tinted white)
-        finalColor = uColor;
+        // ── WHITE MODE: tension-driven warm ↔ cool baseline ───────
+        vec3 warmBase = vec3(1.0, 0.95, 0.88);    // slightly golden
+        vec3 coolBase = vec3(0.88, 0.93, 1.0);     // slightly icy
+        finalColor = mix(warmBase, coolBase, uTension);
+
+        // Subtle sentiment overlay in white mode too (max 15%)
+        float sentStrength = abs(uSentiment) * 0.15;
+        vec3 sentShift = uSentiment > 0.0
+            ? vec3(1.0, 0.97, 0.9)    // positive = warm
+            : vec3(0.9, 0.93, 1.0);   // negative = cool
+        finalColor = mix(finalColor, sentShift, sentStrength);
     }
 
-    // Color modulation: core area is full brightness (core*0.5+0.5),
-    // outer glow area is dimmer. This gives a natural light falloff.
+    // ── ENERGY GLOW (both modes) ──────────────────────────────────
+    // Louder voice = brighter particles (up to 30% boost)
+    float energyGlow = 1.0 + uEnergy * 0.3;
+    finalColor *= energyGlow;
+
+    // Color modulation: core area full brightness, outer glow dimmer
     gl_FragColor = vec4(finalColor * (core * 0.5 + 0.5), alpha);
 }
-

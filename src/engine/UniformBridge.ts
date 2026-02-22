@@ -2,6 +2,7 @@ import { AudioEngine } from '../services/AudioEngine';
 import { ParticleSystem } from './ParticleSystem';
 import { TuningConfig } from '../services/TuningConfig';
 import * as THREE from 'three';
+import { WorkspaceEngine } from './WorkspaceEngine';
 
 /**
  * UniformBridge — Connects audio analysis to particle visuals.
@@ -18,7 +19,7 @@ import * as THREE from 'three';
  * 4. Writes them into the velocity shader uniforms
  * 5. Derives visual properties like color from the features
  */
-export type ColorMode = 'white' | 'rainbow';
+export type ColorMode = 'white' | 'color';
 
 export class UniformBridge {
     audioEngine: AudioEngine;
@@ -30,23 +31,26 @@ export class UniformBridge {
     private config: TuningConfig;
 
     // Color mode — controls whether particles are white (with subtle tension
-    // tint) or cycling through rainbow hues. Set from TuningPanel via Canvas.
+    // tint) or sentiment-driven monotone coloring. Set from TuningPanel via Canvas.
     colorMode: ColorMode = 'white';
 
     // Idle mode — when true, all audio features are zeroed and
     // particles return to a calm baseline state (shape, speed 1, white).
     idleMode = false;
 
-    // ── SEMANTIC OVERRIDES ────────────────────────────────────────
     // SemanticBackend sets these to inject abstraction/noise/sentiment
     // values into the shader pipeline. When non-null, they override
     // the values that would normally come from TuningConfig.
     abstractionOverride: number | null = null;
     noiseOverride: number | null = null;
     sentimentOverride: number | null = null;
+    emotionalIntensityOverride: number | null = null;
+
+    // WorkspaceEngine reference exposes system's cognitive state metrics
+    workspaceEngine: WorkspaceEngine | null = null;
 
     // ── SENTIMENT STATE ──────────────────────────────────────────
-    // Toggled from the TuningPanel checkbox (rainbow mode only).
+    // Toggled from the TuningPanel checkbox (color mode only).
     sentimentEnabled = false;
 
     // Sentiment-driven movement toggle — works in ANY color mode.
@@ -58,15 +62,14 @@ export class UniformBridge {
 
     // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
     // Logs the actual uniform values being sent to the shader every ~0.5s.
-    // This is the final checkpoint: if [SMOOTH] shows nonzero but
-    // [UNIFORMS] shows zero, the bug is in UniformBridge.
     private logCounter = 0;
     private logInterval = 30; // ~0.5s at 60fps
 
-    constructor(audioEngine: AudioEngine, particleSystem: ParticleSystem, config: TuningConfig) {
+    constructor(audioEngine: AudioEngine, particleSystem: ParticleSystem, config: TuningConfig, workspaceEngine?: WorkspaceEngine) {
         this.audioEngine = audioEngine;
         this.particleSystem = particleSystem;
         this.config = config;
+        this.workspaceEngine = workspaceEngine || null;
     }
 
     /**
@@ -141,15 +144,25 @@ export class UniformBridge {
         // Spectral rolloff controls particle edge softness/crispness.
         renderUniforms.uRolloff.value = Math.max(0, Math.min(1, rolloff));
 
-        // ── SEMANTIC OVERRIDES → SHADER UNIFORMS ──────────────────────
-        // SemanticBackend drives abstraction level (temporal crystallization)
-        // and noise amplitude (loosening effect). When overrides are set,
-        // they take precedence over TuningConfig values.
+        // ── TENSION + ENERGY → RENDER SHADER ─────────────────────────
+        // Tension drives warm ↔ cool color baseline in fragment shader.
+        // Energy drives brightness boost for loud speech.
+        renderUniforms.uTension.value = Math.max(0, Math.min(1, tension));
+        renderUniforms.uEnergy.value = Math.max(0, Math.min(1, energy));
+
+        // ── OVERRIDES → SHADER UNIFORMS ──────────────────────
+        // Apply SemanticBackend overrides, or let WorkspaceEngine provide
+        // fallback tracking if SemanticBackend doesn't provide them.
         if (this.abstractionOverride !== null) {
             uniforms.uAbstraction.value = Math.max(0, Math.min(1, this.abstractionOverride));
+        } else if (this.workspaceEngine) {
+            uniforms.uAbstraction.value = Math.max(0, Math.min(1, this.workspaceEngine.getState().abstractionLevel));
         }
+
         if (this.noiseOverride !== null) {
             uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, this.noiseOverride));
+        } else if (this.workspaceEngine) {
+            uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, this.workspaceEngine.getNoiseAmplitude()));
         }
 
         // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
@@ -171,8 +184,8 @@ export class UniformBridge {
 
         // ── COLOR MODE → SHADER UNIFORM ──────────────────────────────
         // Push the color mode to the render shader. The shader uses this
-        // to decide between white (tension-tinted) and rainbow rendering.
-        renderUniforms.uColorMode.value = this.colorMode === 'rainbow' ? 1.0 : 0.0;
+        // to decide between white (tension-tinted) and color (sentiment) rendering.
+        renderUniforms.uColorMode.value = this.colorMode === 'color' ? 1.0 : 0.0;
 
         // ── SENTIMENT SMOOTHING (shared by color + movement) ─────────
         // Smoothly interpolate the raw sentiment override toward a stable
@@ -180,7 +193,6 @@ export class UniformBridge {
         // Movement is active, so movement can work independently of color.
         {
             const colorActive = this.sentimentEnabled
-                && this.colorMode === 'rainbow'
                 && this.sentimentOverride !== null;
             const movActive = this.sentimentMovementEnabled
                 && this.sentimentOverride !== null;
@@ -197,33 +209,28 @@ export class UniformBridge {
         }
 
         // ── SENTIMENT COLOR → RENDER SHADER UNIFORMS ──────────────────
-        // Push smoothed sentiment and tint colors to the fragment shader.
+        // Push smoothed sentiment to fragment shader. In the new system,
+        // the shader handles warm/cool tinting internally—no need for
+        // separate warm/cool/intensity uniforms.
         {
+            // Sentiment color works in BOTH modes now (not just color mode)
             const isColorActive = this.sentimentEnabled
-                && this.colorMode === 'rainbow';
+                && this.sentimentOverride !== null;
 
             renderUniforms.uSentiment.value = isColorActive
                 ? this.smoothedSentiment
                 : 0;
-            renderUniforms.uSentimentIntensity.value = this.config.get('sentimentIntensity');
 
-            // Push config-driven tint colors (editable from TuningPanel)
-            renderUniforms.uSentimentWarm.value.set(
-                this.config.get('sentimentWarmR'),
-                this.config.get('sentimentWarmG'),
-                this.config.get('sentimentWarmB'),
-            );
-            renderUniforms.uSentimentCool.value.set(
-                this.config.get('sentimentCoolR'),
-                this.config.get('sentimentCoolG'),
-                this.config.get('sentimentCoolB'),
-            );
+            // Pass emotional intensity for angry vs sad distinction
+            renderUniforms.uEmotionalIntensity.value = isColorActive
+                ? (this.emotionalIntensityOverride ?? 0)
+                : 0;
         }
 
         // ── SENTIMENT MOVEMENT → VELOCITY SHADER UNIFORMS ─────────
         // Push the same smoothed sentiment to the velocity shader for
         // physics modulation (LMA Effort framework). Independent of
-        // color mode — works in both white and rainbow.
+        // color mode — works in both white and color.
         {
             const velUniforms = this.particleSystem.velocityVariable.material.uniforms;
             const isMovActive = this.sentimentMovementEnabled
@@ -236,20 +243,9 @@ export class UniformBridge {
                 this.config.get('sentimentMovementIntensity');
         }
 
-        // ── DERIVED VISUALS ───────────────────────────────────────────
-        // In WHITE mode: Tension → Color Shift — calm speech is warm
-        // (off-white), tense/high-pitched speech shifts to cool (blue-white).
-        // In RAINBOW mode: the shader handles color entirely via HSL,
-        // so we just set a neutral white baseline.
-        if (this.colorMode === 'white') {
-            const coolColor = new THREE.Color(0.85, 0.9, 1.0);   // Blue-white
-            const warmColor = new THREE.Color(1.0, 0.92, 0.8);   // Warm off-white
-            const color = new THREE.Color().lerpColors(warmColor, coolColor, features.tension);
-            renderUniforms.uColor.value.copy(color);
-        } else {
-            // Rainbow mode — the fragment shader handles all coloring via HSL.
-            // Set neutral white so the glow modulation (core*0.5+0.5) stays clean.
-            renderUniforms.uColor.value.set(1.0, 1.0, 1.0);
-        }
+        // ── BASE COLOR ───────────────────────────────────────────────
+        // The shader now handles tension→warm/cool tinting internally.
+        // CPU-side just sets a neutral white baseline.
+        renderUniforms.uColor.value.set(1.0, 1.0, 1.0);
     }
 }

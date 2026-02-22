@@ -84,7 +84,7 @@ export const PARAM_DEFS: ParamDef[] = [
         // Velocity damping. Higher = particles stop faster (snappy).
         // Lower = particles coast longer (floaty, inertial).
         key: 'drag', label: 'Drag',
-        defaultValue: 2.5, min: 0.5, max: 5.0, step: 0.25,
+        defaultValue: 3.5, min: 0.5, max: 5.0, step: 0.25,
         group: '🔵 Physics'
     },
     {
@@ -105,7 +105,7 @@ export const PARAM_DEFS: ParamDef[] = [
         // Idle breathing amplitude — the gentle "inhale/exhale" pulse
         // that makes the ring feel alive even without audio.
         key: 'breathingAmplitude', label: 'Breathing Amplitude',
-        defaultValue: 0.08, min: 0.0, max: 0.2, step: 0.005,
+        defaultValue: 0.05, min: 0.0, max: 0.2, step: 0.005,
         group: '🔵 Physics'
     },
     {

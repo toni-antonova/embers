@@ -30,7 +30,7 @@ const GHOST_CLEANUP_MS = 200;      // Check for expired words every 200ms
 
 // ── TYPES ────────────────────────────────────────────────────────────
 export type CameraType = 'perspective' | 'orthographic';
-export type ColorMode = 'white' | 'rainbow';
+export type ColorMode = 'white' | 'color';
 type PanelTab = 'visual' | 'audio';
 
 // ── CONSTANTS ────────────────────────────────────────────────────────
@@ -347,11 +347,11 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                                             onChange={(e) => onColorModeChange(e.target.value as ColorMode)}
                                         >
                                             <option value="white">White</option>
-                                            <option value="rainbow">Rainbow</option>
+                                            <option value="color">Color</option>
                                         </select>
                                     </div>
-                                    {/* Sentiment toggle — shown only when rainbow is active */}
-                                    {colorMode === 'rainbow' && onSentimentToggle && (
+                                    {/* Sentiment toggle — shown only when color mode is active */}
+                                    {colorMode === 'color' && onSentimentToggle && (
                                         <div className="tuning-shape-row">
                                             <label className="tuning-label" htmlFor="tuning-sentiment-toggle">
                                                 Sentiment Color
@@ -384,9 +384,9 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                             {/* ── AUTO-GENERATED VISUAL SLIDERS ───── */}
                             {Array.from(visualGroups.entries())
                                 .filter(([groupName]) => {
-                                    // Hide sentiment sliders when feature is off or not rainbow
+                                    // Hide sentiment sliders when feature is off or not color mode
                                     if (groupName === '🎨 Sentiment Color') {
-                                        return sentimentEnabled && colorMode === 'rainbow';
+                                        return sentimentEnabled && colorMode === 'color';
                                     }
                                     if (groupName === '🏃 Sentiment Movement') {
                                         return sentimentMovementEnabled ?? false;
