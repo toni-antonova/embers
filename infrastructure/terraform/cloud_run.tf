@@ -19,6 +19,9 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
   name     = var.service_name
   location = var.region
 
+  # Allow Terraform to manage (destroy/recreate) this service
+  deletion_protection = false
+
   # Ensure traffic always routes to the latest revision
   ingress = "INGRESS_TRAFFIC_ALL"
 
