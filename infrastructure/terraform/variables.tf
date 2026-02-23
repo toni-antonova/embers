@@ -59,3 +59,9 @@ variable "allowed_origins" {
   type        = string
   default     = ""
 }
+
+variable "alert_email" {
+  description = "Email address for monitoring alerts (error rate, latency, crashes)."
+  type        = string
+  default     = ""
+}

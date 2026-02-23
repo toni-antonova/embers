@@ -64,8 +64,16 @@ commands:
     description: Run server locally with hot reload
     cmd: uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8080 --reload
 
+  build-base:
+    description: Build and push the pre-built base image (run when deps change)
+    cmd: |
+      cd .. && gcloud builds submit \
+        --config infrastructure/cloudbuild-base.yaml \
+        --project=lumen-pipeline --region=us-east4 \
+        server/
+
   build-local:
-    description: Build Docker image locally
+    description: Build Docker image locally (uses base image if available)
     cmd: docker build -t lumen-server .
 
   lock:
@@ -112,3 +120,22 @@ commands:
   release-pipeline:
     description: Alias for release
     cmd: lets release
+
+  deploy-frontend:
+    description: Build frontend + deploy to GCS static hosting
+    cmd: |
+      cd .. && \
+      VITE_LUMEN_SERVER_URL=$(gcloud run services describe lumen-pipeline \
+        --project=lumen-pipeline --region=us-east4 \
+        --format='value(status.url)') \
+      npm run build && \
+      BUCKET=$(cd infrastructure/terraform && terraform output -raw frontend_bucket_name) && \
+      gcloud storage rsync dist/ "gs://$BUCKET" \
+        --delete-unmatched-destination-objects \
+        --cache-control="public, max-age=300" && \
+      echo "✓ Frontend deployed to: https://storage.googleapis.com/$BUCKET/index.html"
+
+  release-all:
+    description: Full release — backend + frontend + health check
+    cmd: |
+      lets release && lets deploy-frontend

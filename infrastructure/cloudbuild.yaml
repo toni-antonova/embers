@@ -20,27 +20,63 @@
 
 substitutions:
   _IMAGE: "us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline"
+  _BASE_IMAGE: "us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base"
 
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: "E2_HIGHCPU_8"
 
 steps:
-  # ── Step 1: Pull previous image for layer cache ────────────────────────
-  # Fails silently on first-ever build (no :latest exists yet).
-  - name: "gcr.io/cloud-builders/docker"
+  # ── Step 0a: Frontend tests ────────────────────────────────────────────
+  # Gate: if tests fail, the build stops before Docker build.
+  - name: "node:22-slim"
+    id: "test-frontend"
     entrypoint: "bash"
     args:
       - "-c"
-      - "docker pull ${_IMAGE}:latest || true"
+      - |
+        cd /workspace
+        npm ci --prefer-offline 2>/dev/null
+        echo "── Frontend: lint + typecheck + tests ──"
+        npx eslint . --quiet
+        npx tsc --noEmit
+        npx vitest run --reporter=dot
 
-  # ── Step 2: Build with --cache-from ────────────────────────────────────
-  # Docker compares each layer's cache key (instruction + input files).
-  # If pyproject.toml/uv.lock haven't changed, the 2GB+ dependency layer
-  # is reused from the pulled image — only app/ code layer rebuilds.
+  # ── Step 0b: Backend tests (parallel with frontend) ────────────────────
+  - name: "ghcr.io/astral-sh/uv:latest"
+    id: "test-backend"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        cd /workspace/server
+        echo "── Backend: lint + typecheck + tests ──"
+        uv run ruff check app/ tests/ --quiet
+        uv run ruff format --check app/ tests/ --quiet
+        uv run pytest tests/ -v --timeout=30 -x
+    env:
+      - "UV_TORCH_BACKEND=cpu"
+
+  # ── Step 1: Pull base image + previous app image for layer cache ──────
+  # Only runs after both test steps pass.
+  - name: "gcr.io/cloud-builders/docker"
+    waitFor: ["test-frontend", "test-backend"]
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        docker pull ${_BASE_IMAGE}:latest || true
+        docker pull ${_IMAGE}:latest || true
+
+  # ── Step 2: Build with pre-built base image ──────────────────────────
+  # The base image (lumen-base:latest) contains all dependencies.
+  # This step ONLY copies app/ code → builds in 1-2 min instead of 15-30 min.
+  # If the base image doesn't exist, uses the fallback in the Dockerfile ARG.
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "build"
+      - "--build-arg"
+      - "BASE_IMAGE=${_BASE_IMAGE}:latest"
       - "--cache-from"
       - "${_IMAGE}:latest"
       - "-t"

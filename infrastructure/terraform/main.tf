@@ -22,12 +22,13 @@ terraform {
     }
   }
 
-  # ── Remote backend (optional) ──────────────────────────────────────────────
-  # Uncomment and configure for team use / CI. For solo dev, local state is fine.
-  # backend "gcs" {
-  #   bucket = "lumen-terraform-state"
-  #   prefix = "terraform/state"
-  # }
+  # ── Remote backend ─────────────────────────────────────────────────────────
+  # Stores tfstate in Cloud Storage for durability and CI/CD compatibility.
+  # Create the bucket first: gsutil mb gs://lumen-terraform-state
+  backend "gcs" {
+    bucket = "lumen-terraform-state"
+    prefix = "terraform/state"
+  }
 }
 
 # ── Providers ────────────────────────────────────────────────────────────────
