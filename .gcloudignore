@@ -1,68 +1,19 @@
-# Cloud Build ignore — minimize upload tarball
-# Only the server/ directory is needed for Docker builds.
+# Cloud Build ignore — minimize upload tarball.
+# Cloud Build only needs server/ (Docker build context).
+# Strategy: exclude EVERYTHING, then whitelist server/.
 
-# ── Git ──────────────────────────────────────────────────────────────
-.git/
-.gitignore
+# ── Exclude everything by default ────────────────────────────────────
+*
 
-# ── Frontend build artifacts (source kept for CI tests) ──────────────
-node_modules/
-dist/
+# ── Whitelist server/ (Docker build context) ─────────────────────────
+!server/
+!server/**
 
-# ── Documentation ────────────────────────────────────────────────────
-planning/
-analysis/
-*.md
-!README.md
-!infrastructure/README.md
-
-# ── Spreadsheets / data files ────────────────────────────────────────
-*.xlsx
-*.csv
-*.xls
-# Exclude root-level data/ and frontend source (not needed for Docker build)
-data/
-src/
-
-# ── Agent / editor config ────────────────────────────────────────────
-.agent/
-.gemini/
-.idea/
-.vscode/
-*.swp
-
-# ── OS artifacts ─────────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-
-# ── Python dev artifacts ─────────────────────────────────────────────
-.venv/
+# ── Re-exclude server dev artifacts that Docker doesn't need ─────────
 server/.venv/
-*.egg-info/
-__pycache__/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-htmlcov/
-
-# ── Terraform (not needed for Docker build) ──────────────────────────
-infrastructure/terraform/*.tfstate
-infrastructure/terraform/*.tfstate.backup
-infrastructure/terraform/*.tfplan
-infrastructure/terraform/.terraform/
-
-# ── Media / large assets ─────────────────────────────────────────────
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.mp4
-*.webm
-*.webp
-*.wav
-*.mp3
-
-# ── Env files (secrets) ─────────────────────────────────────────────
-.env
-.env.local
-.env.production
+server/.pytest_cache/
+server/.mypy_cache/
+server/.ruff_cache/
+server/htmlcov/
+server/**/__pycache__/
+server/**/*.egg-info/
