@@ -19,7 +19,12 @@ import numpy as np
 
 from app.cache.shape_cache import ShapeCache
 from app.config import Settings
-from app.exceptions import GenerationFailedError, GenerationTimeoutError, GPUOutOfMemoryError
+from app.exceptions import (
+    GenerationFailedError,
+    GenerationRateLimitError,
+    GenerationTimeoutError,
+    GPUOutOfMemoryError,
+)
 from app.models.registry import ModelRegistry
 from app.pipeline.encoding import compute_bbox, encode_float32, encode_uint8
 from app.pipeline.mask_to_faces import map_masks_to_faces
@@ -71,7 +76,20 @@ class PipelineOrchestrator:
                 self._metrics.record_request("cache", 0, cached=True)
             return cached
 
-        # 2. Template lookup
+        # 2. Generation rate limit check (protects GPU cost on cache misses)
+        if self._metrics:
+            gen_limit = self._settings.generation_rate_limit_per_minute
+            recent = self._metrics.recent_generations_per_minute()
+            if recent >= gen_limit:
+                logger.warning(
+                    "generation_rate_limited",
+                    text=request.text,
+                    recent_generations=recent,
+                    limit=gen_limit,
+                )
+                raise GenerationRateLimitError(gen_limit)
+
+        # 3. Template lookup
         template = get_template(request.text)
         logger.info(
             "generating",

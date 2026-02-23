@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.post("/generate", response_model=GenerateResponse)
-@limiter.limit("60/minute")
+@limiter.limit("120/minute")  # Generous outer limit — cache hits are cheap; GPU cost is protected by generation_rate_limit_per_minute
 async def generate(
     request: Request,
     body: GenerateRequest = Depends(),

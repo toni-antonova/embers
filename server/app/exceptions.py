@@ -59,6 +59,20 @@ class GPUOutOfMemoryError(LumenError):
 # ── Handler registration ────────────────────────────────────────────────────
 
 
+class GenerationRateLimitError(LumenError):
+    """Raised when GPU generation rate limit is exceeded (cache miss path)."""
+
+    def __init__(self, limit: int):
+        super().__init__(
+            f"Generation rate limit exceeded ({limit}/min). "
+            "Cached requests are unaffected — try a different concept or wait.",
+            status_code=429,
+        )
+
+
+# ── Handler registration ────────────────────────────────────────────────────
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all custom exception handlers on the FastAPI app.
 
