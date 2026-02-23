@@ -363,6 +363,9 @@ export class SemanticBackend {
         this.uniformBridge.springOverride = null;
         this.uniformBridge.transitionPhase = 0;
         this.transitionPhase = TransitionPhase.Idle;
+        this.transitionElapsed = 0;
+        this.pendingMorphState = null;
+        this.pendingMorphMapping = null;
         this.idleDecayActive = false;
         console.log('[SemanticBackend] Disposed');
     }
