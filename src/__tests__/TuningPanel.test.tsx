@@ -123,10 +123,10 @@ describe('TuningPanel — Visual Tab Sliders', () => {
         fireEvent.click(screen.getByLabelText('Toggle tuning panel'));
 
         const pointSizeSlider = document.getElementById('tuning-pointSize') as HTMLInputElement;
-        expect(pointSizeSlider.value).toBe('3');
+        expect(pointSizeSlider.value).toBe('1');
 
         const springKSlider = document.getElementById('tuning-springK') as HTMLInputElement;
-        expect(springKSlider.value).toBe('1.5');
+        expect(springKSlider.value).toBe('3');
     });
 
     it('moving a slider updates the config value', () => {
@@ -223,8 +223,8 @@ describe('TuningPanel — Action Buttons', () => {
         config.set('springK', 8.0);
 
         fireEvent.click(screen.getByText('Reset All to Defaults'));
-        expect(config.get('pointSize')).toBe(3.0);
-        expect(config.get('springK')).toBe(1.5);
+        expect(config.get('pointSize')).toBe(1.0);
+        expect(config.get('springK')).toBe(3.0);
     });
 
     it('Apply Pasted Config button is disabled when textarea is empty', () => {

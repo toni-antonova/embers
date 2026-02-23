@@ -49,7 +49,7 @@ struct PartMotionGPU {
     float startTime;
     float duration;
     float params[12];
-    bool active;
+    bool isActive;
 };
 
 PartMotionGPU readPartMotion(sampler2D planTex, int partRow) {
@@ -76,7 +76,7 @@ PartMotionGPU readPartMotion(sampler2D planTex, int partRow) {
     pm.params[10] = px3.b; pm.params[11] = px3.a;
 
     // primitiveId < 0 or duration < 0 means inactive
-    pm.active = (pm.primitiveId >= 0);
+    pm.isActive = (pm.primitiveId >= 0);
 
     return pm;
 }
@@ -110,7 +110,7 @@ vec3 evaluateSinglePlan(sampler2D planTex, vec2 uv, vec3 pos, vec3 restPos,
 
     // 1. Whole-body motion (row 0)
     PartMotionGPU wb = readPartMotion(planTex, 0);
-    if (wb.active) {
+    if (wb.isActive) {
         float t = computeTime(wb, currentTime, speedScale);
         // Whole-body uses attWeight = 1.0 (uniform effect on all particles)
         vec3 wbDisp = dispatchPrimitive(
@@ -126,7 +126,7 @@ vec3 evaluateSinglePlan(sampler2D planTex, vec2 uv, vec3 pos, vec3 restPos,
     // partId 0 = unassigned → no per-part motion, whole-body only
     if (partId > 0 && partId <= 32) {
         PartMotionGPU pm = readPartMotion(planTex, partId);
-        if (pm.active) {
+        if (pm.isActive) {
             float t = computeTime(pm, currentTime, speedScale);
             vec3 partDisp = dispatchPrimitive(
                 pm.primitiveId, pos, restPos, t, attWeight,

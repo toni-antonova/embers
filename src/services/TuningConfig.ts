@@ -46,7 +46,7 @@ export const PARAM_DEFS: ParamDef[] = [
     // These control how the particles *look* — size, opacity, trails.
     {
         key: 'pointSize', label: 'Point Size',
-        defaultValue: 3.0, min: 0.5, max: 8, step: 0.5,
+        defaultValue: 1.0, min: 0.5, max: 8, step: 0.5,
         group: '🔴 Particle Appearance'
     },
     {
@@ -77,7 +77,7 @@ export const PARAM_DEFS: ParamDef[] = [
         // Spring constant (Hooke's Law): how strongly particles are pulled
         // back to their morph target position. Higher = snappier, lower = floaty.
         key: 'springK', label: 'Spring Strength (K)',
-        defaultValue: 1.5, min: 0.5, max: 10.0, step: 0.5,
+        defaultValue: 3.0, min: 0.5, max: 10.0, step: 0.5,
         group: '🔵 Physics'
     },
     {
@@ -306,6 +306,11 @@ type ConfigListener = (key: string, value: number) => void;
 // ── LOCALSTORAGE KEY ─────────────────────────────────────────────────
 const STORAGE_KEY = 'dots-tuning-config';
 
+// ── CONFIG VERSIONING ────────────────────────────────────────────────
+// Bump this whenever defaults change. Old localStorage will be discarded
+// automatically so stale dev settings don't silently override production defaults.
+const CONFIG_VERSION = 3;
+
 // ── TUNING CONFIG CLASS ──────────────────────────────────────────────
 export class TuningConfig {
     // Current parameter values, keyed by param key.
@@ -427,7 +432,8 @@ export class TuningConfig {
      */
     private saveToStorage(): void {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.toJSON()));
+            const data = { ...this.toJSON(), __version: CONFIG_VERSION };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         } catch {
             // localStorage might be full or disabled — fail silently.
         }
@@ -442,6 +448,16 @@ export class TuningConfig {
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 const json = JSON.parse(stored);
+
+                // Version check — discard stale configs from old schema
+                if (json.__version !== CONFIG_VERSION) {
+                    console.log(
+                        `[TuningConfig] Discarding stale config (v${json.__version ?? 'none'} → v${CONFIG_VERSION})`,
+                    );
+                    localStorage.removeItem(STORAGE_KEY);
+                    return;
+                }
+
                 for (const def of PARAM_DEFS) {
                     if (json[def.key] !== undefined) {
                         this.values.set(

@@ -8,13 +8,32 @@ import type { SemanticEvent } from '../services/SemanticBackend';
 import { useSingletons } from '../hooks/useSingletons';
 import { useThreeScene } from '../hooks/useThreeScene';
 
+const MAX_WEBGL_RETRIES = 3;
+
 export function Canvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     // Incrementing key forces a fresh <canvas> DOM element on each (re)mount.
     // This sidesteps "existing context of different type" and "precision null"
     // errors that occur when reusing a canvas whose context was just force-lost.
+    // Capped at MAX_WEBGL_RETRIES to prevent infinite loops when GPU is disabled.
     const [canvasKey, setCanvasKey] = useState(0);
+    const [webglFailed, setWebglFailed] = useState(false);
+
+    const guardedSetCanvasKey: typeof setCanvasKey = (update) => {
+        setCanvasKey((prev) => {
+            const next = typeof update === 'function' ? update(prev) : update;
+            if (next >= MAX_WEBGL_RETRIES) {
+                console.error(
+                    `[Canvas] WebGL context creation failed after ${MAX_WEBGL_RETRIES} attempts. ` +
+                    'Check chrome://gpu — GPU acceleration may be disabled.',
+                );
+                setWebglFailed(true);
+                return prev; // Stop retrying
+            }
+            return next;
+        });
+    };
 
     // React state for UI sync
     const [currentShape, setCurrentShape] = useState('ring');
@@ -31,7 +50,7 @@ export function Canvas() {
 
     // Three.js scene lifecycle (created/destroyed with canvasKey/cameraType)
     const { particleSystem: particleSystemRef, uniformBridge: uniformBridgeRef, semanticBackend: semanticBackendRef } =
-        useThreeScene(canvasRef, canvasKey, setCanvasKey, cameraType, singletons);
+        useThreeScene(canvasRef, canvasKey, guardedSetCanvasKey, cameraType, singletons);
 
     // ── SPEECH TRANSCRIPT LOGGING ─────────────────────────────────────────
     useEffect(() => {
@@ -69,11 +88,48 @@ export function Canvas() {
 
     return (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <canvas
-                key={canvasKey}
-                ref={canvasRef}
-                style={{ display: 'block', width: '100%', height: '100%' }}
-            />
+            {webglFailed ? (
+                <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', height: '100%', color: '#e0e0e0',
+                    fontFamily: 'system-ui, -apple-system, sans-serif',
+                    background: '#1a1a1a', padding: '2rem', textAlign: 'center',
+                }}>
+                    <h2 style={{ color: '#ff6b6b', marginBottom: '1rem' }}>⚠ WebGL Unavailable</h2>
+                    <p style={{ maxWidth: '480px', lineHeight: 1.6, marginBottom: '1rem' }}>
+                        This experience requires GPU acceleration.
+                        Please enable hardware acceleration in your browser settings and reload.
+                    </p>
+                    <div style={{
+                        background: '#2a2a2a', borderRadius: '8px', padding: '1rem',
+                        maxWidth: '480px', fontSize: '0.9rem', textAlign: 'left',
+                    }}>
+                        <p style={{ margin: '0 0 0.5rem', fontWeight: 'bold' }}>How to enable:</p>
+                        <ol style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                            <li>Open your browser&apos;s <strong>Settings</strong></li>
+                            <li>Go to <strong>System</strong> (or search for &ldquo;hardware acceleration&rdquo;)</li>
+                            <li>Turn on <strong>&ldquo;Use hardware acceleration when available&rdquo;</strong></li>
+                            <li>Restart your browser</li>
+                        </ol>
+                    </div>
+                    <button
+                        onClick={() => { setWebglFailed(false); setCanvasKey(0); }}
+                        style={{
+                            marginTop: '1.5rem', padding: '0.5rem 1.5rem',
+                            background: '#4a9eff', color: '#fff', border: 'none',
+                            borderRadius: '6px', cursor: 'pointer', fontSize: '0.95rem',
+                        }}
+                    >
+                        Retry
+                    </button>
+                </div>
+            ) : (
+                <canvas
+                    key={canvasKey}
+                    ref={canvasRef}
+                    style={{ display: 'block', width: '100%', height: '100%' }}
+                />
+            )}
             <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} />
             <TuningPanel
                 config={tuningConfig}
@@ -125,3 +181,4 @@ export function Canvas() {
         </div>
     );
 }
+

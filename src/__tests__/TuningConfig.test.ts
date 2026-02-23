@@ -50,8 +50,8 @@ describe('TuningConfig — Default Values', () => {
         const config = new TuningConfig();
 
         // Spot-check a few known defaults.
-        expect(config.getDefault('pointSize')).toBe(3.0);
-        expect(config.getDefault('springK')).toBe(1.5);
+        expect(config.getDefault('pointSize')).toBe(1.0);
+        expect(config.getDefault('springK')).toBe(3.0);
         expect(config.getDefault('drag')).toBe(3.5);
     });
 
@@ -167,8 +167,8 @@ describe('TuningConfig — Reset', () => {
         config.resetAll();
 
         // All values should be back to defaults.
-        expect(config.get('pointSize')).toBe(3.0);
-        expect(config.get('springK')).toBe(1.5);
+        expect(config.get('pointSize')).toBe(1.0);
+        expect(config.get('springK')).toBe(3.0);
         expect(config.get('drag')).toBe(3.5);
     });
 
@@ -226,7 +226,7 @@ describe('TuningConfig — JSON Export / Import', () => {
         }).not.toThrow();
 
         // Original values should be unchanged.
-        expect(config.get('pointSize')).toBe(3.0);
+        expect(config.get('pointSize')).toBe(1.0);
     });
 
     it('fromJSON() clamps imported values to valid ranges', () => {
@@ -274,7 +274,7 @@ describe('TuningConfig — localStorage Persistence', () => {
 
     it('loads saved values from localStorage on construction', () => {
         // ARRANGE: Pre-seed localStorage with custom values.
-        const seedData = { pointSize: 6.0, springK: 9.0 };
+        const seedData = { pointSize: 6.0, springK: 9.0, __version: 3 };
         localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
 
         // ACT: Create a new config — it should pick up the seeded values.
@@ -292,7 +292,7 @@ describe('TuningConfig — localStorage Persistence', () => {
         const config = new TuningConfig();
 
         // Should fall back to defaults.
-        expect(config.get('pointSize')).toBe(3.0);
+        expect(config.get('pointSize')).toBe(1.0);
     });
 });
 
