@@ -48,19 +48,6 @@ variable "container_image" {
   default     = ""
 }
 
-variable "api_key" {
-  description = "Initial API key placeholder. Terraform creates the secret; populate the real value via: gcloud secrets versions add lumen-api-key --data-file=- <<< 'your-key'"
-  type        = string
-  sensitive   = true
-  default     = "CHANGE_ME"
-}
-
-variable "hf_token" {
-  description = "Initial HF token placeholder. Terraform creates the secret; populate the real value via: gcloud secrets versions add lumen-hf-token --data-file=- <<< 'hf_xxx'"
-  type        = string
-  sensitive   = true
-  default     = "CHANGE_ME"
-}
 
 variable "allowed_origins" {
   description = "Comma-separated CORS origins (e.g. 'https://app.example.com,http://localhost:5173'). Empty = allow all."
