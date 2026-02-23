@@ -30,8 +30,12 @@ commands:
     cmd: uv run mypy app/
 
   validate:
-    description: Run all checks (format check + lint + typecheck + test)
+    description: Run all checks (frontend + backend format + lint + typecheck + test)
     cmd: |
+      echo "── Frontend ──"
+      cd .. && npx eslint . --quiet && echo "  ✓ ESLint" && cd server
+      cd .. && npx tsc --noEmit && echo "  ✓ TypeScript" && cd server
+      echo "── Backend ──"
       uv run ruff format --check app/ tests/
       uv run ruff check app/ tests/
       uv run mypy app/
