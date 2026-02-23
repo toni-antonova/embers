@@ -23,9 +23,9 @@ options:
 
 steps:
   # ── Step 0: Backend tests (gate build on passing checks) ───────────────
-  - name: "ghcr.io/astral-sh/uv:latest"
+  - name: "ghcr.io/astral-sh/uv:python3.13-bookworm-slim"
     id: "test-backend"
-    entrypoint: "sh"
+    entrypoint: "bash"
     args:
       - "-c"
       - |
