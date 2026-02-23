@@ -40,13 +40,17 @@ commands:
       uv run ruff format --check app/ tests/
       uv run ruff check app/ tests/
       uv run mypy app/
+      uv run python scripts/check_heavy_pins.py
       uv run pytest tests/ -v
 
   preflight:
-    description: Verify all ML imports resolve (no GPU needed) — run before build
+    description: Verify all ML imports resolve + deps in sync (no GPU needed) — run before build
     cmd: |
       FAILED=0
       IS_MAC=$([[ "$(uname)" == "Darwin" ]] && echo 1 || echo 0)
+
+      echo "Dependency pins:"
+      uv run python scripts/check_heavy_pins.py || FAILED=1
 
       try_import() {
         local label="$1"; shift
@@ -82,7 +86,7 @@ commands:
         echo "FAILED — fix errors above before deploying."
         exit 1
       fi
-      echo "All imports pass — safe to build + deploy."
+      echo "All checks pass — safe to build + deploy."
       [ "$IS_MAC" = "1" ] && echo "Note: items marked ⚠ require Linux/CUDA — verified during docker build."
 
   serve:

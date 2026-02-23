@@ -134,15 +134,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache) -> None:
-    """Load ML models then warm the cache — both run in background.
+    """Sync model weights from GCS, load ML models, then warm the cache.
 
+    Runs in the background so uvicorn binds the port immediately.
     Model init is CPU/GPU-bound, so we run it in a thread to avoid
     blocking the event loop (which would stall health probe responses).
-    Cache warming runs after models finish loading.
+
+    Sync order: GCS weights → load models → warm shape cache.
+    If GCS sync fails, model loading falls back to HuggingFace Hub.
     """
     import asyncio
 
+    from app.model_sync import sync_model_weights
+
     loop = asyncio.get_running_loop()
+    settings = get_settings()
+
+    # ── Step 0: Sync model weights from GCS (if configured) ───────────
+    # Runs in a thread because it's I/O-bound (network downloads).
+    # Must complete before model loading so from_pretrained() finds
+    # cached weights on disk instead of downloading from HuggingFace.
+    if settings.model_weights_bucket:
+        try:
+            await loop.run_in_executor(
+                None,
+                sync_model_weights,
+                settings.model_weights_bucket,
+                settings.model_cache_dir,
+            )
+        except Exception:
+            logger.exception("model_weight_sync_failed", hint="Falling back to HuggingFace Hub")
 
     try:
         logger.info("background_model_load_start")

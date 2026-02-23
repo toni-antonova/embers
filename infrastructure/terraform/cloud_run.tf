@@ -71,6 +71,10 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
         value = "/home/appuser/models"
       }
       env {
+        name  = "MODEL_WEIGHTS_BUCKET"
+        value = google_storage_bucket.model_weights.name
+      }
+      env {
         name = "API_KEY"
         value_source {
           secret_key_ref {
@@ -108,7 +112,7 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
       # ── Health Checks ────────────────────────────────────────────────────
       # Startup probe: checks models loaded + cache connected.
       # Returns 503 until ready, so Cloud Run won't route traffic too early.
-      # Budget: 60 × 10s = 600s to accommodate 6GB SDXL model download.
+      # Budget: 60 × 10s = 600s to accommodate GCS sync + model loading to GPU.
       startup_probe {
         http_get {
           path = "/health/ready"

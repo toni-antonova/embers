@@ -29,7 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 python3.13-venv python3.13-dev \
     libosmesa6 libosmesa6-dev libgl1 libglib2.0-0 \
     curl \
-    g++ make \
     && rm -rf /var/lib/apt/lists/*
 
 # Make python3.13 the default python3
@@ -54,12 +53,29 @@ ENV UV_TORCH_BACKEND=cu128
 # Model cache directory
 RUN mkdir -p /home/appuser/models
 
-# ---- Install ALL project dependencies (the expensive step) ----
-# This is what we're caching — the full dependency tree including
-# PyTorch + CUDA wheels (~2GB). By putting it in the base image,
-# app builds skip this entirely.
+# ---- Layer 1: Heavy ML wheels (changes ~quarterly) ----
+# PyTorch + CUDA wheels (~2GB), torchvision, diffusers, transformers.
+# Pinned separately so edits to lightweight deps in pyproject.toml
+# don't invalidate this expensive layer.
+COPY --chown=appuser requirements-heavy.txt ./
+RUN uv pip install --system -r requirements-heavy.txt
+
+# ---- Fix torch-cluster: use pre-built PyG wheel ----
+# torch-cluster 1.6.3 sdist compiles a broken native extension that crashes
+# with "std::logic_error: basic_string::_M_construct null not valid" on import.
+# Replace it with the pre-built wheel from PyG's index (PyTorch 2.7 + CUDA 12.8).
+RUN uv pip install --system torch-cluster==1.6.3 \
+    -f https://data.pyg.org/whl/torch-2.7.0+cu128.html \
+    --reinstall-package torch-cluster
+
+# ---- Layer 2: All remaining dependencies ----
+# Lightweight deps (fastapi, pydantic, structlog, etc.) change more
+# often but install in seconds. uv sync picks up what's already
+# installed from Layer 1 and only installs the delta.
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+# --no-install-package torch-cluster: skip the broken sdist compile;
+# the pre-built PyG wheel is installed in Layer 1 above.
+RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cluster
 
 # ---- Vendor PartCrafter (not pip-installable) ----
 ARG PARTCRAFTER_SHA=269bd4164fbe35b17a6e58f8d6934262822082eb

@@ -15,7 +15,7 @@ variable "project_id" {
 variable "region" {
   description = "GCP region for all resources"
   type        = string
-  default     = "us-central1"
+  default     = "us-east4"
 }
 
 variable "service_name" {
@@ -27,7 +27,7 @@ variable "service_name" {
 variable "min_instances" {
   description = "Minimum Cloud Run instances (0 = scale to zero)"
   type        = number
-  default     = 0
+  default     = 3
 }
 
 variable "max_instances" {

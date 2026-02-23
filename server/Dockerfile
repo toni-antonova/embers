@@ -22,7 +22,9 @@ FROM ${BASE_IMAGE}
 # If the base image already has the same deps, this is a no-op (<1s).
 # If deps changed, only the delta is installed (~30-60s vs 15-30min).
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+# --no-install-package torch-cluster: the base image installed the working
+# pre-built PyG wheel; uv sync would replace it with the broken PyPI sdist.
+RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cluster
 
 # ---- Copy application code (the only thing that changes per deploy) ----
 COPY --chown=appuser app/ app/

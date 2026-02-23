@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # ── Infrastructure ───────────────────────────────────────────────────────
     cache_bucket: str = "lumen-shape-cache-dev"
     model_cache_dir: str = "/home/appuser/models"
+    model_weights_bucket: str = ""  # GCS bucket for HF weights; empty = disabled
     port: int = 8080
 
     # ── Security ─────────────────────────────────────────────────────────────

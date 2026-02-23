@@ -20,6 +20,14 @@ resource "google_storage_bucket_iam_member" "cache_bucket_admin" {
   member = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
 
+# ── Storage: read-only access to pre-downloaded model weights ──────────────
+
+resource "google_storage_bucket_iam_member" "model_weights_viewer" {
+  bucket = google_storage_bucket.model_weights.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
 # ── Artifact Registry: pull container images ─────────────────────────────────
 
 resource "google_artifact_registry_repository_iam_member" "docker_reader" {

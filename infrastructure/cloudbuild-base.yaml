@@ -1,9 +1,15 @@
-# Cloud Build — Build & Push Lumen Base Image
+# Cloud Build — Build & Push Lumen Base Image (Kaniko)
 #
 # This builds the heavy base image containing all system packages,
 # Python dependencies (~2GB of ML wheels), and PartCrafter. The
 # application Dockerfile inherits from this image and only copies
 # app code — cutting builds from 15-30 min to 1-2 min.
+#
+# Uses Kaniko for native layer caching to Artifact Registry. Kaniko
+# caches each Dockerfile layer as a separate image tag, so unchanged
+# layers (system packages, PyTorch wheels) are reused even if later
+# layers change. Cache TTL is 168h (7 days) to match the weekly
+# rebuild schedule.
 #
 # Manual usage:
 #   gcloud builds submit \
@@ -24,30 +30,20 @@ options:
   machineType: "E2_HIGHCPU_8"
 
 steps:
-  # ── Step 1: Pull previous base for layer cache ───────────────────
-  - name: "gcr.io/cloud-builders/docker"
-    entrypoint: "bash"
+  # ── Build + push with Kaniko (layer caching to registry) ─────────
+  # Kaniko caches each layer as a separate image in the cache repo.
+  # Unchanged layers (system packages, PyTorch wheels) are reused
+  # across builds — only changed layers are rebuilt.
+  - name: "gcr.io/kaniko-project/executor:latest"
     args:
-      - "-c"
-      - "docker pull ${_BASE_IMAGE}:latest || true"
-
-  # ── Step 2: Build base image with cache ──────────────────────────
-  - name: "gcr.io/cloud-builders/docker"
-    args:
-      - "build"
-      - "--cache-from"
-      - "${_BASE_IMAGE}:latest"
-      - "-t"
-      - "${_BASE_IMAGE}:latest"
-      - "-f"
-      - "Dockerfile.base"
-      - "."
-    env:
-      - "DOCKER_BUILDKIT=1"
-
-  # ── Step 3: Push ─────────────────────────────────────────────────
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "${_BASE_IMAGE}:latest"]
+      - "--dockerfile=Dockerfile.base"
+      - "--context=."
+      - "--destination=${_BASE_IMAGE}:latest"
+      - "--cache=true"
+      - "--cache-ttl=168h"
+      - "--cache-repo=${_BASE_IMAGE}-cache"
+      - "--compressed-caching=false"
+      - "--snapshot-mode=redo"
 
 images:
   - "${_BASE_IMAGE}:latest"
