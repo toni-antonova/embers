@@ -30,12 +30,19 @@ steps:
     args:
       - "-c"
       - |
+        set -e
         cd /workspace
-        npm ci --prefer-offline 2>/dev/null
-        echo "── Frontend: lint + typecheck + tests ──"
-        npx eslint . --quiet
-        npx tsc --noEmit
-        npx vitest run --reporter=dot
+        npm ci
+        echo "── Frontend: lint + typecheck ──"
+        npx --no-install eslint . --quiet
+        npx --no-install tsc --noEmit
+        # vitest: skip gracefully if no test files exist yet
+        if compgen -G "src/**/*.test.*" > /dev/null || compgen -G "src/**/*.spec.*" > /dev/null; then
+          echo "── Frontend: tests ──"
+          npx --no-install vitest run --reporter=dot
+        else
+          echo "── Frontend: no test files found, skipping ──"
+        fi
 
   # ── Step 0b: Backend tests (parallel with frontend) ────────────────────
   - name: "ghcr.io/astral-sh/uv:latest"
