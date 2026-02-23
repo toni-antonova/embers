@@ -73,11 +73,14 @@ describe('SessionLogger — Basic Logging', () => {
         expect(events[2].type).toBe('semantic');
     });
 
-    it('accepts all six event types', () => {
-        const types: EventType[] = ['audio', 'transcript', 'semantic', 'workspace', 'interaction', 'system'];
+    it('accepts all nine event types', () => {
+        const types: EventType[] = [
+            'audio', 'transcript', 'semantic', 'workspace', 'interaction', 'system',
+            'server_request', 'server_response', 'pipeline_phase',
+        ];
         types.forEach(type => logger.log(type, { test: true }));
 
-        expect(logger.eventCount).toBe(6);
+        expect(logger.eventCount).toBe(9);
         types.forEach((type, i) => {
             expect(logger.getEvents()[i].type).toBe(type);
         });

@@ -17,7 +17,16 @@
  */
 
 // ── TYPES ───────────────────────────────────────────────────────────
-export type EventType = 'audio' | 'transcript' | 'semantic' | 'workspace' | 'interaction' | 'system';
+export type EventType =
+    | 'audio'
+    | 'transcript'
+    | 'semantic'
+    | 'workspace'
+    | 'interaction'
+    | 'system'
+    | 'server_request'
+    | 'server_response'
+    | 'pipeline_phase';
 
 export interface SessionEvent {
     timestamp: number;   // Date.now()

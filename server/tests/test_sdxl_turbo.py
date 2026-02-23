@@ -149,10 +149,13 @@ class TestSDXLTurboGenerate:
 
         model, _ = _create_model(mock_pipe)
 
-        with pytest.raises(type(oom_error)):
-            model.generate("a test prompt")
+        # Explicitly patch empty_cache with a trackable MagicMock
+        mock_empty_cache = MagicMock()
+        with patch.object(mock_torch.cuda, "empty_cache", mock_empty_cache):
+            with pytest.raises(type(oom_error)):
+                model.generate("a test prompt")
 
-        mock_torch.cuda.empty_cache.assert_called_once()
+            mock_empty_cache.assert_called_once()
 
 
 # ── Prompt integration ──────────────────────────────────────────────────────

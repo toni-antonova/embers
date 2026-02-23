@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.post("/generate", response_model=GenerateResponse)
-@limiter.limit("60/minute")
+@limiter.limit("300/minute")  # Speech app: ~20-60 req/min/user x 5 concurrent users; GPU cost protected by generation_rate_limit_per_minute
 async def generate(
     request: Request,
     body: GenerateRequest = Depends(),
