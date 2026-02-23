@@ -57,4 +57,4 @@ infrastructure/terraform/*.tfstate
 infrastructure/terraform/*.tfstate.backup
 infrastructure/terraform/*.backup
 infrastructure/terraform/terraform.tfvars
-infrastructure/terraform/crash.log
+infrastructure/terraform/crash.loginfrastructure/terraform/*.tfplan
