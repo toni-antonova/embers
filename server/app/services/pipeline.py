@@ -76,18 +76,28 @@ class PipelineOrchestrator:
                 self._metrics.record_request("cache", 0, cached=True)
             return cached
 
-        # 2. Generation rate limit check (protects GPU cost on cache misses)
+        # 2. Generation rate limit check
+        # WHY THIS IS SEPARATE FROM THE OUTER SLOWAPI LIMIT:
+        # The outer limit (300/min) protects against DoS on the HTTP layer.
+        # This inner limit protects GPU cost. A cache hit costs ~0ms of GPU
+        # time; a cache miss costs 2–5s of L4 compute at ~$0.70/hr.
+        # Separating them lets chatty real-time speech clients hammer the
+        # cache for free while capping the expensive generation path.
         if self._metrics:
             gen_limit = self._settings.generation_rate_limit_per_minute
             recent = self._metrics.recent_generations_per_minute()
             if recent >= gen_limit:
+                # Compute Retry-After: how many seconds until the oldest
+                # generation in the window expires from the 60s window.
+                retry_after = self._metrics.oldest_generation_retry_after()
                 logger.warning(
                     "generation_rate_limited",
                     text=request.text,
                     recent_generations=recent,
                     limit=gen_limit,
+                    retry_after=retry_after,
                 )
-                raise GenerationRateLimitError(gen_limit)
+                raise GenerationRateLimitError(gen_limit, retry_after)
 
         # 3. Template lookup
         template = get_template(request.text)

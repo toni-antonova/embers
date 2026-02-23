@@ -65,4 +65,4 @@ images:
   - "${_IMAGE}:$COMMIT_SHA"
   - "${_IMAGE}:latest"
 
-timeout: "1200s"  # 20 min — first build downloads ~2GB of ML wheels
+timeout: "1800s"  # 30 min — torchvision + ML wheels are large

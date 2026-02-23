@@ -90,6 +90,22 @@ class PipelineMetrics:
                     break
             return count
 
+    def oldest_generation_retry_after(self) -> float:
+        """Seconds until the oldest generation in the window expires.
+
+        Returns a precise Retry-After value for HTTP 429 responses.
+        If empty, returns a conservative default of 5 seconds.
+        """
+        with self._lock:
+            if not self._generation_timestamps:
+                return 5.0
+            cutoff = time.time() - 60
+            # Find the oldest timestamp still in the 60s window
+            for ts in self._generation_timestamps:
+                if ts >= cutoff:
+                    return max(1.0, 60.0 - (time.time() - ts))
+            return 5.0
+
     def record_gpu_memory(self, gb: float) -> None:
         """Track peak GPU memory usage."""
         with self._lock:

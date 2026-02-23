@@ -80,6 +80,23 @@ def register_exception_handlers(app: FastAPI) -> None:
     and return structured JSON — no inline try/except in endpoints.
     """
 
+    @app.exception_handler(GenerationRateLimitError)
+    async def generation_rate_limit_handler(
+        request: Request, exc: GenerationRateLimitError
+    ) -> JSONResponse:
+        """429 with Retry-After header — tells client exactly when to retry."""
+        retry_after = int(exc.retry_after_seconds)
+        logger.warning(
+            "generation_rate_limited_response",
+            error=exc.message,
+            retry_after=retry_after,
+        )
+        return JSONResponse(
+            status_code=429,
+            content={"error": exc.message, "type": "GenerationRateLimitError"},
+            headers={"Retry-After": str(retry_after)},
+        )
+
     @app.exception_handler(LumenError)
     async def lumen_error_handler(request: Request, exc: LumenError) -> JSONResponse:
         logger.error("lumen_error", error=exc.message, error_type=type(exc).__name__, exc_info=exc)
