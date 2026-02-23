@@ -23,6 +23,8 @@ A continuation of the linear log of all meaningful code, architecture, and confi
 | 59 | A4: Tier 1 Lookup System — Sentence Parser, Verb Hash Table, NLP Sentiment | 2026-02-23 |
 | 60 | Branch Merge Consolidation — All Branches into Main | 2026-02-23 |
 | 61 | Repo Audit — Critical Build Fixes + Housekeeping | 2026-02-23 |
+| 62 | WS1: Server Pipeline Hardening — S08a/S08b/S10a/S10b/S14a/S14b | 2026-02-23 |
+| 63 | A1b + S12: SER→UniformBridge + Transition Choreography | 2026-02-23 |
 
 ---
 
@@ -959,6 +961,64 @@ Six server pipeline tasks implemented in a single branch:
 - **230 tests pass, 3 skipped** (GPU-only), 0 regressions ✅
 - New dependencies resolved: opentelemetry-api 1.39.1, prometheus-client 0.24.1, nltk ✅
 - Torch pinned to 2.7.1 matching torchvision 0.22.1 ✅
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>63. A1b + S12: SER→UniformBridge + Transition Choreography</strong></summary>
+
+**Date:** 2026-02-23
+**Branch:** `client/ws2-a1b-s12-choreography`
+**Commit:** `032923f`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+Two client animation tasks from the Agent 2 spec:
+
+**Task A1b: SER → UniformBridge Integration**
+- Connected the SER emotion pipeline (from A1's `ser-worker.ts`) to particle physics via `UniformBridge`
+- EMA-smoothed VAD emotion values (α=0.15) map to physics: arousal→`uNoiseAmplitude`, valence→`uSpringK`, dominance→`uRepulsionStrength`
+- Added `uTransitionPhase` uniform to `ParticleSystem.ts`
+- SER worker lifecycle + AudioWorklet registration wired in `Canvas.tsx`
+
+**Task S12: Transition Choreography**
+- Replaced instant morph target swaps with a 3-phase state machine: **Dissolve** (0.3s) → **Reform** (0.7s) → **Settle** (0.5s)
+- Each phase applies spring/noise overrides via `UniformBridge` for organic motion
+- **Audio-responsive timing:** energy scales all phase durations (`scale = 1.5 - energy`)
+- **Mid-transition interruption:** new word during any phase restarts Dissolve with new target
+- **30s gradual idle decay:** 5-min silence triggers slow ease-out return to ring
+- `TransitionPhase` uses `const` object + type pattern (not `enum`) for `erasableSyntaxOnly`
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `src/services/SemanticBackend.ts` | `TransitionPhase` const, dissolve/reform/settle state machine, `executeMorphSwap()`, audio-responsive timing, idle decay |
+| `src/engine/UniformBridge.ts` | `springOverride`, `transitionPhase`, EMA emotion smoothing, VAD-to-physics mapping |
+| `src/engine/ParticleSystem.ts` | `uTransitionPhase` uniform |
+| `src/components/Canvas.tsx` | SER worker lifecycle, AudioWorklet, `AudioUniforms.update()` |
+| `src/__tests__/SemanticBackend.transition.test.ts` | **NEW** — 15 tests |
+| `src/__tests__/UniformBridge.emotion.test.ts` | **NEW** — 12 tests |
+| `src/__tests__/SemanticBackend.test.ts` | Updated 6 tests for deferred `setTarget` |
+| `src/__tests__/UniformBridge.test.ts` | Added 5 missing uniforms to mock |
+
+</details>
+
+<details>
+<summary><strong>Verification</strong></summary>
+
+| Check | Result |
+|-------|--------|
+| `npx vitest run` | ✅ **522 tests pass** (27 files) |
+| `tsc --noEmit` | ✅ 0 errors |
 
 </details>
 

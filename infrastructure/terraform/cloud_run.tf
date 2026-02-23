@@ -80,6 +80,15 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
         }
       }
       env {
+        name = "HF_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.hf_token.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
         name  = "ALLOWED_ORIGINS"
         value = var.allowed_origins
       }
