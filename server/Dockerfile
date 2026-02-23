@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ============================================================
 # Lumen Server — Python 3.14 on NVIDIA CUDA 12.8
 # ============================================================
@@ -5,6 +6,13 @@
 # via the deadsnakes PPA. PyTorch 2.10.0 has official cp314
 # wheels. UV_TORCH_BACKEND=cu128 tells uv to pull the correct
 # CUDA-enabled PyTorch wheel automatically.
+#
+# Layer order: slowest-changing → fastest-changing
+#   1. Base + system packages  (changes: almost never)
+#   2. uv installation         (changes: never)
+#   3. User + env setup        (changes: never)
+#   4. Dependencies            (changes: when pyproject.toml/uv.lock change)
+#   5. Application code        (changes: every deploy — only this rebuilds)
 # ============================================================
 
 FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
@@ -45,8 +53,11 @@ RUN mkdir -p /home/appuser/models
 # ---- Install project dependencies (cached layer) ----
 # uv reads UV_TORCH_BACKEND and automatically selects the CUDA 12.8
 # PyTorch variant from PyPI — no --index-url needed.
+# BuildKit cache mount keeps uv's wheel cache warm between builds:
+# dependency changes only re-download new/updated packages.
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000 \
+    uv sync --frozen --no-dev --no-install-project
 
 # ---- Copy application code ----
 COPY --chown=appuser app/ app/
