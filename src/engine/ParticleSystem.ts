@@ -6,6 +6,7 @@ import renderVert from '../shaders/render.vert.glsl?raw';
 import renderFrag from '../shaders/render.frag.glsl?raw';
 import { MorphTargets } from './MorphTargets';
 import { TuningConfig } from '../services/TuningConfig';
+import { buildMotionPlanShader } from './particle-system-extensions';
 
 export class ParticleSystem {
     renderer: THREE.WebGLRenderer;
@@ -42,8 +43,9 @@ export class ParticleSystem {
         const dtVelocity = this.gpuCompute.createTexture();
         this.initTextures(dtPosition, dtVelocity);
 
-        // Add variables
-        this.velocityVariable = this.gpuCompute.addVariable('textureVelocity', velocityFrag, dtVelocity);
+        // Add variables — use enhanced velocity shader with A2 motion plan functions
+        const enhancedVelocityFrag = buildMotionPlanShader(velocityFrag);
+        this.velocityVariable = this.gpuCompute.addVariable('textureVelocity', enhancedVelocityFrag, dtVelocity);
         this.positionVariable = this.gpuCompute.addVariable('texturePosition', positionFrag, dtPosition);
 
         // Dependencies
@@ -274,6 +276,14 @@ export class ParticleSystem {
 
     resize() {
         // No-op for now
+    }
+
+    /**
+     * Get the velocity shader uniforms object.
+     * Used by MotionPlanManager to add/update motion plan uniforms.
+     */
+    getVelocityUniforms(): Record<string, { value: any }> {
+        return this.velocityVariable.material.uniforms;
     }
 
     dispose() {
