@@ -1,37 +1,75 @@
 # Cloud Build ignore — minimize upload tarball
-# Without this file, gcloud uploads the ENTIRE repo (~1.8GB)
+# Only the server/ directory is needed for Docker builds.
 
-# Git
+# ── Git ──────────────────────────────────────────────────────────────
 .git/
+.gitignore
 
-# Frontend
+# ── Frontend (not needed for server Docker build) ────────────────────
 node_modules/
 dist/
+src/
+public/
+index.html
+vite.config.ts
+vitest.setup.ts
+tsconfig*.json
+eslint.config.js
+package.json
+package-lock.json
 
-# Python virtual environments
-.venv/
-server/.venv/
+# ── Documentation ────────────────────────────────────────────────────
+planning/
+analysis/
+*.md
+!README.md
+!infrastructure/README.md
 
-# IDE
+# ── Spreadsheets / data files ────────────────────────────────────────
+*.xlsx
+*.csv
+*.xls
+data/
+
+# ── Agent / editor config ────────────────────────────────────────────
+.agent/
+.gemini/
 .idea/
 .vscode/
 *.swp
 
-# OS
+# ── OS artifacts ─────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Planning docs (not needed for build)
-planning/
-
-# Agent config (not needed for build)
-.agent/
-.gemini/
-
-# Local dev
+# ── Python dev artifacts ─────────────────────────────────────────────
+.venv/
+server/.venv/
 *.egg-info/
 __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
+
+# ── Terraform (not needed for Docker build) ──────────────────────────
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/*.tfplan
+infrastructure/terraform/.terraform/
+
+# ── Media / large assets ─────────────────────────────────────────────
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.mp4
+*.webm
+*.webp
+*.wav
+*.mp3
+
+# ── Env files (secrets) ─────────────────────────────────────────────
+.env
+.env.local
+.env.production
