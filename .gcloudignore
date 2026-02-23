@@ -1,0 +1,37 @@
+# Cloud Build ignore — minimize upload tarball
+# Without this file, gcloud uploads the ENTIRE repo (~1.8GB)
+
+# Git
+.git/
+
+# Frontend
+node_modules/
+dist/
+
+# Python virtual environments
+.venv/
+server/.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Planning docs (not needed for build)
+planning/
+
+# Agent config (not needed for build)
+.agent/
+.gemini/
+
+# Local dev
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/

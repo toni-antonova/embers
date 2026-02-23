@@ -41,10 +41,51 @@ commands:
     description: Run server locally with hot reload
     cmd: uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8080 --reload
 
-  build:
-    description: Build Docker image
+  build-local:
+    description: Build Docker image locally
     cmd: docker build -t lumen-server .
 
   lock:
     description: Regenerate lock file after dependency changes
     cmd: uv lock
+
+  build:
+    description: Build and push Docker image via Cloud Build (with layer caching)
+    cmd: |
+      cd .. && gcloud builds submit \
+        --config infrastructure/cloudbuild.yaml \
+        --substitutions=COMMIT_SHA=$(git rev-parse --short HEAD) \
+        --project=lumen-pipeline --region=us-east4 \
+        .
+
+  deploy:
+    description: Deploy latest image to Cloud Run
+    cmd: |
+      gcloud run deploy lumen-pipeline \
+        --image=us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
+        --project=lumen-pipeline \
+        --region=us-east4
+
+  apply-terraform:
+    description: Apply Terraform config (infra changes)
+    cmd: cd ../infrastructure/terraform && terraform apply -auto-approve
+
+  release:
+    description: Full release — cloud build + deploy + health check
+    cmd: |
+      cd .. && gcloud builds submit \
+        --config infrastructure/cloudbuild.yaml \
+        --substitutions=COMMIT_SHA=$(git rev-parse --short HEAD) \
+        --project=lumen-pipeline --region=us-east4 \
+        . && \
+      gcloud run deploy lumen-pipeline \
+        --image=us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
+        --project=lumen-pipeline \
+        --region=us-east4 && \
+      echo "✓ Deployed. Checking health..." && \
+      SERVICE_URL=$(gcloud run services describe lumen-pipeline --project=lumen-pipeline --region=us-east4 --format='value(status.url)') && \
+      curl -s "$SERVICE_URL/health" | python3 -m json.tool
+
+  release-pipeline:
+    description: Alias for release
+    cmd: lets release

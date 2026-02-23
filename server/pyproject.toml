@@ -37,6 +37,7 @@ dependencies = [
     "scikit-image>=0.24",
     "scikit-learn>=1.5",
     "huggingface-hub>=0.30",
+    "torch-cluster",
 
     # Image
     "Pillow>=12.1",
@@ -100,6 +101,9 @@ warn_return_any = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.uv]
+extra-build-dependencies = { torch-cluster = ["torch"] }
 
 [build-system]
 requires = ["setuptools>=70.0"]
