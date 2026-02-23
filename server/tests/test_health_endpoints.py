@@ -18,7 +18,7 @@ class TestLivenessProbe:
 
     def test_minimal_body(self, client):
         """Liveness should return only a status field — nothing heavy."""
-        data = response = client.get("/health").json()
+        data = client.get("/health").json()
         assert data == {"status": "ok"}
 
     def test_no_dependencies_needed(self, client):

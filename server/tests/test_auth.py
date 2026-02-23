@@ -3,6 +3,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,6 +13,7 @@ from app.cache.shape_cache import ShapeCache
 from app.config import Settings
 from app.main import create_app
 from app.models.registry import ModelRegistry
+from app.services.metrics import PipelineMetrics
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -29,13 +31,11 @@ def _make_app(api_key: str = "") -> TestClient:
 
     get_settings.cache_clear()
 
-    import os
-
     env_overrides = {
         "SKIP_MODEL_LOAD": "true",
         "LOG_JSON": "false",
         "LOG_LEVEL": "DEBUG",
-        "CACHE_BUCKET": "test-bucket",
+        "CACHE_BUCKET": "",
     }
     if api_key:
         env_overrides["API_KEY"] = api_key
@@ -55,15 +55,21 @@ def _make_app(api_key: str = "") -> TestClient:
         cache.disconnect = AsyncMock()
         cache.clear_memory = MagicMock()
         cache.is_connected = True
+        cache.load_all_cached = AsyncMock(return_value=0)
+        cache.preload_to_memory = AsyncMock(return_value=False)
 
         settings = Settings(**{k.lower(): v for k, v in env_overrides.items()})
         registry = ModelRegistry(settings)
 
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # Override app.state after TestClient init (lifespan may have set real ones)
         app.state.model_registry = registry
         app.state.shape_cache = cache
         app.state.settings = settings
+        app.state.metrics = PipelineMetrics()
 
-        return TestClient(app, raise_server_exceptions=False)
+        return client
     finally:
         # Clean up env vars so tests don't leak state
         for k in env_overrides:
