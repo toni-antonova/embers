@@ -2,7 +2,7 @@
 name = "lumen-server"
 version = "0.1.0"
 description = "Speech-to-3D point cloud generation server"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     # Web framework
     "fastapi>=0.129",
@@ -81,7 +81,7 @@ line-length = 100
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 

@@ -1,10 +1,11 @@
 # ============================================================
-# Lumen Server — Python 3.14 on NVIDIA CUDA 12.8
+# Lumen Server — Python 3.13 on NVIDIA CUDA 12.8
 # ============================================================
-# NVIDIA base images don't ship Python 3.14, so we install it
-# via the deadsnakes PPA. PyTorch 2.10.0 has official cp314
-# wheels. UV_TORCH_BACKEND=cu128 tells uv to pull the correct
-# CUDA-enabled PyTorch wheel automatically.
+# NVIDIA base images don't ship Python 3.13, so we install it
+# via the deadsnakes PPA. Python 3.13 has full wheel support
+# for the entire ML stack (PyTorch, diffusers, transformers,
+# sentencepiece). UV_TORCH_BACKEND=cu128 tells uv to pull the
+# correct CUDA-enabled PyTorch wheel automatically.
 #
 # Layer order: slowest-changing → fastest-changing
 #   1. Base + system packages  (changes: almost never)
@@ -16,19 +17,19 @@
 
 FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
 
-# ---- System packages + Python 3.14 via deadsnakes ----
+# ---- System packages + Python 3.13 via deadsnakes ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common gpg-agent \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-    python3.14 python3.14-venv python3.14-dev \
+    python3.13 python3.13-venv python3.13-dev \
     libegl1 libgl1 libglib2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Make python3.14 the default python3
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.14 1
+# Make python3.13 the default python3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
 
 # ---- Install uv ----
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -43,7 +44,7 @@ WORKDIR /home/appuser/server
 ENV HF_HOME=/home/appuser/models
 ENV TRANSFORMERS_CACHE=/home/appuser/models
 ENV PYOPENGL_PLATFORM=egl
-ENV UV_PYTHON=python3.14
+ENV UV_PYTHON=python3.13
 ENV UV_TORCH_BACKEND=cu128
 
 # Model cache directory
