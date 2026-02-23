@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 python3.13-venv python3.13-dev \
     libegl1 libgl1 libglib2.0-0 \
     curl \
+    g++ make \
     && rm -rf /var/lib/apt/lists/*
 
 # Make python3.13 the default python3
