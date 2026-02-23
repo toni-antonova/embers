@@ -1,17 +1,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Secret Manager — Secret Shells (values managed outside Terraform)
+# Secret Manager — API Key & HuggingFace Token
 # ─────────────────────────────────────────────────────────────────────────────
-# Terraform only creates the empty secret containers. You populate them
-# manually via the GCP Console or gcloud CLI:
+# Terraform creates the secrets with placeholder values on first apply.
+# Replace with real values later via GCP Console or gcloud:
 #
-#   # API key (protects /generate endpoint):
 #   openssl rand -hex 32 | gcloud secrets versions add lumen-api-key --data-file=-
-#
-#   # HuggingFace token (downloads gated models on cold start):
 #   gcloud secrets versions add lumen-hf-token --data-file=- <<< "hf_your_token"
-#   Get yours at: https://huggingface.co/settings/tokens (read scope)
 #
-# Cloud Run reads both at container startup via secret env vars (cloud_run.tf).
+# The lifecycle blocks ensure `terraform apply` never overwrites your
+# real values once set — it only touches them on initial creation.
 # ─────────────────────────────────────────────────────────────────────────────
 
 resource "google_secret_manager_secret" "api_key" {
@@ -24,6 +21,15 @@ resource "google_secret_manager_secret" "api_key" {
   depends_on = [google_project_service.required_apis]
 }
 
+resource "google_secret_manager_secret_version" "api_key" {
+  secret      = google_secret_manager_secret.api_key.id
+  secret_data = "PLACEHOLDER_REPLACE_ME"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "hf_token" {
   secret_id = "lumen-hf-token"
 
@@ -32,4 +38,13 @@ resource "google_secret_manager_secret" "hf_token" {
   }
 
   depends_on = [google_project_service.required_apis]
+}
+
+resource "google_secret_manager_secret_version" "hf_token" {
+  secret      = google_secret_manager_secret.hf_token.id
+  secret_data = "PLACEHOLDER_REPLACE_ME"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
