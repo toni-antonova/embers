@@ -127,3 +127,63 @@ async def generate_image(
     buf.seek(0)
 
     return Response(content=buf.read(), media_type="image/png")
+
+
+# ── PartCrafter debug endpoint ───────────────────────────────────────────────
+
+
+@router.post("/generate-mesh")
+async def generate_mesh(
+    request: GenerateImageRequest,
+    registry: ModelRegistry = Depends(get_model_registry),
+) -> dict:
+    """Run the full SDXL → PartCrafter → point sampling pipeline.
+
+    Returns structured JSON with timing breakdown, part counts,
+    and vertex counts — for debugging PartCrafter output quality.
+    """
+    if not registry.has("sdxl_turbo"):
+        raise ModelNotLoadedError("sdxl_turbo")
+    if not registry.has("partcrafter"):
+        raise ModelNotLoadedError("partcrafter")
+
+    template = get_template(request.text)
+    prompt = get_canonical_prompt(request.text, template.template_type)
+
+    # Step 1: SDXL Turbo image
+    sdxl = registry.get("sdxl_turbo")
+    t0 = time.perf_counter()
+    image = sdxl.generate(prompt)
+    image_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    # Step 2: PartCrafter meshes
+    partcrafter = registry.get("partcrafter")
+    t1 = time.perf_counter()
+    meshes = partcrafter.generate(image, num_parts=template.num_parts)
+    mesh_ms = round((time.perf_counter() - t1) * 1000, 1)
+
+    # Step 3: Point sampling
+    from app.pipeline.point_sampler import sample_from_part_meshes
+
+    valid_meshes = [m for m in meshes if len(m.vertices) > 1]
+    t2 = time.perf_counter()
+    positions, part_ids = sample_from_part_meshes(valid_meshes, total_points=2048)
+    sample_ms = round((time.perf_counter() - t2) * 1000, 1)
+
+    return {
+        "text": request.text,
+        "template_type": template.template_type,
+        "num_parts_requested": template.num_parts,
+        "num_parts_generated": len(meshes),
+        "num_real_parts": len(valid_meshes),
+        "vertices_per_part": [len(m.vertices) for m in meshes],
+        "total_points": len(positions),
+        "timing": {
+            "image_ms": image_ms,
+            "mesh_ms": mesh_ms,
+            "sample_ms": sample_ms,
+            "total_ms": round(image_ms + mesh_ms + sample_ms, 1),
+        },
+        "positions_shape": list(positions.shape),
+    }
+

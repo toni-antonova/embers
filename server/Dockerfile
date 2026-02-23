@@ -58,6 +58,14 @@ RUN mkdir -p /home/appuser/models
 COPY --chown=appuser pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+# ---- Vendor PartCrafter (not pip-installable) ----
+# Pinned to commit SHA for reproducible builds.
+# PartCrafter's src/ is added to PYTHONPATH so `from src.pipelines...` works.
+ARG PARTCRAFTER_SHA=269bd4164fbe35b17a6e58f8d6934262822082eb
+RUN curl -L "https://github.com/wgsxm/PartCrafter/archive/${PARTCRAFTER_SHA}.tar.gz" | tar xz \
+    && mv "PartCrafter-${PARTCRAFTER_SHA}" /home/appuser/partcrafter
+ENV PYTHONPATH="/home/appuser/partcrafter:${PYTHONPATH}"
+
 # ---- Copy application code ----
 COPY --chown=appuser app/ app/
 

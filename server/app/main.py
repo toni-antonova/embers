@@ -107,6 +107,27 @@ async def _load_models(registry: ModelRegistry) -> None:
             sdxl = SDXLTurboModel(device="cuda")
             registry.register("sdxl_turbo", sdxl)
 
+            from app.models.partcrafter import PartCrafterModel
+
+            partcrafter = PartCrafterModel(device="cuda")
+            registry.register("partcrafter", partcrafter)
+
+            # ── VRAM budget check ───────────────────────────────────────────
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    allocated = torch.cuda.memory_allocated() / 1e9
+                    total = torch.cuda.get_device_properties(0).total_memory / 1e9
+                    logger.info(
+                        "vram_budget",
+                        allocated_gb=round(allocated, 2),
+                        total_gb=round(total, 2),
+                        free_gb=round(total - allocated, 2),
+                    )
+            except ImportError:
+                pass
+
         await loop.run_in_executor(None, _load)
         logger.info("background_model_load_complete")
     except Exception:

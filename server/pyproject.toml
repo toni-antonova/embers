@@ -26,6 +26,18 @@ dependencies = [
     "trimesh>=4.11",
     "scipy>=1.17",
 
+    # PartCrafter inference deps (vendored, not pip-installable)
+    "einops>=0.8",
+    "omegaconf>=2.3",
+    "jaxtyping>=0.2",
+    "typeguard>=4.3",
+    "peft>=0.14",
+    "colormaps>=0.4",
+    "opencv-python>=4.10",
+    "scikit-image>=0.24",
+    "scikit-learn>=1.5",
+    "huggingface-hub>=0.30",
+
     # Image
     "Pillow>=12.1",
 

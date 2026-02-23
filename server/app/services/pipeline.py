@@ -22,7 +22,7 @@ from app.config import Settings
 from app.exceptions import GenerationFailedError, GenerationTimeoutError, GPUOutOfMemoryError
 from app.models.registry import ModelRegistry
 from app.pipeline.encoding import compute_bbox, encode_float32, encode_uint8
-from app.pipeline.point_sampler import normalize_positions
+from app.pipeline.point_sampler import normalize_positions, sample_from_part_meshes
 from app.pipeline.prompt_templates import get_canonical_prompt
 from app.pipeline.template_matcher import get_template
 from app.schemas import BoundingBox, GenerateRequest, GenerateResponse
@@ -67,7 +67,7 @@ class PipelineOrchestrator:
 
         # 3. Generate with timeout + GPU error recovery
         try:
-            positions, part_ids, pipeline_used = await asyncio.wait_for(
+            positions, part_ids, part_names, pipeline_used = await asyncio.wait_for(
                 self._run_in_executor(request.text, template),
                 timeout=self._settings.generation_timeout_seconds,
             )
@@ -97,7 +97,7 @@ class PipelineOrchestrator:
         response = GenerateResponse(
             positions=encode_float32(positions),
             part_ids=encode_uint8(part_ids),
-            part_names=template.part_names,
+            part_names=part_names,
             template_type=template.template_type,
             bounding_box=BoundingBox(min=bbox["min"], max=bbox["max"]),
             cached=False,
@@ -119,24 +119,20 @@ class PipelineOrchestrator:
 
     async def _run_in_executor(
         self, text: str, template: object
-    ) -> tuple[np.ndarray, np.ndarray, str]:
+    ) -> tuple[np.ndarray, np.ndarray, list[str], str]:
         """Run synchronous GPU work in a thread to avoid blocking the event loop."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._generate_sync, text, template)
 
     def _generate_sync(
         self, text: str, template: object
-    ) -> tuple[np.ndarray, np.ndarray, str]:
-        """Synchronous generation. Runs in a thread pool.
+    ) -> tuple[np.ndarray, np.ndarray, list[str], str]:
+        """Synchronous GPU pipeline — runs in thread pool via run_in_executor.
 
-        Uses SDXL Turbo for image generation when available.
-        Mesh generation (PartCrafter / Hunyuan3D) will be added in Prompt 04.
-        For now, generates a real image but returns mock point cloud data.
+        Primary path: SDXL Turbo → PartCrafter → point sampling.
+        Falls back to mock data if models aren't loaded (e.g. in tests).
         """
         total_points = self._settings.max_points
-
-        # Deterministic RNG so same noun → same mock shape
-        rng = np.random.default_rng(hash(text) % (2**32))
 
         # Canonical prompt
         prompt = get_canonical_prompt(text, template.template_type)
@@ -144,20 +140,74 @@ class PipelineOrchestrator:
 
         # ── Step 1: Image generation (SDXL Turbo) ───────────────────────────
         pipeline_used = "mock"
+        reference_image = None
 
         if self._registry.has("sdxl_turbo"):
             sdxl = self._registry.get("sdxl_turbo")
+            t0 = time.perf_counter()
             reference_image = sdxl.generate(prompt)
+            image_ms = round((time.perf_counter() - t0) * 1000, 1)
             logger.info(
                 "sdxl_image_generated",
                 size=f"{reference_image.width}x{reference_image.height}",
                 text=text,
+                time_ms=image_ms,
             )
             pipeline_used = "sdxl_turbo+mock"
-            # TODO(prompt-04): pass reference_image to PartCrafter for mesh generation.
-            # For now, mock geometry is returned below.
 
-        # ── Step 2: Mock point cloud (replaced by mesh gen in Prompt 04) ────
+        # ── Step 2: Part mesh generation (PartCrafter) ──────────────────────
+        if reference_image is not None and self._registry.has("partcrafter"):
+            partcrafter = self._registry.get("partcrafter")
+            t0 = time.perf_counter()
+            part_meshes = partcrafter.generate(
+                reference_image, num_parts=template.num_parts
+            )
+            mesh_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+            # Count real meshes (non-dummy) — dummies have only 1 vertex
+            real_count = sum(1 for m in part_meshes if len(m.vertices) > 1)
+
+            # Validate part count against template expectation
+            if real_count < max(template.num_parts * 0.5, 1):
+                logger.warning(
+                    "partcrafter_insufficient_parts",
+                    text=text,
+                    expected=template.num_parts,
+                    real=real_count,
+                    total=len(part_meshes),
+                )
+
+            # Filter out dummy meshes (1-vertex) for point sampling
+            valid_meshes = [m for m in part_meshes if len(m.vertices) > 1]
+            if not valid_meshes:
+                # All meshes failed — fall back to mock
+                logger.error("partcrafter_all_meshes_failed", text=text)
+            else:
+                # ── Step 3: Point sampling ──────────────────────────────────
+                t1 = time.perf_counter()
+                positions, part_ids = sample_from_part_meshes(
+                    valid_meshes, total_points=total_points
+                )
+                sample_ms = round((time.perf_counter() - t1) * 1000, 1)
+
+                # Truncate part names to match actual mesh count
+                part_names = template.part_names[: len(valid_meshes)]
+                pipeline_used = "partcrafter"
+
+                logger.info(
+                    "primary_pipeline_complete",
+                    text=text,
+                    real_parts=real_count,
+                    total_parts=len(part_meshes),
+                    image_ms=image_ms,
+                    mesh_ms=mesh_ms,
+                    sample_ms=sample_ms,
+                )
+
+                return positions, part_ids, part_names, pipeline_used
+
+        # ── Fallback: Mock point cloud ──────────────────────────────────────
+        rng = np.random.default_rng(hash(text) % (2**32))
         theta = rng.uniform(0, 2 * np.pi, total_points)
         phi = rng.uniform(0, np.pi, total_points)
         r = 0.8 + rng.normal(0, 0.1, total_points)
@@ -173,4 +223,5 @@ class PipelineOrchestrator:
         positions, _ = normalize_positions(positions)
         part_ids = rng.integers(0, template.num_parts, total_points).astype(np.uint8)
 
-        return positions, part_ids, pipeline_used
+        return positions, part_ids, template.part_names, pipeline_used
+
