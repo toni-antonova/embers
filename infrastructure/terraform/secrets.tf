@@ -1,14 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Secret Manager — API Key
 # ─────────────────────────────────────────────────────────────────────────────
-# Stores the Lumen API key in Secret Manager.
-# The Cloud Run service account reads it at container startup via
-# a secret environment variable reference (see cloud_run.tf).
+# Terraform creates the secret shell with a placeholder value.
+# After `terraform apply`, populate the real key:
 #
-# To set or rotate the key:
-#   gcloud secrets versions add lumen-api-key --data-file=- <<< "your-key-here"
-# Or via terraform.tfvars:
-#   api_key = "your-key-here"
+#   openssl rand -hex 32 | gcloud secrets versions add lumen-api-key --data-file=-
+#
+# Cloud Run reads it at startup via secret env var (see cloud_run.tf).
+# The lifecycle block ensures Terraform won't overwrite manually-set values.
 # ─────────────────────────────────────────────────────────────────────────────
 
 resource "google_secret_manager_secret" "api_key" {
@@ -35,13 +34,13 @@ resource "google_secret_manager_secret_version" "api_key" {
 # ─────────────────────────────────────────────────────────────────────────────
 # Secret Manager — HuggingFace Token
 # ─────────────────────────────────────────────────────────────────────────────
-# Required for downloading gated models (SDXL Turbo, Hunyuan3D-2, etc.)
-# from the HuggingFace Hub on first cold start.
+# Terraform creates the secret shell with a placeholder value.
+# After `terraform apply`, populate the real token:
 #
-# To set:
-#   gcloud secrets versions add lumen-hf-token --data-file=- <<< "hf_your_token_here"
-# Or via terraform.tfvars:
-#   hf_token = "hf_your_token_here"
+#   gcloud secrets versions add lumen-hf-token --data-file=- <<< "hf_your_token"
+#
+# Get your token at: https://huggingface.co/settings/tokens (read scope)
+# Required for downloading gated models (SDXL Turbo, Hunyuan3D-2, etc.)
 # ─────────────────────────────────────────────────────────────────────────────
 
 resource "google_secret_manager_secret" "hf_token" {

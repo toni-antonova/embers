@@ -49,15 +49,17 @@ variable "container_image" {
 }
 
 variable "api_key" {
-  description = "API key for authenticating client requests. Set in terraform.tfvars (gitignored)."
+  description = "Initial API key placeholder. Terraform creates the secret; populate the real value via: gcloud secrets versions add lumen-api-key --data-file=- <<< 'your-key'"
   type        = string
   sensitive   = true
+  default     = "CHANGE_ME"
 }
 
 variable "hf_token" {
-  description = "HuggingFace API token for downloading gated models (SDXL Turbo, etc). Set in terraform.tfvars (gitignored)."
+  description = "Initial HF token placeholder. Terraform creates the secret; populate the real value via: gcloud secrets versions add lumen-hf-token --data-file=- <<< 'hf_xxx'"
   type        = string
   sensitive   = true
+  default     = "CHANGE_ME"
 }
 
 variable "allowed_origins" {
