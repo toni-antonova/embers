@@ -20,9 +20,9 @@ analysis/
 *.xlsx
 *.csv
 *.xls
-# Exclude root-level data/ but NOT src/data/ (frontend source)
-/data/
-!src/data/
+# Exclude root-level data/ and frontend source (not needed for Docker build)
+data/
+src/
 
 # ── Agent / editor config ────────────────────────────────────────────
 .agent/
