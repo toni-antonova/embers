@@ -87,7 +87,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def generation_rate_limit_handler(
         request: Request, exc: GenerationRateLimitError
     ) -> JSONResponse:
-        """429 with Retry-After header -- tells client exactly when to retry."""
+        """429 with Retry-After header — tells client exactly when to retry."""
         retry_after = int(exc.retry_after_seconds)
         logger.warning(
             "generation_rate_limited_response",

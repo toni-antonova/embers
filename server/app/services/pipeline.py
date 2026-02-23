@@ -80,7 +80,7 @@ class PipelineOrchestrator:
         # WHY THIS IS SEPARATE FROM THE OUTER SLOWAPI LIMIT:
         # The outer limit (300/min) protects against DoS on the HTTP layer.
         # This inner limit protects GPU cost. A cache hit costs ~0ms of GPU
-        # time; a cache miss costs 2-5s of L4 compute at ~$0.70/hr.
+        # time; a cache miss costs 2–5s of L4 compute at ~$0.70/hr.
         # Separating them lets chatty real-time speech clients hammer the
         # cache for free while capping the expensive generation path.
         if self._metrics:

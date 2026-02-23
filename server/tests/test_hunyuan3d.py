@@ -23,6 +23,8 @@ class TestHunyuan3DProtocol:
         """The class should be runtime-checkable against ImageToMeshModel."""
         from app.models.hunyuan3d import Hunyuan3DTurboModel
 
+        # We can't instantiate without the real model, but we can verify
+        # the class has the right attributes.
         assert hasattr(Hunyuan3DTurboModel, "name")
         assert hasattr(Hunyuan3DTurboModel, "vram_gb")
         assert hasattr(Hunyuan3DTurboModel, "generate")
@@ -73,10 +75,14 @@ class TestHunyuan3DGenerate:
             "sys.modules",
             {"hunyuan3d": MagicMock()},
         ):
+            import importlib
+            from unittest.mock import PropertyMock
+
+            # Patch the pipeline class
             with patch(
                 "app.models.hunyuan3d.Hunyuan3DTurboModel.__init__",
                 return_value=None,
-            ):
+            ) as mock_init:
                 from app.models.hunyuan3d import Hunyuan3DTurboModel
 
                 model = Hunyuan3DTurboModel.__new__(Hunyuan3DTurboModel)
@@ -96,6 +102,7 @@ class TestHunyuan3DGenerate:
     @patch("app.models.hunyuan3d.torch.inference_mode", lambda: lambda fn: fn)
     def test_generate_with_non_trimesh_output(self) -> None:
         """generate() should convert non-trimesh output to trimesh.Trimesh."""
+        # Create a plain namespace object with vertices/faces but NOT a Trimesh
         verts = np.random.randn(6, 3).astype(np.float32)
         faces_arr = np.array([[0, 1, 2], [3, 4, 5]])
 
@@ -132,6 +139,7 @@ class TestHunyuan3DGenerate:
         )
 
         pipeline = MagicMock()
+        # Simulate pipeline output without .mesh — uses result[0] path
         pipeline.return_value = [mesh]
 
         from app.models.hunyuan3d import Hunyuan3DTurboModel
