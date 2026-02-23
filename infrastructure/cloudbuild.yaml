@@ -22,25 +22,9 @@ options:
   machineType: "E2_HIGHCPU_8"
 
 steps:
-  # ── Step 0: Backend tests (gate build on passing checks) ───────────────
-  - name: "ghcr.io/astral-sh/uv:python3.13-bookworm-slim"
-    id: "test-backend"
-    entrypoint: "bash"
-    args:
-      - "-c"
-      - |
-        cd /workspace/server
-        echo "── Backend: lint + typecheck + tests ──"
-        uv run ruff check app/ tests/ --quiet
-        uv run ruff format --check app/ tests/ --quiet
-        uv run mypy app/
-        uv run pytest tests/ -v --timeout=30 -x
-    env:
-      - "UV_TORCH_BACKEND=cpu"
-
-  # ── Step 1: Pull base image + previous app image for layer cache ──────
+  # ── Step 0: Pull base image + previous app image for layer cache ──────
+  # Tests are enforced locally by pre-commit, pre-push, and `lets validate`.
   - name: "gcr.io/cloud-builders/docker"
-    waitFor: ["test-backend"]
     entrypoint: "bash"
     args:
       - "-c"
