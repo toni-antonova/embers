@@ -51,19 +51,18 @@ async def lifespan(app: FastAPI):
     Replaces the deprecated @app.on_event("startup") / "shutdown" pattern.
     All stateful objects (models, cache, metrics) are created here and
     stored in app.state for injection via Depends().
+
+    Models load in a background task so uvicorn binds the port
+    immediately.  The /health/ready probe returns 503 until models
+    finish loading; /generate returns ModelNotLoadedError (503) until
+    the registry is populated.
     """
+    import asyncio
+
     settings = get_settings()
 
-    # Initialize model registry + load primary models
+    # Initialize model registry (no models loaded yet)
     registry = ModelRegistry(settings)
-    registry.load_primary()
-
-    # Load SDXL Turbo (gated behind skip_model_load for test environments)
-    if not settings.skip_model_load:
-        from app.models.sdxl_turbo import SDXLTurboModel
-
-        sdxl = SDXLTurboModel(device="cuda")
-        registry.register("sdxl_turbo", sdxl)
 
     # Initialize cache
     cache = ShapeCache(bucket_name=settings.cache_bucket)
@@ -78,10 +77,41 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.pipeline_orchestrator = orchestrator
 
+    # Load models in background after app is already serving
+    if not settings.skip_model_load:
+        asyncio.create_task(_load_models(registry))
+
     yield  # App is running, serving requests
 
     # Shutdown
     await cache.disconnect()
+
+
+async def _load_models(registry: ModelRegistry) -> None:
+    """Load ML models in background so the app serves probes immediately.
+
+    Runs as an asyncio task kicked off during lifespan.  Model init is
+    CPU/GPU-bound, so we run it in a thread to avoid blocking the event
+    loop (which would stall health probe responses).
+    """
+    import asyncio
+
+    loop = asyncio.get_running_loop()
+
+    try:
+        logger.info("background_model_load_start")
+
+        def _load() -> None:
+            from app.models.sdxl_turbo import SDXLTurboModel
+
+            sdxl = SDXLTurboModel(device="cuda")
+            registry.register("sdxl_turbo", sdxl)
+
+        await loop.run_in_executor(None, _load)
+        logger.info("background_model_load_complete")
+    except Exception:
+        logger.exception("background_model_load_failed")
+        raise
 
 
 def _parse_origins(allowed_origins: str) -> list[str]:

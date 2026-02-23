@@ -98,15 +98,15 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
       # ── Health Checks ────────────────────────────────────────────────────
       # Startup probe: checks models loaded + cache connected.
       # Returns 503 until ready, so Cloud Run won't route traffic too early.
+      # Budget: 60 × 10s = 600s to accommodate 6GB SDXL model download.
       startup_probe {
         http_get {
           path = "/health/ready"
-          port = 8080
         }
-        initial_delay_seconds = 10
-        period_seconds        = 5
-        timeout_seconds       = 3
-        failure_threshold     = 24  # Allow up to 120s for model loading
+        initial_delay_seconds = 0
+        period_seconds        = 10
+        failure_threshold     = 60   # 60 × 10s = 600s total
+        timeout_seconds       = 5
       }
 
       # Liveness probe: near-zero cost, just confirms the process is alive.
