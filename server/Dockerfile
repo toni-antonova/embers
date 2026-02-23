@@ -22,12 +22,24 @@ FROM ${BASE_IMAGE}
 # If the base image already has the same deps, this is a no-op (<1s).
 # If deps changed, only the delta is installed (~30-60s vs 15-30min).
 COPY --chown=appuser pyproject.toml uv.lock ./
-# --no-install-package torch-cluster: the base image installed the working
-# pre-built PyG wheel; uv sync would replace it with the broken PyPI sdist.
-RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cluster
+RUN uv sync --frozen --no-dev --no-install-project
+
+# ---- Fix torch-cluster: must come AFTER the last uv sync ----
+# uv sync uninstalls torch-cluster as "extraneous" (--no-install-package
+# only prevents installing, not uninstalling). Re-install the working
+# pre-built PyG wheel after sync.
+RUN uv pip install torch-cluster==1.6.3 \
+    -f https://data.pyg.org/whl/torch-2.7.0+cu128.html \
+    --reinstall-package torch-cluster \
+    && echo "--- torch-cluster verification ---" \
+    && uv pip show torch-cluster \
+    && .venv/bin/python -c "import torch_cluster; print('torch_cluster OK:', torch_cluster.__file__)"
 
 # ---- Copy application code (the only thing that changes per deploy) ----
 COPY --chown=appuser app/ app/
 
 EXPOSE 8080
-CMD ["uv", "run", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+# --no-sync: all deps are baked into the base image; skip the implicit
+# sync so `uv run` doesn't overwrite the pre-built PyG torch-cluster wheel
+# with the broken PyPI sdist.
+CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]

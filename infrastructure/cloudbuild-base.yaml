@@ -45,7 +45,6 @@ steps:
       - "--compressed-caching=false"
       - "--snapshot-mode=redo"
 
-images:
-  - "${_BASE_IMAGE}:latest"
+# Note: no `images:` block needed — Kaniko pushes via --destination.
 
 timeout: "2400s"  # 40 min — first build is slow; cached rebuilds are ~5-10 min

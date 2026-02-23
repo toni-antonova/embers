@@ -63,14 +63,6 @@ COPY requirements-heavy.txt ./
 RUN uv venv /home/appuser/server/.venv \
     && uv pip install -r requirements-heavy.txt
 
-# ---- Fix torch-cluster: use pre-built PyG wheel ----
-# torch-cluster 1.6.3 sdist compiles a broken native extension that crashes
-# with "std::logic_error: basic_string::_M_construct null not valid" on import.
-# Replace it with the pre-built wheel from PyG's index (PyTorch 2.7 + CUDA 12.8).
-RUN uv pip install torch-cluster==1.6.3 \
-    -f https://data.pyg.org/whl/torch-2.7.0+cu128.html \
-    --reinstall-package torch-cluster
-
 # ---- Switch to non-root user for remaining steps ----
 # Ensure appuser owns the venv created by root in Layer 1.
 RUN chown -R appuser:appuser /home/appuser/server/.venv
@@ -78,12 +70,25 @@ USER appuser
 
 # ---- Layer 2: All remaining dependencies ----
 # Lightweight deps (fastapi, pydantic, structlog, etc.) change more
-# often but install in seconds. uv sync picks up what's already
-# installed from Layer 1 and only installs the delta.
+# often but install in seconds.
 COPY --chown=appuser pyproject.toml uv.lock ./
-# --no-install-package torch-cluster: skip the broken sdist compile;
-# the pre-built PyG wheel is installed in Layer 1 above.
-RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cluster
+RUN uv sync --frozen --no-dev --no-install-project
+
+# ---- Fix torch-cluster: use pre-built PyG wheel ----
+# MUST come AFTER the last `uv sync` call. uv sync is destructive:
+# --no-install-package only prevents installing, it still UNINSTALLS
+# torch-cluster as "extraneous". So we install the working PyG wheel
+# after sync is done.
+#
+# torch-cluster 1.6.3 sdist from PyPI compiles a broken native extension
+# that crashes with "std::logic_error: basic_string::_M_construct null not
+# valid" on import. The pre-built wheel from PyG's index works correctly.
+RUN uv pip install torch-cluster==1.6.3 \
+    -f https://data.pyg.org/whl/torch-2.7.0+cu128.html \
+    --reinstall-package torch-cluster \
+    && echo "--- torch-cluster verification ---" \
+    && uv pip show torch-cluster \
+    && .venv/bin/python -c "import torch_cluster; print('torch_cluster OK:', torch_cluster.__file__)"
 
 # ---- Vendor PartCrafter (not pip-installable) ----
 ARG PARTCRAFTER_SHA=269bd4164fbe35b17a6e58f8d6934262822082eb
