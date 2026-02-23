@@ -26,15 +26,17 @@ export interface ServerShapeResponse {
     pipeline: string;
 }
 
-/** Raw JSON response from the server (before base64 decoding). */
+/** Raw JSON response from the server (before base64 decoding).
+ *  Field names match the Python backend's snake_case convention.
+ */
 interface RawServerResponse {
     positions: string;
-    partIds: string;
-    partNames: string[];
-    templateType: string;
-    boundingBox: { min: number[]; max: number[] };
+    part_ids: string;
+    part_names: string[];
+    template_type: string;
+    bounding_box: { min: number[]; max: number[] };
     cached: boolean;
-    generationTimeMs: number;
+    generation_time_ms: number;
     pipeline: string;
 }
 
@@ -138,12 +140,12 @@ export class ServerClient {
         try {
             return {
                 positions: this.decodeFloat32(raw.positions),
-                partIds: this.decodeUint8(raw.partIds),
-                partNames: raw.partNames,
-                templateType: raw.templateType,
-                boundingBox: raw.boundingBox,
+                partIds: this.decodeUint8(raw.part_ids),
+                partNames: raw.part_names,
+                templateType: raw.template_type,
+                boundingBox: raw.bounding_box,
                 cached: raw.cached,
-                generationTimeMs: raw.generationTimeMs,
+                generationTimeMs: raw.generation_time_ms,
                 pipeline: raw.pipeline,
             };
         } catch (err) {

@@ -86,9 +86,10 @@ export class ServerShapeAdapter {
             const srcIdx = i % serverCount;
             const px = i * 4;
 
-            // R = partId (normalized to [0, 1] range for float texture)
-            // If there are ≤256 parts, dividing by 255 gives clean values
-            data[px + 0] = partIds[srcIdx] / 255.0;
+            // R = partId as integer-valued float (0–31)
+            // The motion-plan shader reads: int partId = int(attr.r + 0.5)
+            // so we store the raw integer, NOT normalized to [0, 1]
+            data[px + 0] = partIds[srcIdx];
             data[px + 1] = 0;
             data[px + 2] = 0;
             data[px + 3] = 0;

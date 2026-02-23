@@ -23,12 +23,12 @@ function makeRawResponse() {
 
     return {
         positions: posBase64,
-        partIds: partBase64,
-        partNames: ['head', 'body', 'tail'],
-        templateType: 'quadruped',
-        boundingBox: { min: [-1, -1, -1], max: [1, 1, 1] },
+        part_ids: partBase64,
+        part_names: ['head', 'body', 'tail'],
+        template_type: 'quadruped',
+        bounding_box: { min: [-1, -1, -1], max: [1, 1, 1] },
         cached: false,
-        generationTimeMs: 1500,
+        generation_time_ms: 1500,
         pipeline: 'partcrafter',
     };
 }

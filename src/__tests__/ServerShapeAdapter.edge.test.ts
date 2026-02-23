@@ -75,7 +75,7 @@ describe('ServerShapeAdapter — Single Point', () => {
 
         // All pixels should have the same part ID
         for (let i = 0; i < 16; i++) {
-            expect(data[i * 4]).toBeCloseTo(0 / 255.0);
+            expect(data[i * 4]).toBeCloseTo(0);
         }
     });
 });
@@ -128,7 +128,7 @@ describe('ServerShapeAdapter — More Points Than Pixels', () => {
 // ══════════════════════════════════════════════════════════════════════
 
 describe('ServerShapeAdapter — Part ID Normalization', () => {
-    it('normalizes large part IDs to [0, 1] range', () => {
+    it('stores raw integer part IDs', () => {
         const response = makeResponse(4, 3);
         // Manually set a high part ID
         response.partIds[0] = 255;
@@ -138,8 +138,8 @@ describe('ServerShapeAdapter — Part ID Normalization', () => {
         const tex = ServerShapeAdapter.toPartIdTexture(response, 4);
         const data = tex.image.data! as Float32Array;
 
-        expect(data[0 * 4]).toBeCloseTo(255 / 255.0); // = 1.0
-        expect(data[1 * 4]).toBeCloseTo(128 / 255.0); // ≈ 0.502
-        expect(data[2 * 4]).toBeCloseTo(0 / 255.0);   // = 0.0
+        expect(data[0 * 4]).toBeCloseTo(255); // raw integer
+        expect(data[1 * 4]).toBeCloseTo(128);
+        expect(data[2 * 4]).toBeCloseTo(0);
     });
 });

@@ -98,8 +98,8 @@ describe('ServerShapeAdapter', () => {
             const data = tex.image.data! as Float32Array;
 
             for (let i = 0; i < 4; i++) {
-                const expected = response.partIds[i] / 255.0;
-                expect(data[i * 4 + 0]).toBeCloseTo(expected); // R = partId
+                const expected = response.partIds[i];
+                expect(data[i * 4 + 0]).toBeCloseTo(expected); // R = partId (raw integer)
                 expect(data[i * 4 + 1]).toBe(0); // G = 0
                 expect(data[i * 4 + 2]).toBe(0); // B = 0
             }
@@ -112,7 +112,7 @@ describe('ServerShapeAdapter', () => {
 
             for (let i = 4; i < 16; i++) {
                 const srcIdx = i % 4;
-                const expected = response.partIds[srcIdx] / 255.0;
+                const expected = response.partIds[srcIdx];
                 expect(data[i * 4 + 0]).toBeCloseTo(expected);
             }
         });
