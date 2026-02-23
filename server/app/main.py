@@ -24,6 +24,7 @@ from app.models.registry import ModelRegistry
 from app.rate_limit import limiter
 from app.routes import cache as cache_routes
 from app.routes import debug, generate, health
+from app.services.metrics import PipelineMetrics
 from app.services.pipeline import PipelineOrchestrator
 
 logger = structlog.get_logger(__name__)
@@ -69,13 +70,17 @@ async def lifespan(app: FastAPI):
     cache = ShapeCache(bucket_name=settings.cache_bucket)
     await cache.connect()
 
+    # Initialize metrics
+    metrics = PipelineMetrics()
+
     # Store in app.state — accessed via dependency functions in dependencies.py
     # Create the pipeline orchestrator (lifecycle-managed, not per-request)
-    orchestrator = PipelineOrchestrator(registry, cache, settings)
+    orchestrator = PipelineOrchestrator(registry, cache, settings, metrics=metrics)
 
     app.state.model_registry = registry
     app.state.shape_cache = cache
     app.state.settings = settings
+    app.state.metrics = metrics
     app.state.pipeline_orchestrator = orchestrator
 
     # Load models in background after app is already serving.

@@ -1,71 +1,46 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Build & Deploy — Lumen Server Pipeline
+# Build and Deploy — Lumen Server to Google Cloud Run
 # ─────────────────────────────────────────────────────────────────────────────
-# Usage:
-#   ./scripts/build_and_deploy.sh <project-id> [region]
+# Usage: ./build_and_deploy.sh <project-id> [region]
 #
-# Examples:
-#   ./scripts/build_and_deploy.sh lumen-pipeline
-#   ./scripts/build_and_deploy.sh lumen-pipeline us-central1
+# Image tag uses git SHA for deployment traceability.
 # ─────────────────────────────────────────────────────────────────────────────
-
 set -euo pipefail
 
-# ── Arguments ────────────────────────────────────────────────────────────────
 PROJECT_ID="${1:?Usage: $0 <project-id> [region]}"
 REGION="${2:-us-central1}"
 SERVICE_NAME="lumen-pipeline"
-REPO_NAME="lumen-pipeline-docker"
-IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${SERVICE_NAME}"
-TAG="$(git rev-parse --short HEAD 2>/dev/null || echo 'latest')"
+REPO_NAME="lumen-repo"
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Lumen Server Pipeline — Build & Deploy"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Project:  ${PROJECT_ID}"
-echo "  Region:   ${REGION}"
-echo "  Image:    ${IMAGE_URI}:${TAG}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# Use git SHA for image tagging (not just "latest")
+IMAGE_TAG="${3:-$(git rev-parse --short HEAD 2>/dev/null || echo 'latest')}"
+IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${SERVICE_NAME}:${IMAGE_TAG}"
 
-# ── Step 1: Configure Docker for Artifact Registry ───────────────────────────
-echo ""
-echo "▸ Configuring Docker authentication..."
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+echo "=== Building ${IMAGE_URI} ==="
+docker build -t "${IMAGE_URI}" server/
 
-# ── Step 2: Build ────────────────────────────────────────────────────────────
-echo ""
-echo "▸ Building Docker image..."
-docker build \
-    -t "${IMAGE_URI}:${TAG}" \
-    -t "${IMAGE_URI}:latest" \
-    -f Dockerfile \
-    .
+echo "=== Pushing to Artifact Registry ==="
+docker push "${IMAGE_URI}"
 
-# ── Step 3: Push ─────────────────────────────────────────────────────────────
-echo ""
-echo "▸ Pushing to Artifact Registry..."
-docker push "${IMAGE_URI}:${TAG}"
-docker push "${IMAGE_URI}:latest"
-
-# ── Step 4: Deploy ───────────────────────────────────────────────────────────
-echo ""
-echo "▸ Deploying to Cloud Run..."
+echo "=== Deploying to Cloud Run ==="
 gcloud run deploy "${SERVICE_NAME}" \
-    --image "${IMAGE_URI}:${TAG}" \
-    --region "${REGION}" \
-    --project "${PROJECT_ID}" \
-    --platform managed \
-    --quiet
+  --image="${IMAGE_URI}" \
+  --region="${REGION}" \
+  --gpu=1 \
+  --gpu-type=nvidia-l4 \
+  --cpu=4 \
+  --memory=16Gi \
+  --timeout=60 \
+  --concurrency=1 \
+  --min-instances=0 \
+  --max-instances=5 \
+  --port=8080 \
+  --allow-unauthenticated \
+  --set-env-vars="CACHE_BUCKET=lumen-shape-cache-${PROJECT_ID},LOG_JSON=true"
 
-# ── Done ─────────────────────────────────────────────────────────────────────
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✓ Deployed successfully!"
-echo ""
-SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
-    --region "${REGION}" \
-    --project "${PROJECT_ID}" \
-    --format "value(status.url)" 2>/dev/null || echo "<pending>")
-echo "  URL: ${SERVICE_URL}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "=== Deployed ${IMAGE_TAG} ==="
+gcloud run services describe "${SERVICE_NAME}" \
+  --region="${REGION}" \
+  --format="value(status.url)"

@@ -38,6 +38,7 @@ dependencies = [
     "scikit-learn>=1.5",
     "huggingface-hub>=0.30",
     "torch-cluster",
+    "torchvision",
 
     # Image
     "Pillow>=12.1",
