@@ -60,3 +60,9 @@ infrastructure/terraform/terraform.tfvars
 infrastructure/terraform/crash.log
 infrastructure/terraform/*.tfplan
 infrastructure/terraform/deploy.tfplan
+
+# Local-only docs
+.agent/workflows/
+planning/
+analysis/
+PRINCIPAL_ENGINEER_REVIEW.md
