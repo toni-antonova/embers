@@ -307,14 +307,23 @@ export class UniformBridge {
         // Push the same smoothed sentiment to the velocity shader for
         // physics modulation (LMA Effort framework). Independent of
         // color mode — works in both white and color.
+        //
+        // When sentimentOverride is null (no keyword classified), fall back
+        // to SER smoothedValence so voice tone still modulates particles.
         {
             const velUniforms = this.particleSystem.velocityVariable.material.uniforms;
-            const isMovActive = this.sentimentMovementEnabled
-                && this.sentimentOverride !== null;
 
-            velUniforms.uSentimentMovement.value = isMovActive
-                ? this.smoothedSentiment
-                : 0;
+            let movementSentiment = 0;
+            if (this.sentimentMovementEnabled) {
+                if (this.sentimentOverride !== null) {
+                    movementSentiment = this.smoothedSentiment;
+                } else {
+                    // Fallback: use SER valence (prosodic tone)
+                    movementSentiment = this.smoothedValence;
+                }
+            }
+
+            velUniforms.uSentimentMovement.value = movementSentiment;
             velUniforms.uSentimentMovementIntensity.value =
                 this.config.get('sentimentMovementIntensity');
         }

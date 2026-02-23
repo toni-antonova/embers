@@ -195,21 +195,21 @@ void main() {
 
     if (sentMov > 0.0) {
         // JOY profile: lighter spring, freer flow, calmer noise, bigger breath
-        smSpringOffset  = -sentMov * 1.5;
-        smDragOffset    = -sentMov * 1.0;
+        smSpringOffset  = -sentMov * 2.5;
+        smDragOffset    = -sentMov * 1.8;
         smNoiseAmpOff   = -sentMov * 0.3;
         smNoiseFreqOff  = -sentMov * 0.3;
-        smBreathOff     =  sentMov * 0.6;
+        smBreathOff     =  sentMov * 1.0;
     } else if (sentMov < 0.0) {
         // Negative: interpolate between SAD (mild) and ANGRY (strong)
         float angerRatio = smoothstep(0.3, 0.8, sentAbs);
         // SAD: heavy, bound, quiet, slow
         // ANGRY: firm, snappy, chaotic, tight swirls
-        smSpringOffset  = mix(sentAbs * 1.0,  sentAbs * 0.5, angerRatio);
-        smDragOffset    = mix(sentAbs * 1.0, -sentAbs * 0.5, angerRatio);
-        smNoiseAmpOff   = mix(-sentAbs * 0.1, sentAbs * 1.0, angerRatio);
+        smSpringOffset  = mix(sentAbs * 1.5,  sentAbs * 0.8, angerRatio);
+        smDragOffset    = mix(sentAbs * 1.5, -sentAbs * 0.8, angerRatio);
+        smNoiseAmpOff   = mix(-sentAbs * 0.2, sentAbs * 1.5, angerRatio);
         smNoiseFreqOff  = mix(-sentAbs * 0.2, sentAbs * 0.8, angerRatio);
-        smBreathOff     = mix(-sentAbs * 0.3, sentAbs * 0.3, angerRatio);
+        smBreathOff     = mix(-sentAbs * 0.5, sentAbs * 0.5, angerRatio);
     }
 
     // ── TENSION → CURL FREQUENCY ONLY ─────────────────────────────────

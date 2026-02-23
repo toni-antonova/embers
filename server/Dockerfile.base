@@ -72,7 +72,7 @@ USER appuser
 # Lightweight deps (fastapi, pydantic, structlog, etc.) change more
 # often but install in seconds.
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cluster
 
 # ---- Fix torch-cluster: use pre-built PyG wheel ----
 # MUST come AFTER the last `uv sync` call. uv sync is destructive:

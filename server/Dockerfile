@@ -22,7 +22,7 @@ FROM ${BASE_IMAGE}
 # If the base image already has the same deps, this is a no-op (<1s).
 # If deps changed, only the delta is installed (~30-60s vs 15-30min).
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cluster
 
 # ---- Fix torch-cluster: must come AFTER the last uv sync ----
 # uv sync uninstalls torch-cluster as "extraneous" (--no-install-package

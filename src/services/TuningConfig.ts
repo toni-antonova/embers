@@ -248,7 +248,7 @@ export const PARAM_DEFS: ParamDef[] = [
     {
         // Lerp speed for sentiment transitions. Lower = smoother/slower.
         key: 'sentimentSmoothing', label: 'Smoothing',
-        defaultValue: 1.5, min: 0.5, max: 5.0, step: 0.1,
+        defaultValue: 3.0, min: 0.5, max: 5.0, step: 0.1,
         group: '🎨 Sentiment Color'
     },
     {
@@ -285,7 +285,7 @@ export const PARAM_DEFS: ParamDef[] = [
     // ── 🏃 SENTIMENT MOVEMENT ────────────────────────────────────────
     {
         key: 'sentimentMovementIntensity', label: 'Intensity',
-        defaultValue: 0.5, min: 0.0, max: 1.0, step: 0.05,
+        defaultValue: 0.8, min: 0.0, max: 1.0, step: 0.05,
         group: '🏃 Sentiment Movement'
     },
 
@@ -309,7 +309,7 @@ const STORAGE_KEY = 'dots-tuning-config';
 // ── CONFIG VERSIONING ────────────────────────────────────────────────
 // Bump this whenever defaults change. Old localStorage will be discarded
 // automatically so stale dev settings don't silently override production defaults.
-const CONFIG_VERSION = 3;
+const CONFIG_VERSION = 4;
 
 // ── TUNING CONFIG CLASS ──────────────────────────────────────────────
 export class TuningConfig {
