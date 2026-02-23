@@ -46,10 +46,17 @@ class PipelineOrchestrator:
     For now, _generate_sync returns mock data.
     """
 
-    def __init__(self, registry: ModelRegistry, cache: ShapeCache, settings: Settings):
+    def __init__(
+        self,
+        registry: ModelRegistry,
+        cache: ShapeCache,
+        settings: Settings,
+        metrics: object | None = None,
+    ):
         self._registry = registry
         self._cache = cache
         self._settings = settings
+        self._metrics = metrics
 
     async def generate(self, request: GenerateRequest) -> GenerateResponse:
         """Full generation pipeline: cache → template → models → points."""
@@ -60,6 +67,8 @@ class PipelineOrchestrator:
         if cached is not None:
             cached.cached = True
             cached.generation_time_ms = int((time.perf_counter() - start) * 1000)
+            if self._metrics:
+                self._metrics.record_request("cache", 0, cached=True)
             return cached
 
         # 2. Template lookup
@@ -121,6 +130,8 @@ class PipelineOrchestrator:
             pipeline=pipeline_used,
             parts=template.num_parts,
         )
+        if self._metrics:
+            self._metrics.record_request(pipeline_used, elapsed, cached=False)
         return response
 
     async def _run_in_executor(
