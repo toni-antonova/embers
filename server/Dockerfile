@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # ============================================================
 # Lumen Server — Python 3.14 on NVIDIA CUDA 12.8
 # ============================================================
@@ -53,11 +52,10 @@ RUN mkdir -p /home/appuser/models
 # ---- Install project dependencies (cached layer) ----
 # uv reads UV_TORCH_BACKEND and automatically selects the CUDA 12.8
 # PyTorch variant from PyPI — no --index-url needed.
-# BuildKit cache mount keeps uv's wheel cache warm between builds:
-# dependency changes only re-download new/updated packages.
+# Layer caching note: --cache-from in cloudbuild.yaml reuses this entire
+# layer when pyproject.toml/uv.lock haven't changed (the 95% case).
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000 \
-    uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project
 
 # ---- Copy application code ----
 COPY --chown=appuser app/ app/

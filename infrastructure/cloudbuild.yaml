@@ -20,8 +20,6 @@
 
 substitutions:
   _IMAGE: "us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline"
-  _REGION: "us-east4"
-  _SERVICE_NAME: "lumen-pipeline"
 
 options:
   logging: CLOUD_LOGGING_ONLY
