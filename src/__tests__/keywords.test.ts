@@ -32,13 +32,13 @@ describe('Data — CONCRETE_NOUNS', () => {
     });
 
     it('all entries map to valid morph target names', () => {
-        for (const [word, mapping] of Object.entries(CONCRETE_NOUNS)) {
-            expect(validTargets.has(mapping.target)).toBe(true);
+        for (const [, mapping] of Object.entries(CONCRETE_NOUNS)) {
+            expect(validTargets.has(mapping.target as typeof MORPH_TARGET_NAMES[number])).toBe(true);
         }
     });
 
     it('all abstraction values are in [0, 1]', () => {
-        for (const [word, mapping] of Object.entries(CONCRETE_NOUNS)) {
+        for (const [, mapping] of Object.entries(CONCRETE_NOUNS)) {
             expect(mapping.abstraction).toBeGreaterThanOrEqual(0);
             expect(mapping.abstraction).toBeLessThanOrEqual(1);
         }
@@ -51,7 +51,7 @@ describe('Data — CONCRETE_NOUNS', () => {
     });
 
     it('concrete nouns have low abstraction (≤ 0.35)', () => {
-        for (const [word, mapping] of Object.entries(CONCRETE_NOUNS)) {
+        for (const [, mapping] of Object.entries(CONCRETE_NOUNS)) {
             expect(mapping.abstraction).toBeLessThanOrEqual(0.35);
         }
     });
@@ -68,20 +68,20 @@ describe('Data — ABSTRACT_CONCEPTS', () => {
     });
 
     it('all entries map to valid morph target names', () => {
-        for (const [word, mapping] of Object.entries(ABSTRACT_CONCEPTS)) {
-            expect(validTargets.has(mapping.target)).toBe(true);
+        for (const [, mapping] of Object.entries(ABSTRACT_CONCEPTS)) {
+            expect(validTargets.has(mapping.target as typeof MORPH_TARGET_NAMES[number])).toBe(true);
         }
     });
 
     it('all abstraction values are in [0, 1]', () => {
-        for (const [word, mapping] of Object.entries(ABSTRACT_CONCEPTS)) {
+        for (const [, mapping] of Object.entries(ABSTRACT_CONCEPTS)) {
             expect(mapping.abstraction).toBeGreaterThanOrEqual(0);
             expect(mapping.abstraction).toBeLessThanOrEqual(1);
         }
     });
 
     it('abstract concepts have high abstraction (≥ 0.5)', () => {
-        for (const [word, mapping] of Object.entries(ABSTRACT_CONCEPTS)) {
+        for (const [, mapping] of Object.entries(ABSTRACT_CONCEPTS)) {
             expect(mapping.abstraction).toBeGreaterThanOrEqual(0.5);
         }
     });
@@ -119,7 +119,7 @@ describe('Data — ACTION_MODIFIERS', () => {
     });
 
     it('all values are positive numbers', () => {
-        for (const [word, value] of Object.entries(ACTION_MODIFIERS)) {
+        for (const [, value] of Object.entries(ACTION_MODIFIERS)) {
             expect(value).toBeGreaterThan(0);
             expect(typeof value).toBe('number');
         }
@@ -149,7 +149,7 @@ describe('Data — AFINN_SUBSET', () => {
     });
 
     it('all scores are integers in [-5, +5]', () => {
-        for (const [word, score] of Object.entries(AFINN_SUBSET)) {
+        for (const [, score] of Object.entries(AFINN_SUBSET)) {
             expect(Number.isInteger(score)).toBe(true);
             expect(score).toBeGreaterThanOrEqual(-5);
             expect(score).toBeLessThanOrEqual(5);
@@ -157,7 +157,7 @@ describe('Data — AFINN_SUBSET', () => {
     });
 
     it('no scores are zero (zero-scoring words are excluded by design)', () => {
-        for (const [word, score] of Object.entries(AFINN_SUBSET)) {
+        for (const [, score] of Object.entries(AFINN_SUBSET)) {
             expect(score).not.toBe(0);
         }
     });

@@ -127,6 +127,7 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
     const [liveFeatures, setLiveFeatures] = useState({
         energy: 0, tension: 0, urgency: 0, breathiness: 0,
         flatness: 0, textureComplexity: 0, rolloff: 0,
+        pitch: 0, pitchDeviation: 0, pitchConfidence: 0,
     });
     const panelRef = useRef<HTMLDivElement>(null);
 
@@ -145,6 +146,8 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
                 energy: f.energy, tension: f.tension, urgency: f.urgency,
                 breathiness: f.breathiness, flatness: f.flatness,
                 textureComplexity: f.textureComplexity, rolloff: f.rolloff,
+                pitch: f.pitch, pitchDeviation: f.pitchDeviation,
+                pitchConfidence: f.pitchConfidence,
             });
         }, 33);
         return () => clearInterval(interval);

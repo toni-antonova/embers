@@ -133,7 +133,7 @@ describe('Renderer Types — Constants', () => {
 describe('MotionPlanManager — Construction', () => {
     it('initializes uniforms on construction', () => {
         const uniforms = createMockUniforms();
-        const _manager = new MotionPlanManager(uniforms, 64);
+        new MotionPlanManager(uniforms, 64);
 
         expect(uniforms.uMotionPlanActive.value).toBe(0.0);
         expect(uniforms.uMotionSpeedScale.value).toBe(1.0);

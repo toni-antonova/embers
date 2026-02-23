@@ -20,12 +20,12 @@ import type { TranscriptEvent } from '../services/SpeechEngine';
 
 /** Create a minimal final transcript event */
 function finalTranscript(text: string): TranscriptEvent {
-    return { text, isFinal: true };
+    return { text, isFinal: true, timestamp: Date.now() };
 }
 
 /** Create an interim (non-final) transcript event */
 function interimTranscript(text: string): TranscriptEvent {
-    return { text, isFinal: false };
+    return { text, isFinal: false, timestamp: Date.now() };
 }
 
 /** Create a morph semantic event with a given dominant word */

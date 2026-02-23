@@ -11,7 +11,7 @@
  */
 
 import type { TemplateJSON } from './template-types';
-import { PRIMITIVE_NAMES, type PrimitiveId } from '../renderer/types';
+import { PRIMITIVE_NAMES } from '../renderer/types';
 import { validateGlobPattern } from './glob-matcher';
 
 

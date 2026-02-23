@@ -39,6 +39,9 @@ function silentAudio(): AudioFeatures {
         flatness: 0,
         textureComplexity: 0,
         rolloff: 0.5,
+        pitch: 0,
+        pitchDeviation: 0,
+        pitchConfidence: 0,
     };
 }
 
@@ -52,6 +55,9 @@ function activeAudio(energy = 0.6, urgency = 0.4): AudioFeatures {
         flatness: 0.1,
         textureComplexity: 0.5,
         rolloff: 0.7,
+        pitch: 0.4,
+        pitchDeviation: 0.1,
+        pitchConfidence: 0.7,
     };
 }
 

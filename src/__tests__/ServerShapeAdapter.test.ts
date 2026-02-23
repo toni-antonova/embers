@@ -33,13 +33,13 @@ describe('ServerShapeAdapter', () => {
         it('produces a texture with correct total pixel count', () => {
             const response = makeResponse(8);
             const tex = ServerShapeAdapter.toDataTexture(response, 4); // 4×4 = 16 pixels
-            expect(tex.image.data.length).toBe(16 * 4); // 16 pixels × RGBA
+            expect(tex.image.data!.length).toBe(16 * 4); // 16 pixels × RGBA
         });
 
         it('first N pixels exactly match server positions', () => {
             const response = makeResponse(4);
             const tex = ServerShapeAdapter.toDataTexture(response, 4); // 4×4 = 16 pixels
-            const data = tex.image.data as Float32Array;
+            const data = tex.image.data! as Float32Array;
 
             // First 4 pixels should be exact (no jitter)
             for (let i = 0; i < 4; i++) {
@@ -53,7 +53,7 @@ describe('ServerShapeAdapter', () => {
         it('expanded pixels are near their source point (within jitter radius)', () => {
             const response = makeResponse(4);
             const tex = ServerShapeAdapter.toDataTexture(response, 4); // 16 pixels total
-            const data = tex.image.data as Float32Array;
+            const data = tex.image.data! as Float32Array;
             const JITTER = 0.02;
 
             // Pixels 4..15 are expanded — each maps to serverPoint[i % 4]
@@ -81,7 +81,7 @@ describe('ServerShapeAdapter', () => {
         it('handles textureSize=128 (real particle count)', () => {
             const response = makeResponse(2048);
             const tex = ServerShapeAdapter.toDataTexture(response, 128);
-            expect(tex.image.data.length).toBe(128 * 128 * 4); // 16384 × 4 = 65536
+            expect(tex.image.data!.length).toBe(128 * 128 * 4); // 16384 × 4 = 65536
         });
     });
 
@@ -89,13 +89,13 @@ describe('ServerShapeAdapter', () => {
         it('produces correct pixel count', () => {
             const response = makeResponse(4);
             const tex = ServerShapeAdapter.toPartIdTexture(response, 4);
-            expect(tex.image.data.length).toBe(16 * 4);
+            expect(tex.image.data!.length).toBe(16 * 4);
         });
 
         it('first N pixels have correct normalized part IDs', () => {
             const response = makeResponse(4);
             const tex = ServerShapeAdapter.toPartIdTexture(response, 4);
-            const data = tex.image.data as Float32Array;
+            const data = tex.image.data! as Float32Array;
 
             for (let i = 0; i < 4; i++) {
                 const expected = response.partIds[i] / 255.0;

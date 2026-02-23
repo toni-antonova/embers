@@ -19,7 +19,7 @@
  * in .image.data without needing a GPU.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { MorphTargets, MORPH_TARGET_NAMES } from '../engine/MorphTargets';
 
 // ── SHARED FIXTURE ───────────────────────────────────────────────────
