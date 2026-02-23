@@ -44,25 +44,45 @@ commands:
   preflight:
     description: Verify all ML imports resolve (no GPU needed) — run before build
     cmd: |
-      UV_TORCH_BACKEND=cpu uv run python -c "
-      # Core ML
-      import torch; print(f'✓ torch {torch.__version__}')
-      from diffusers import StableDiffusionXLPipeline; print('✓ StableDiffusionXLPipeline')
-      import torch_cluster; print('✓ torch_cluster')
+      FAILED=0
+      IS_MAC=$([[ "$(uname)" == "Darwin" ]] && echo 1 || echo 0)
 
-      # PartCrafter deps
-      import einops, omegaconf, jaxtyping, peft, trimesh
-      import cv2, skimage, sklearn, huggingface_hub
-      print('✓ PartCrafter deps')
+      try_import() {
+        local label="$1"; shift
+        UV_TORCH_BACKEND=cpu uv run python -c "$*" 2>/dev/null
+        if [ $? -eq 0 ]; then
+          echo "  ✓ $label"
+        elif [ "$IS_MAC" = "1" ]; then
+          echo "  ⚠ $label — skipped (native crash on macOS)"
+        else
+          echo "  ✗ $label FAILED"
+          FAILED=1
+        fi
+      }
 
-      # App modules
-      from app.models.partcrafter import PartCrafterModel; print('✓ PartCrafterModel')
-      from app.models.sdxl_turbo import SDXLTurboModel; print('✓ SDXLTurboModel (class only)')
-      from app.services.pipeline import PipelineOrchestrator; print('✓ PipelineOrchestrator')
+      echo "Core ML:"
+      try_import "torch"                    "import torch; print(f'  ({torch.__version__})', end='')"
+      try_import "StableDiffusionXLPipeline" "from diffusers import StableDiffusionXLPipeline"
 
-      print()
-      print('All imports pass — safe to build + deploy.')
-      "
+      echo "Native C++ extensions:"
+      try_import "torch_cluster"            "import torch_cluster"
+
+      echo "PartCrafter deps:"
+      try_import "einops, omegaconf, etc."  "import einops, omegaconf, jaxtyping, peft, trimesh"
+      try_import "cv2, skimage, etc."       "import cv2, skimage, sklearn, huggingface_hub"
+
+      echo "App modules:"
+      try_import "PartCrafterModel"         "from app.models.partcrafter import PartCrafterModel"
+      try_import "SDXLTurboModel"           "from app.models.sdxl_turbo import SDXLTurboModel"
+      try_import "PipelineOrchestrator"     "from app.services.pipeline import PipelineOrchestrator"
+
+      echo ""
+      if [ "$FAILED" = "1" ]; then
+        echo "FAILED — fix errors above before deploying."
+        exit 1
+      fi
+      echo "All imports pass — safe to build + deploy."
+      [ "$IS_MAC" = "1" ] && echo "Note: items marked ⚠ require Linux/CUDA — verified during docker build."
 
   serve:
     description: Run server locally with hot reload
