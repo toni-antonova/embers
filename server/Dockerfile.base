@@ -37,12 +37,6 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
 # ---- Install uv ----
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# ---- Non-root user ----
-RUN useradd -m appuser
-RUN mkdir -p /home/appuser/server && chown appuser:appuser /home/appuser/server
-USER appuser
-WORKDIR /home/appuser/server
-
 # ---- Environment ----
 ENV HF_HOME=/home/appuser/models
 ENV TRANSFORMERS_CACHE=/home/appuser/models
@@ -50,23 +44,37 @@ ENV PYOPENGL_PLATFORM=osmesa
 ENV UV_PYTHON=python3.13
 ENV UV_TORCH_BACKEND=cu128
 
-# Model cache directory
-RUN mkdir -p /home/appuser/models
+# ---- Non-root user (home dir only — we switch to them after root installs) ----
+RUN useradd -m appuser \
+    && mkdir -p /home/appuser/server /home/appuser/models \
+    && chown -R appuser:appuser /home/appuser
+
+WORKDIR /home/appuser/server
 
 # ---- Layer 1: Heavy ML wheels (changes ~quarterly) ----
 # PyTorch + CUDA wheels (~2GB), torchvision, diffusers, transformers.
 # Pinned separately so edits to lightweight deps in pyproject.toml
 # don't invalidate this expensive layer.
-COPY --chown=appuser requirements-heavy.txt ./
-RUN uv pip install --system -r requirements-heavy.txt
+#
+# We create a venv first because `--system` requires root write access
+# to /usr/local/lib, and Kaniko may restore the USER from cached layers.
+# Both Layer 1 (uv pip install) and Layer 2 (uv sync) target this venv.
+COPY requirements-heavy.txt ./
+RUN uv venv /home/appuser/server/.venv \
+    && uv pip install -r requirements-heavy.txt
 
 # ---- Fix torch-cluster: use pre-built PyG wheel ----
 # torch-cluster 1.6.3 sdist compiles a broken native extension that crashes
 # with "std::logic_error: basic_string::_M_construct null not valid" on import.
 # Replace it with the pre-built wheel from PyG's index (PyTorch 2.7 + CUDA 12.8).
-RUN uv pip install --system torch-cluster==1.6.3 \
+RUN uv pip install torch-cluster==1.6.3 \
     -f https://data.pyg.org/whl/torch-2.7.0+cu128.html \
     --reinstall-package torch-cluster
+
+# ---- Switch to non-root user for remaining steps ----
+# Ensure appuser owns the venv created by root in Layer 1.
+RUN chown -R appuser:appuser /home/appuser/server/.venv
+USER appuser
 
 # ---- Layer 2: All remaining dependencies ----
 # Lightweight deps (fastapi, pydantic, structlog, etc.) change more
