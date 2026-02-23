@@ -13,6 +13,7 @@ from app.config import Settings
 from app.main import create_app
 from app.models.registry import ModelRegistry
 from app.services.metrics import PipelineMetrics
+from app.services.pipeline import PipelineOrchestrator
 
 
 @pytest.fixture
@@ -85,10 +86,14 @@ def client(test_settings: Settings, mock_registry: ModelRegistry, mock_cache: Sh
         client = TestClient(app)
 
         # Override app.state with test mocks (lifespan may have set real ones)
+        metrics = PipelineMetrics()
         app.state.model_registry = mock_registry
         app.state.shape_cache = mock_cache
         app.state.settings = test_settings
-        app.state.metrics = PipelineMetrics()
+        app.state.metrics = metrics
+        app.state.pipeline_orchestrator = PipelineOrchestrator(
+            mock_registry, mock_cache, test_settings, metrics=metrics
+        )
 
         return client
     finally:
