@@ -33,9 +33,14 @@ class PipelineMetrics:
     mock_fallbacks: int = 0
     errors_total: int = 0
 
-    # Bounded — only keeps last 1000 latencies, oldest auto-evicted
+    # Bounded -- only keeps last 1000 latencies, oldest auto-evicted
     _latency_history: deque = field(
         default_factory=lambda: deque(maxlen=1000), repr=False
+    )
+
+    # Track GPU generation timestamps for rate-limit enforcement
+    _generation_timestamps: deque = field(
+        default_factory=lambda: deque(maxlen=500), repr=False
     )
 
     _gpu_memory_peak_gb: float = 0.0
@@ -68,6 +73,38 @@ class PipelineMetrics:
 
             if not success:
                 self.errors_total += 1
+
+            # Track GPU generation timestamps (non-cached only)
+            if not cached and success:
+                self._generation_timestamps.append(time.time())
+
+    def recent_generations_per_minute(self) -> int:
+        """Count GPU generations in the last 60 seconds."""
+        with self._lock:
+            cutoff = time.time() - 60
+            count = 0
+            for ts in reversed(self._generation_timestamps):
+                if ts >= cutoff:
+                    count += 1
+                else:
+                    break
+            return count
+
+    def oldest_generation_retry_after(self) -> float:
+        """Seconds until the oldest generation in the window expires.
+
+        Returns a precise Retry-After value for HTTP 429 responses.
+        If empty, returns a conservative default of 5 seconds.
+        """
+        with self._lock:
+            if not self._generation_timestamps:
+                return 5.0
+            cutoff = time.time() - 60
+            # Find the oldest timestamp still in the 60s window
+            for ts in self._generation_timestamps:
+                if ts >= cutoff:
+                    return max(1.0, 60.0 - (time.time() - ts))
+            return 5.0
 
     def record_gpu_memory(self, gb: float) -> None:
         """Track peak GPU memory usage."""

@@ -139,20 +139,22 @@ class TestSDXLTurboGenerate:
     def test_generate_oom_clears_cache_and_reraises(self):
         """OOM handler should call torch.cuda.empty_cache() then re-raise."""
         mock_pipe = _make_mock_pipeline()
-        # Simulate CUDA OOM — use a RuntimeError subclass since torch may be mocked
+        # Simulate CUDA OOM
         oom_error = type("OutOfMemoryError", (RuntimeError,), {})("CUDA out of memory")
 
-        # Patch torch.cuda.OutOfMemoryError to match our synthetic error class
         mock_torch = sys.modules["torch"]
         mock_torch.cuda.OutOfMemoryError = type(oom_error)
         mock_pipe.side_effect = oom_error
 
         model, _ = _create_model(mock_pipe)
 
-        with pytest.raises(type(oom_error)):
-            model.generate("a test prompt")
+        # Explicitly patch empty_cache with a trackable MagicMock
+        mock_empty_cache = MagicMock()
+        with patch.object(mock_torch.cuda, "empty_cache", mock_empty_cache):
+            with pytest.raises(type(oom_error)):
+                model.generate("a test prompt")
 
-        mock_torch.cuda.empty_cache.assert_called_once()
+            mock_empty_cache.assert_called_once()
 
 
 # ── Prompt integration ──────────────────────────────────────────────────────

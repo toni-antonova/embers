@@ -56,6 +56,23 @@ class GPUOutOfMemoryError(LumenError):
         )
 
 
+class GenerationRateLimitError(LumenError):
+    """Raised when GPU generation rate limit is exceeded (cache miss path).
+
+    Includes retry_after_seconds computed from the sliding window so the
+    client knows exactly when to retry. The exception handler adds this
+    as a Retry-After header on the 429 response.
+    """
+
+    def __init__(self, limit: int, retry_after_seconds: float = 5.0):
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(
+            f"Generation rate limit exceeded ({limit}/min). "
+            "Cached requests are unaffected -- try a different concept or wait.",
+            status_code=429,
+        )
+
+
 # ── Handler registration ────────────────────────────────────────────────────
 
 
@@ -63,8 +80,25 @@ def register_exception_handlers(app: FastAPI) -> None:
     """Register all custom exception handlers on the FastAPI app.
 
     Endpoints raise LumenError subclasses; these handlers catch them
-    and return structured JSON — no inline try/except in endpoints.
+    and return structured JSON -- no inline try/except in endpoints.
     """
+
+    @app.exception_handler(GenerationRateLimitError)
+    async def generation_rate_limit_handler(
+        request: Request, exc: GenerationRateLimitError
+    ) -> JSONResponse:
+        """429 with Retry-After header -- tells client exactly when to retry."""
+        retry_after = int(exc.retry_after_seconds)
+        logger.warning(
+            "generation_rate_limited_response",
+            error=exc.message,
+            retry_after=retry_after,
+        )
+        return JSONResponse(
+            status_code=429,
+            content={"error": exc.message, "type": "GenerationRateLimitError"},
+            headers={"Retry-After": str(retry_after)},
+        )
 
     @app.exception_handler(LumenError)
     async def lumen_error_handler(request: Request, exc: LumenError) -> JSONResponse:
