@@ -57,12 +57,14 @@ export function AnalysisPanel({
     const systemRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
     const requestRef = useRef<number>(0);
-    const lastFpsTimeRef = useRef<number>(performance.now());
+    const lastFpsTimeRef = useRef<number>(0);
     const framesRef = useRef<number>(0);
 
 
     // Main animation loop for updating values directly in the DOM
     useEffect(() => {
+        // Initialize the FPS timer on mount (moved from ref initializer to avoid impure render call)
+        if (lastFpsTimeRef.current === 0) lastFpsTimeRef.current = performance.now();
         const updateData = () => {
             // --- AUDIO ---
             if (audioEngine) {
@@ -287,13 +289,14 @@ function Section({ title, children }: { title: string, children: React.ReactNode
     );
 }
 
-function BarRow({ label, barKey, barColor, barRefs, valRefs }: { label: string, barKey: string, barColor: string, barRefs: React.MutableRefObject<any>, valRefs: React.MutableRefObject<any> }) {
+function BarRow({ label, barKey, barColor, barRefs, valRefs }: { label: string, barKey: string, barColor: string, barRefs: React.RefObject<Record<string, HTMLDivElement | null>>, valRefs: React.RefObject<Record<string, HTMLSpanElement | null>> }) {
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ width: '80px', opacity: 0.7 }}>{label}:</span>
             <div style={{ width: '100px', height: '10px', backgroundColor: 'rgba(255,255,255,0.1)', position: 'relative' }}>
                 <div
-                    ref={(el) => { barRefs.current[barKey] = el; }}
+                    // eslint-disable-next-line react-hooks/immutability -- intentional imperative DOM ref for 60fps updates
+                    ref={(el) => { if (barRefs.current) barRefs.current[barKey] = el; }}
                     style={{
                         position: 'absolute',
                         left: 0,
@@ -305,18 +308,20 @@ function BarRow({ label, barKey, barColor, barRefs, valRefs }: { label: string, 
                     }}
                 />
             </div>
-            <span ref={(el) => { valRefs.current[barKey] = el; }} style={{ minWidth: '32px', textAlign: 'right' }}>
+            {/* eslint-disable-next-line react-hooks/immutability -- intentional imperative DOM ref */}
+            <span ref={(el) => { if (valRefs.current) valRefs.current[barKey] = el; }} style={{ minWidth: '32px', textAlign: 'right' }}>
                 0.00
             </span>
         </div>
     );
 }
 
-function TextRow({ label, textKey, textRefs }: { label: string, textKey: string, textRefs: React.MutableRefObject<any> }) {
+function TextRow({ label, textKey, textRefs }: { label: string, textKey: string, textRefs: React.RefObject<Record<string, HTMLSpanElement | null>> }) {
     return (
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ opacity: 0.7 }}>{label}:</span>
-            <span ref={(el) => { textRefs.current[textKey] = el; }}>--</span>
+            {/* eslint-disable-next-line react-hooks/immutability -- intentional imperative DOM ref */}
+            <span ref={(el) => { if (textRefs.current) textRefs.current[textKey] = el; }}>--</span>
         </div>
     );
 }

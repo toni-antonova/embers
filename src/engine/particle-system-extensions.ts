@@ -73,6 +73,7 @@ ${motionPlanGlsl}
 
 export class MotionPlanManager {
     /** Reference to the velocity shader uniforms. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- uniform values are heterogeneous (number, Vector3, Texture, etc.)
     private uniforms: Record<string, { value: any }>;
 
     /** Current plan A data texture. */
@@ -96,6 +97,7 @@ export class MotionPlanManager {
     private textureSize: number;
 
     constructor(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches getVelocityUniforms() return type
         uniforms: Record<string, { value: any }>,
         textureSize: number = 128
     ) {

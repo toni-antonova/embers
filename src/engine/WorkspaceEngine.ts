@@ -24,7 +24,7 @@ export interface WorkspaceState {
 
 export class WorkspaceEngine {
     private state: WorkspaceState;
-    private stateLog: any[] = [];
+    private stateLog: Record<string, unknown>[] = [];
     private lastLogTime: number = 0;
 
     // Internal state tracking
@@ -84,7 +84,7 @@ export class WorkspaceEngine {
 
         // 5. Semantic tracking and smoothing
         const targetAbstraction = semanticState ? semanticState.abstractionLevel : 1.0;
-        
+
         // Smooth abstraction level
         const lerpFactor = Math.min(1.0, deltaTime * 2.0);
         this.currentAbstraction = this.currentAbstraction + (targetAbstraction - this.currentAbstraction) * lerpFactor;
@@ -122,7 +122,7 @@ export class WorkspaceEngine {
     getState(): WorkspaceState {
         return { ...this.state };
     }
-    
+
     // Allow external access to current noiseAmplitude if necessary
     getNoiseAmplitude(): number {
         return this.noiseAmplitude;

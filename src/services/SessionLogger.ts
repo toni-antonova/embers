@@ -31,7 +31,7 @@ export type EventType =
 export interface SessionEvent {
     timestamp: number;   // Date.now()
     type: EventType;
-    data: Record<string, any>;
+    data: Record<string, unknown>;
 }
 
 // ── CONSTANTS ───────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ export class SessionLogger {
     /**
      * Record an event. Automatically timestamps and enforces the buffer cap.
      */
-    log(type: EventType, data: Record<string, any>): void {
+    log(type: EventType, data: Record<string, unknown>): void {
         this.events.push({
             timestamp: Date.now(),
             type,

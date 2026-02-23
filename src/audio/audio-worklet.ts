@@ -65,7 +65,9 @@ class AudioCaptureProcessor extends AudioWorkletProcessor {
 
     process(
         inputs: Float32Array[][],
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by AudioWorkletProcessor.process() signature
         _outputs: Float32Array[][],
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by AudioWorkletProcessor.process() signature
         _parameters: Record<string, Float32Array>
     ): boolean {
         const input = inputs[0];

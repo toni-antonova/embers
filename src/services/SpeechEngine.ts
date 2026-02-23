@@ -238,8 +238,8 @@ export class SpeechEngine {
      */
     private createRecognition(): void {
         // Get the constructor (webkit-prefixed in Chrome/Edge)
-        const SpeechRecognitionCtor = (window as any).SpeechRecognition ||
-            (window as any).webkitSpeechRecognition;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- vendor-prefixed SpeechRecognition
+        const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
         if (!SpeechRecognitionCtor) return;
 

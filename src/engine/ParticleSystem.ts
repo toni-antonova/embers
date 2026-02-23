@@ -11,7 +11,9 @@ import { buildMotionPlanShader } from './particle-system-extensions';
 export class ParticleSystem {
     renderer: THREE.WebGLRenderer;
     gpuCompute: GPUComputationRenderer;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- GPUComputationRenderer variable type is not exported
     positionVariable: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     velocityVariable: any;
     particles: THREE.Points;
     size: number;
@@ -286,6 +288,7 @@ export class ParticleSystem {
      * Get the velocity shader uniforms object.
      * Used by MotionPlanManager to add/update motion plan uniforms.
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- uniforms value types are heterogeneous
     getVelocityUniforms(): Record<string, { value: any }> {
         return this.velocityVariable.material.uniforms;
     }
@@ -294,8 +297,9 @@ export class ParticleSystem {
         // Dispose GPUComputationRenderer's internal render targets.
         // GPUComputationRenderer uses the main renderer's GL context,
         // but still creates render target textures we must free.
-        if (this.gpuCompute && (this.gpuCompute as any).variables) {
-            const vars = (this.gpuCompute as any).variables;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- GPUComputationRenderer internals are untyped
+        if (this.gpuCompute && (this.gpuCompute as unknown as Record<string, unknown>).variables) {
+            const vars = (this.gpuCompute as unknown as { variables: Array<{ renderTargets?: Array<{ dispose(): void }> }> }).variables;
             for (const v of vars) {
                 if (v.renderTargets) {
                     for (const rt of v.renderTargets) {

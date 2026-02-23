@@ -44,6 +44,7 @@ export interface AudioFeatures {
 export class AudioEngine {
     audioContext: AudioContext | null = null;
     source: MediaStreamAudioSourceNode | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Meyda's MeydaAnalyzer type is not exported
     analyzer: any | null = null;
 
     // Optional reference to TuningConfig — when present, smoothing alphas
@@ -124,6 +125,7 @@ export class AudioEngine {
             console.log('[AudioEngine] Step 1: ✅ Mic stream acquired, tracks:', stream.getAudioTracks().length);
 
             // ── STEP 2: Create AudioContext ───────────────────────────
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- webkitAudioContext is vendor-prefixed
             this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
             console.log('[AudioEngine] Step 2: AudioContext created, state:', this.audioContext.state);
 
@@ -172,6 +174,7 @@ export class AudioEngine {
                     'mfcc',
                     'spectralRolloff'
                 ],
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Meyda callback features are untyped
                 callback: (features: any) => {
                     this.processFeatures(features);
                 }
@@ -212,6 +215,7 @@ export class AudioEngine {
         return this.features;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Meyda feature extraction output is untyped
     private processFeatures(raw: any) {
         if (!raw) return;
 
