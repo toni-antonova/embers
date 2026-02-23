@@ -155,12 +155,18 @@ export function TuningPanel({ config, audioEngine, currentShape, onShapeChange, 
 
     const handleOverlayClick = useCallback(() => setIsOpen(false), []);
 
+    const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        return () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); };
+    }, []);
+
     const handleCopy = useCallback(async () => {
         const json = JSON.stringify(config.toJSON(), null, 2);
         try {
             await navigator.clipboard.writeText(json);
             setCopyFeedback(true);
-            setTimeout(() => setCopyFeedback(false), 1500);
+            if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+            copyTimerRef.current = setTimeout(() => setCopyFeedback(false), 1500);
         } catch { window.prompt('Copy this config:', json); }
     }, [config]);
 

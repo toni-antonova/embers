@@ -23,7 +23,7 @@
  *   the CSS fade-in animation on each new result
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
 import { SpeechEngine } from '../services/SpeechEngine';
 
@@ -38,6 +38,11 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
     const [isListening, setIsListening] = useState(false);
     const [denied, setDenied] = useState(false);
     const deniedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Clean up denied timer on unmount
+    useEffect(() => {
+        return () => { if (deniedTimerRef.current) clearTimeout(deniedTimerRef.current); };
+    }, []);
 
     // Text-input fallback state (only used when Web Speech API is unavailable).
     const [fallbackText, setFallbackText] = useState('');

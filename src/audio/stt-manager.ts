@@ -126,6 +126,7 @@ export class STTManager {
      */
     stop(): void {
         this.isListeningFlag = false;
+        this.pendingMoonshineSwap = false;
 
         if (this.currentTier === 'moonshine') {
             this.stopMoonshineCapture();

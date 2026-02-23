@@ -131,18 +131,25 @@ export class ServerClient {
         });
     }
 
-    /** Decode the raw JSON response into typed arrays. */
-    private decodeResponse(raw: RawServerResponse): ServerShapeResponse {
-        return {
-            positions: this.decodeFloat32(raw.positions),
-            partIds: this.decodeUint8(raw.partIds),
-            partNames: raw.partNames,
-            templateType: raw.templateType,
-            boundingBox: raw.boundingBox,
-            cached: raw.cached,
-            generationTimeMs: raw.generationTimeMs,
-            pipeline: raw.pipeline,
-        };
+    /** Decode the raw JSON response into typed arrays.
+     *  Returns null if base64 decoding fails (malformed server response).
+     */
+    private decodeResponse(raw: RawServerResponse): ServerShapeResponse | null {
+        try {
+            return {
+                positions: this.decodeFloat32(raw.positions),
+                partIds: this.decodeUint8(raw.partIds),
+                partNames: raw.partNames,
+                templateType: raw.templateType,
+                boundingBox: raw.boundingBox,
+                cached: raw.cached,
+                generationTimeMs: raw.generationTimeMs,
+                pipeline: raw.pipeline,
+            };
+        } catch (err) {
+            console.warn('[ServerClient] Failed to decode server response:', err);
+            return null;
+        }
     }
 
     /** Decode a base64 string to Float32Array. */
