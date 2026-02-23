@@ -3,7 +3,6 @@
 # Usage:
 #   gcloud builds submit \
 #     --config infrastructure/cloudbuild.yaml \
-#     --substitutions=COMMIT_SHA=$(git rev-parse --short HEAD) \
 #     --project=lumen-pipeline --region=us-east4 \
 #     .
 #
@@ -11,10 +10,6 @@
 #   Step 1 pulls the previous :latest image so Docker can reuse unchanged
 #   layers via --cache-from. Code-only changes (no pyproject.toml/uv.lock
 #   edits) skip the entire dependency layer → ~30-60s builds instead of 15min.
-#
-# Deploy separately via:
-#   gcloud run deploy lumen-pipeline --image=$_IMAGE:$COMMIT_SHA ...
-#   (or terraform apply)
 #
 # GPU + Secret Manager config lives in Terraform, not here.
 
@@ -69,9 +64,6 @@ steps:
         docker pull ${_IMAGE}:latest || true
 
   # ── Step 2: Build with pre-built base image ──────────────────────────
-  # The base image (lumen-base:latest) contains all dependencies.
-  # This step ONLY copies app/ code → builds in 1-2 min instead of 15-30 min.
-  # If the base image doesn't exist, uses the fallback in the Dockerfile ARG.
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "build"
@@ -80,8 +72,6 @@ steps:
       - "--cache-from"
       - "${_IMAGE}:latest"
       - "-t"
-      - "${_IMAGE}:$COMMIT_SHA"
-      - "-t"
       - "${_IMAGE}:latest"
       - "-f"
       - "server/Dockerfile"
@@ -89,16 +79,11 @@ steps:
     env:
       - "DOCKER_BUILDKIT=1"
 
-  # ── Step 3: Push commit-SHA tag ────────────────────────────────────────
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "${_IMAGE}:$COMMIT_SHA"]
-
-  # ── Step 4: Push :latest tag (cache source for next build) ─────────────
+  # ── Step 3: Push :latest ─────────────────────────────────────────────
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "${_IMAGE}:latest"]
 
 images:
-  - "${_IMAGE}:$COMMIT_SHA"
   - "${_IMAGE}:latest"
 
-timeout: "1800s"  # 30 min — torchvision + ML wheels are large
+timeout: "1800s"  # 30 min

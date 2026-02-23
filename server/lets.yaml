@@ -85,7 +85,6 @@ commands:
     cmd: |
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
-        --substitutions=COMMIT_SHA=$(git rev-parse --short HEAD) \
         --project=lumen-pipeline --region=us-east4 \
         .
 
@@ -106,7 +105,6 @@ commands:
     cmd: |
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
-        --substitutions=COMMIT_SHA=$(git rev-parse --short HEAD) \
         --project=lumen-pipeline --region=us-east4 \
         . && \
       gcloud run deploy lumen-pipeline \
