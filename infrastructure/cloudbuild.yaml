@@ -25,7 +25,7 @@ steps:
   # ── Step 0: Backend tests (gate build on passing checks) ───────────────
   - name: "ghcr.io/astral-sh/uv:latest"
     id: "test-backend"
-    entrypoint: "bash"
+    entrypoint: "sh"
     args:
       - "-c"
       - |
