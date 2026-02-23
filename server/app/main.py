@@ -197,10 +197,15 @@ async def _load_models_and_warm_cache(
     # ── Preload top concepts ─────────────────────────────────────────────
     # Ensure the 8 highest-value concepts are in memory even if
     # load_all_cached missed them (e.g. cache was empty on first deploy).
+    # Skip concepts already loaded by load_all_cached() to avoid
+    # redundant normalize → hash → lock cycles.
     top_concepts = ["horse", "dog", "cat", "bird", "dragon", "elephant", "fish", "car"]
     preloaded = 0
     for concept in top_concepts:
         try:
+            existing = await cache.get(concept)
+            if existing is not None:
+                continue  # Already in memory from load_all_cached
             if await cache.preload_to_memory(concept):
                 preloaded += 1
         except Exception:
