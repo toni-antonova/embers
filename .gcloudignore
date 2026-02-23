@@ -5,18 +5,9 @@
 .git/
 .gitignore
 
-# ── Frontend (not needed for server Docker build) ────────────────────
+# ── Frontend build artifacts (source kept for CI tests) ──────────────
 node_modules/
 dist/
-src/
-public/
-index.html
-vite.config.ts
-vitest.setup.ts
-tsconfig*.json
-eslint.config.js
-package.json
-package-lock.json
 
 # ── Documentation ────────────────────────────────────────────────────
 planning/
@@ -29,7 +20,9 @@ analysis/
 *.xlsx
 *.csv
 *.xls
-data/
+# Exclude root-level data/ but NOT src/data/ (frontend source)
+/data/
+!src/data/
 
 # ── Agent / editor config ────────────────────────────────────────────
 .agent/
