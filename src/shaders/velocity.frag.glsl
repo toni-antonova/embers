@@ -141,6 +141,15 @@ vec3 curlNoise( vec3 p ){
   return normalize( vec3( x , y , z ) * divisor );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// A2 MOTION PLAN INSERTION POINT
+// primitives.glsl and motion-plan.glsl are prepended to this shader
+// by ParticleSystem.ts at construction time. The functions they
+// define (dispatchPrimitive, evaluateMotionPlan, etc.) are available
+// here if the shader source includes them.
+// ═══════════════════════════════════════════════════════════════════
+// __MOTION_PLAN_FUNCTIONS_MARKER__
+
 void main() {
     vec2 uv = gl_FragCoord.xy / resolution.xy;
 
@@ -242,6 +251,26 @@ void main() {
     float energyExpansion = mix(linearExpansion, powerExpansion, uEnergyCurveMode);
     vec3 targetPos = targetPosRaw + breathOffset + radialDir * energyExpansion;
 
+    // ── A2: MOTION PLAN DISPLACEMENT ──────────────────────────────────
+    // When a motion plan is active, evaluate the assigned primitive for
+    // this particle's part and add the displacement to the spring target.
+    // The existing spring-damper then pulls particles toward the
+    // animated target — free overshoot, settle, and follow-through.
+    #ifdef MOTION_PLAN_ENABLED
+    if (uMotionPlanActive > 0.5) {
+        vec3 motionDisplacement = evaluateMotionPlan(uv, position, targetPosRaw, uTime);
+
+        // Audio modulation on motion plan output
+        float pitchGate = step(0.5, uPitchConfidence);
+        motionDisplacement.y += uPitchDeviation * 0.3 * pitchGate;
+        float arousalScale = mix(0.7, 1.5, clamp(uEmotionArousal, 0.0, 1.0));
+        motionDisplacement *= arousalScale;
+        motionDisplacement.y += uEmotionValence * 0.2;
+
+        targetPos += motionDisplacement;
+    }
+    #endif
+
     // ── BREATHINESS → Z-AXIS SPREAD ───────────────────────────────────
     // Breathy speech makes the ring "puff out" in the Z axis, creating
     // a more 3D, airy appearance. Each particle gets a unique Z offset
@@ -252,8 +281,16 @@ void main() {
     // ── SPRING FORCE ──────────────────────────────────────────────────
     // Hooke's Law: pulls particles toward their audio-modulated home.
     // This is the fundamental safety net — particles always return.
+    //
+    // A2: Pitch-based stiffness modulation — rising pitch tightens springs,
+    // falling pitch loosens them (gated by confidence).
     vec3 springDir = targetPos - position;
+    #ifdef MOTION_PLAN_ENABLED
+    float pitchStiffness = 1.0 + uPitchDeviation * 0.3 * step(0.5, uPitchConfidence);
+    float effectiveSpringK = max(0.5, (uSpringK + smSpringOffset) * pitchStiffness);
+    #else
     float effectiveSpringK = max(0.5, uSpringK + smSpringOffset);
+    #endif
     vec3 springF = springDir * ((1.0 - uAbstraction) * effectiveSpringK);
 
     // ── URGENCY → NOISE TURBULENCE ────────────────────────────────────
