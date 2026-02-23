@@ -108,10 +108,8 @@ def _get_gpu_info() -> dict:
             return {
                 "gpu_available": True,
                 "gpu_name": torch.cuda.get_device_name(0),
-                "gpu_memory_used_gb": round(
-                    torch.cuda.memory_allocated() / 1e9, 1
-                ),
-                "gpu_memory_total_gb": round(props.total_mem / 1e9, 1),
+                "gpu_memory_used_gb": round(torch.cuda.memory_allocated() / 1e9, 1),
+                "gpu_memory_total_gb": round(props.total_memory / 1e9, 1),
             }
     except ImportError:
         pass

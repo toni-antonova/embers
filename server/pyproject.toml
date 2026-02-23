@@ -101,11 +101,19 @@ ml = [
 ]
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
+ignore = [
+    "B008",   # Depends() in argument defaults is idiomatic FastAPI
+    "TC002",  # PIL.Image imports are used at runtime, not just for type-checking
+    "B905",   # zip() strict= is noisy; lengths are guaranteed by construction
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["N806"]  # Allow uppercase variable names (e.g. MockPipeline) in tests
 
 [tool.mypy]
 python_version = "3.13"
