@@ -24,9 +24,9 @@ terraform {
 
   # ── Remote backend ─────────────────────────────────────────────────────────
   # Stores tfstate in Cloud Storage for durability and CI/CD compatibility.
-  # Create the bucket first: gsutil mb gs://lumen-terraform-state
+  # Create the bucket first: gsutil mb -p lumen-pipeline gs://lumen-pipeline-terraform-state
   backend "gcs" {
-    bucket = "lumen-terraform-state"
+    bucket = "lumen-pipeline-terraform-state"
     prefix = "terraform/state"
   }
 }
