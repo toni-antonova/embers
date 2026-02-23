@@ -16,6 +16,7 @@ import time
 import structlog
 
 import numpy as np
+from opentelemetry import trace
 
 from app.cache.shape_cache import ShapeCache
 from app.config import Settings
@@ -39,6 +40,7 @@ from app.pipeline.template_matcher import get_template
 from app.schemas import BoundingBox, GenerateRequest, GenerateResponse
 
 logger = structlog.get_logger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
 class PipelineOrchestrator:
@@ -65,16 +67,28 @@ class PipelineOrchestrator:
 
     async def generate(self, request: GenerateRequest) -> GenerateResponse:
         """Full generation pipeline: cache → template → models → points."""
+        with tracer.start_as_current_span("generate") as span:
+            span.set_attribute("concept", request.text)
+            return await self._generate_traced(request, span)
+
+    async def _generate_traced(
+        self, request: GenerateRequest, parent_span: trace.Span
+    ) -> GenerateResponse:
+        """Inner generate with OTel tracing."""
         start = time.perf_counter()
 
         # 1. Cache check
-        cached = await self._cache.get(request.text)
+        with tracer.start_as_current_span("cache_lookup"):
+            cached = await self._cache.get(request.text)
         if cached is not None:
             cached.cached = True
             cached.generation_time_ms = int((time.perf_counter() - start) * 1000)
+            parent_span.set_attribute("cached", True)
+            parent_span.set_attribute("pipeline_used", "cache")
             if self._metrics:
                 self._metrics.record_request("cache", 0, cached=True)
             return cached
+        parent_span.set_attribute("cached", False)
 
         # 2. Generation rate limit check
         # WHY THIS IS SEPARATE FROM THE OUTER SLOWAPI LIMIT:
@@ -149,7 +163,11 @@ class PipelineOrchestrator:
         )
 
         # 5. Cache the result
-        await self._cache.set(request.text, response)
+        with tracer.start_as_current_span("cache_write"):
+            await self._cache.set(request.text, response)
+
+        parent_span.set_attribute("pipeline_used", pipeline_used)
+        parent_span.set_attribute("latency_ms", elapsed)
 
         logger.info(
             "generated",
@@ -338,7 +356,8 @@ class PipelineOrchestrator:
 
                     if torch.cuda.is_available():
                         allocated_gb = torch.cuda.memory_allocated() / 1e9
-                        if allocated_gb > 18.0:
+                        threshold = self._settings.vram_offload_threshold_gb
+                        if allocated_gb > threshold:
                             logger.info(
                                 "vram_offload_triggered",
                                 allocated_gb=round(allocated_gb, 1),

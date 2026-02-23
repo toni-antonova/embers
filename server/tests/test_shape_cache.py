@@ -62,16 +62,11 @@ class TestNormalization:
         assert ShapeCache.normalize_key("  horse  ") == "horse"
         assert ShapeCache.normalize_key("  a  big  dog  ") == "big dog"
 
-    def test_no_depluralization(self) -> None:
-        """Plurals are NOT stripped — 'horses' stays 'horses'.
-
-        Deliberate design: depluralization is too fragile ('bus'→'bu',
-        'dress'→'dres'). The ~$0.01 cost of a duplicate cache entry
-        is preferable to a correctness bug.
-        """
-        assert ShapeCache.normalize_key("horses") == "horses"
-        assert ShapeCache.normalize_key("buses") == "buses"
-        assert ShapeCache.normalize_key("children") == "children"
+    def test_lemmatization_singular_plural(self) -> None:
+        """Lemmatizer collapses plural → singular for nouns."""
+        assert ShapeCache.normalize_key("horses") == ShapeCache.normalize_key("horse")
+        assert ShapeCache.normalize_key("buses") == ShapeCache.normalize_key("bus")
+        assert ShapeCache.normalize_key("children") == ShapeCache.normalize_key("child")
 
     def test_no_adjective_stripping(self) -> None:
         """Adjectives are NOT stripped — 'red dragon' stays 'red dragon'.
@@ -81,6 +76,27 @@ class TestNormalization:
         """
         assert ShapeCache.normalize_key("big dog") == "big dog"
         assert ShapeCache.normalize_key("red dragon") == "red dragon"
+
+    def test_horse_horses_same_key(self) -> None:
+        assert ShapeCache.normalize_key("horse") == ShapeCache.normalize_key("horses")
+
+    def test_dragon_dragons_same_key(self) -> None:
+        assert ShapeCache.normalize_key("dragon") == ShapeCache.normalize_key("dragons")
+
+    def test_running_horse_running_horses_same_key(self) -> None:
+        assert ShapeCache.normalize_key("running horse") == ShapeCache.normalize_key(
+            "running horses"
+        )
+
+    def test_red_dragon_blue_dragon_different_keys(self) -> None:
+        assert ShapeCache.normalize_key("red dragon") != ShapeCache.normalize_key(
+            "blue dragon"
+        )
+
+    def test_the_horse_a_horse_same_key(self) -> None:
+        assert ShapeCache.normalize_key("the horse") == ShapeCache.normalize_key(
+            "a horse"
+        )
 
     def test_empty_input(self) -> None:
         assert ShapeCache.normalize_key("") == ""

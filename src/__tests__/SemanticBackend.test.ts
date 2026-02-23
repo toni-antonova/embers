@@ -68,6 +68,9 @@ function createMockUniformBridge() {
         sentimentOverride: null as number | null,
         abstractionOverride: null as number | null,
         noiseOverride: null as number | null,
+        emotionalIntensityOverride: null as number | null,
+        springOverride: null as number | null,
+        transitionPhase: 0,
     } as any;
 }
 
@@ -92,6 +95,16 @@ beforeEach(() => {
     );
 });
 
+/**
+ * Helper: run enough update frames to complete the Dissolve phase.
+ * With S12 transition choreography, setTarget is deferred to the
+ * Dissolve→Reform boundary (0.3s at 60fps = ~18 frames).
+ */
+function completeDissolvePeriod() {
+    // Run 0.35s worth of frames to ensure Dissolve completes
+    for (let i = 0; i < 22; i++) backend.update(0.016);
+}
+
 
 // ══════════════════════════════════════════════════════════════════════
 // SUITE 1: TRANSCRIPT QUEUE DRAINING
@@ -103,9 +116,10 @@ describe('SemanticBackend — Queue Draining', () => {
         mockSpeech.pushTranscript('horse');
         expect(mockParticles.setTarget).not.toHaveBeenCalled();
 
-        // Now call update — should process the queued transcript
-        // Hierarchy traversal starts with sphere (abstract → concrete)
+        // First update starts the Dissolve phase; setTarget happens after Dissolve
         backend.update(0.016);
+        completeDissolvePeriod();
+        // Hierarchy traversal starts with sphere (abstract → concrete)
         expect(mockParticles.setTarget).toHaveBeenCalledWith('sphere');
     });
 
@@ -114,9 +128,10 @@ describe('SemanticBackend — Queue Draining', () => {
         mockSpeech.pushTranscript('ocean');
 
         backend.update(0.016);
+        completeDissolvePeriod();
 
         // Both processed: horse starts hierarchy (sphere), ocean starts hierarchy (wave stage 1)
-        // Both call setTarget during their hierarchy start
+        // Only the last one's Dissolve→Reform fires setTarget
         expect(mockParticles.setTarget).toHaveBeenCalled();
     });
 });
@@ -131,10 +146,13 @@ describe('SemanticBackend — Morph Actions', () => {
         mockSpeech.pushTranscript('bird');
         backend.update(0.016);
 
-        // Hierarchy traversal starts with first stage (sphere for bird)
-        expect(mockParticles.setTarget).toHaveBeenCalled();
+        // setTarget is deferred to Dissolve→Reform — action is recorded immediately
         expect(backend.lastAction).toBe('morph');
         expect(backend.lastState?.morphTarget).toBe('bird');
+
+        // After dissolve completes, setTarget fires
+        completeDissolvePeriod();
+        expect(mockParticles.setTarget).toHaveBeenCalled();
     });
 
     it('no keyword results in hold action (abstraction drifts up)', () => {
@@ -149,12 +167,14 @@ describe('SemanticBackend — Morph Actions', () => {
         // First morph to quadruped
         mockSpeech.pushTranscript('horse', true);
         backend.update(0.016);
-        expect(mockParticles.setTarget).toHaveBeenCalledTimes(1);
+        completeDissolvePeriod();
+        const callCount = mockParticles.setTarget.mock.calls.length;
 
         // Same keyword as interim — should be skipped (same target)
         mockSpeech.pushTranscript('horse', false);
         backend.update(0.016);
-        expect(mockParticles.setTarget).toHaveBeenCalledTimes(1);
+        completeDissolvePeriod();
+        expect(mockParticles.setTarget.mock.calls.length).toBe(callCount);
     });
 });
 
@@ -210,11 +230,16 @@ describe('SemanticBackend — Silence Reset', () => {
         // First morph to something
         mockSpeech.pushTranscript('bird');
         backend.update(0.016);
+        completeDissolvePeriod();
         expect(mockParticles.setTarget).toHaveBeenCalled();
         mockParticles.setTarget.mockClear();
 
         // Simulate 301 seconds of silence (> 300 threshold)
+        // This triggers the 30s gradual idle decay
         backend.update(301);
+
+        // Run the full 30s idle decay
+        for (let i = 0; i < 60; i++) backend.update(0.5);
 
         expect(mockParticles.setTarget).toHaveBeenCalledWith('ring');
     });
@@ -223,7 +248,7 @@ describe('SemanticBackend — Silence Reset', () => {
         mockSpeech.pushTranscript('bird');
         backend.update(0.016);
 
-        // Run hierarchy to completion, then clear spy
+        // Run hierarchy + dissolve to completion, then clear spy
         for (let i = 0; i < 200; i++) backend.update(0.016);
         mockParticles.setTarget.mockClear();
 
@@ -403,7 +428,8 @@ describe('SemanticBackend — SessionLogger Integration', () => {
             backend.update(0.016);
         }).not.toThrow();
 
-        expect(mockParticles.setTarget).toHaveBeenCalled();
+        // Action is recorded even though setTarget is deferred to Dissolve→Reform
+        expect(backend.lastAction).toBe('morph');
     });
 
     it('logs both transcript and semantic for the same utterance', () => {

@@ -13,7 +13,7 @@ dependencies = [
     "pydantic-settings>=2.13",
 
     # ML runtime
-    "torch>=2.10",
+    "torch>=2.7,<2.8",
     "diffusers>=0.33",
     "accelerate>=1.7",
     "transformers>=4.52",
@@ -37,8 +37,8 @@ dependencies = [
     "scikit-image>=0.24",
     "scikit-learn>=1.5",
     "huggingface-hub>=0.30",
-    "torch-cluster",
-    "torchvision",
+    "torch-cluster>=1.6.3,<1.7",   # Pinned: must match torch + CUDA version
+    "torchvision>=0.22,<0.23",     # Pinned: must match torch 2.7 + CUDA 12.8
 
     # Image
     "Pillow>=12.1",
@@ -52,6 +52,15 @@ dependencies = [
 
     # Rate limiting
     "slowapi>=0.1.9",
+
+    # NLP (cache key normalization)
+    "nltk>=3.9",
+
+    # Observability
+    "prometheus-client>=0.21",
+    "opentelemetry-api>=1.29",
+    "opentelemetry-sdk>=1.29",
+    "opentelemetry-exporter-gcp-trace>=1.9",
 
     # Headless rendering (fallback pipeline)
     "pyrender>=0.1.45",

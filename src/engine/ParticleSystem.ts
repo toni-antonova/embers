@@ -92,6 +92,10 @@ export class ParticleSystem {
         this.velocityVariable.material.uniforms.uSentimentMovement = { value: 0.0 };
         this.velocityVariable.material.uniforms.uSentimentMovementIntensity = { value: config.get('sentimentMovementIntensity') };
 
+        // Transition choreography — driven by SemanticBackend via UniformBridge.
+        // 0=idle, 1=dissolve, 2=reform, 3=settle
+        this.velocityVariable.material.uniforms.uTransitionPhase = { value: 0.0 };
+
         this.velocityVariable.material.uniforms.uDelta = { value: 0.016 };
         this.positionVariable.material.uniforms.uDelta = { value: 0.016 };
 

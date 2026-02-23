@@ -24,6 +24,7 @@ from app.models.registry import ModelRegistry
 from app.rate_limit import limiter
 from app.routes import cache as cache_routes
 from app.routes import debug, generate, health
+from app.routes import prometheus as prometheus_routes
 from app.services.metrics import PipelineMetrics
 from app.services.pipeline import PipelineOrchestrator
 
@@ -46,6 +47,41 @@ async def _rate_limit_exceeded_handler(
     )
 
 
+def _configure_otel(exporter_type: str) -> None:
+    """Configure OpenTelemetry tracing.
+
+    Supports "console" for dev and "gcp" for Cloud Trace.
+    No-op if the exporter type is unknown.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    provider = TracerProvider()
+
+    if exporter_type == "console":
+        from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+
+        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    elif exporter_type == "gcp":
+        try:
+            from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+
+            provider.add_span_processor(
+                BatchSpanProcessor(CloudTraceSpanExporter())
+            )
+        except ImportError:
+            logger.warning("gcp_trace_exporter_not_available")
+            return
+    else:
+        logger.warning("unknown_otel_exporter", exporter=exporter_type)
+        return
+
+    from opentelemetry import trace
+
+    trace.set_tracer_provider(provider)
+    logger.info("otel_configured", exporter=exporter_type)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown lifecycle.
@@ -60,8 +96,14 @@ async def lifespan(app: FastAPI):
     the registry is populated.
     """
     import asyncio
+    import os
 
     settings = get_settings()
+
+    # ── Configure OpenTelemetry ──────────────────────────────────────────────
+    otel_exporter = os.environ.get("OTEL_EXPORTER", "")
+    if otel_exporter:
+        _configure_otel(otel_exporter)
 
     # Initialize model registry (no models loaded yet)
     registry = ModelRegistry(settings)
@@ -152,6 +194,19 @@ async def _load_models_and_warm_cache(
     except Exception:
         logger.exception("cache_warming_failed")
 
+    # ── Preload top concepts ─────────────────────────────────────────────
+    # Ensure the 8 highest-value concepts are in memory even if
+    # load_all_cached missed them (e.g. cache was empty on first deploy).
+    top_concepts = ["horse", "dog", "cat", "bird", "dragon", "elephant", "fish", "car"]
+    preloaded = 0
+    for concept in top_concepts:
+        try:
+            if await cache.preload_to_memory(concept):
+                preloaded += 1
+        except Exception:
+            logger.warning("preload_concept_failed", concept=concept)
+    logger.info("top_concepts_preloaded", count=preloaded, total=len(top_concepts))
+
 
 def _parse_origins(allowed_origins: str) -> list[str]:
     """Parse comma-separated origin string into a list.
@@ -222,6 +277,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(generate.router, tags=["generate"])
     app.include_router(cache_routes.router, tags=["cache"])
+    app.include_router(prometheus_routes.router, tags=["prometheus"])
     if settings.enable_debug_routes:
         app.include_router(debug.router, prefix="/debug", tags=["debug"])
 

@@ -120,6 +120,21 @@ def sample_from_labeled_mesh(
 
     points, face_indices = trimesh.sample.sample_surface(mesh, total_points)
     positions = points.astype(np.float32)
+
+    # Guard against degenerate triangles: sample_surface may return fewer
+    # points than requested if the mesh has zero-area faces.
+    if len(positions) < total_points:
+        deficit = total_points - len(positions)
+        if len(positions) > 0:
+            # Pad by repeating existing samples
+            pad_indices = np.random.choice(len(positions), size=deficit, replace=True)
+            positions = np.concatenate([positions, positions[pad_indices]], axis=0)
+            face_indices = np.concatenate([face_indices, face_indices[pad_indices]])
+        else:
+            # Completely degenerate mesh — return zeros
+            positions = np.zeros((total_points, 3), dtype=np.float32)
+            face_indices = np.zeros(total_points, dtype=np.int64)
+
     part_ids = face_labels[face_indices].astype(np.uint8)
 
     # Normalize to [-1, 1]

@@ -135,3 +135,74 @@ class TestSampleFromLabeledMesh:
         positions, _ = sample_from_labeled_mesh(mesh, labels, total_points=200)
         assert positions.max() <= 1.0 + 1e-6
         assert positions.min() >= -1.0 - 1e-6
+
+
+# ── Edge-Case Tests for sample_from_labeled_mesh (S10b) ──────────────────────
+
+
+class TestLabeledMeshEdgeCases:
+    """Edge-case hardening for the fallback pipeline's labeled mesh sampler."""
+
+    def test_unlabeled_faces_get_part_id_zero(self):
+        """Faces with label 0 (unlabeled) should produce points with part_id=0."""
+        mesh = _make_box()
+        labels = np.zeros(len(mesh.faces), dtype=np.uint8)  # All unlabeled
+        _, part_ids = sample_from_labeled_mesh(mesh, labels, total_points=512)
+        assert np.all(part_ids == 0)
+
+    def test_uniform_label(self):
+        """All faces with the same label → all points get that label."""
+        mesh = _make_box()
+        labels = np.full(len(mesh.faces), 5, dtype=np.uint8)
+        _, part_ids = sample_from_labeled_mesh(mesh, labels, total_points=256)
+        assert np.all(part_ids == 5)
+
+    def test_degenerate_triangles_no_crash(self):
+        """Mesh with zero-area faces should not crash."""
+        # Create a mesh with some degenerate (zero-area) triangles
+        vertices = np.array(
+            [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                # Degenerate: three identical vertices
+                [0.5, 0.5, 0.5],
+                [0.5, 0.5, 0.5],
+                [0.5, 0.5, 0.5],
+            ],
+            dtype=np.float64,
+        )
+        faces = np.array(
+            [
+                [0, 1, 2],  # Valid face
+                [0, 1, 3],  # Valid face
+                [4, 5, 6],  # Degenerate face (zero area)
+            ]
+        )
+        mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+        labels = np.array([1, 2, 0], dtype=np.uint8)
+
+        # Should not crash
+        positions, part_ids = sample_from_labeled_mesh(mesh, labels, total_points=100)
+        assert positions.shape[0] == 100
+        assert part_ids.shape[0] == 100
+
+    def test_output_normalized_to_unit_box(self):
+        """Output positions must be within [-1, 1] bounding box."""
+        mesh = _make_box(center=(100, 200, 300), size=50.0)
+        labels = np.ones(len(mesh.faces), dtype=np.uint8)
+        positions, _ = sample_from_labeled_mesh(mesh, labels, total_points=512)
+        assert positions.max() <= 1.0 + 1e-6
+        assert positions.min() >= -1.0 - 1e-6
+
+    def test_exact_point_count(self):
+        """Output must have exactly total_points points."""
+        mesh = _make_box()
+        labels = np.zeros(len(mesh.faces), dtype=np.uint8)
+        for count in [100, 512, 2048]:
+            positions, part_ids = sample_from_labeled_mesh(
+                mesh, labels, total_points=count
+            )
+            assert positions.shape == (count, 3)
+            assert part_ids.shape == (count,)

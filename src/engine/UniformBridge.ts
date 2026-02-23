@@ -3,6 +3,8 @@ import { ParticleSystem } from './ParticleSystem';
 import { TuningConfig } from '../services/TuningConfig';
 import * as THREE from 'three';
 import { WorkspaceEngine } from './WorkspaceEngine';
+import type { EmotionState } from '../audio/types';
+import { NEUTRAL_EMOTION } from '../audio/types';
 
 /**
  * UniformBridge — Connects audio analysis to particle visuals.
@@ -46,6 +48,11 @@ export class UniformBridge {
     sentimentOverride: number | null = null;
     emotionalIntensityOverride: number | null = null;
 
+    // ── TRANSITION CHOREOGRAPHY (S12) ────────────────────────────
+    // SemanticBackend sets these during dissolve→reform→settle phases.
+    springOverride: number | null = null;
+    transitionPhase: number = 0; // 0=idle, 1=dissolve, 2=reform, 3=settle
+
     // WorkspaceEngine reference exposes system's cognitive state metrics
     workspaceEngine: WorkspaceEngine | null = null;
 
@@ -59,6 +66,15 @@ export class UniformBridge {
     // Smoothed sentiment value — lerped toward target to prevent
     // jarring snaps between positive and negative states.
     private smoothedSentiment = 0;
+
+    // ── EMOTION STATE (SER) ──────────────────────────────────────
+    // Full VAD (Valence/Arousal/Dominance) from the SER worker.
+    // Raw values arrive every ~2s; we EMA-smooth them for frame-rate use.
+    private rawEmotion: EmotionState = { ...NEUTRAL_EMOTION };
+    private smoothedValence = 0;
+    private smoothedArousal = 0;
+    private smoothedDominance = 0;
+    private static readonly EMOTION_EMA_ALPHA = 0.15; // per-frame at 60fps ≈ τ of ~0.4s
 
     // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
     // Logs the actual uniform values being sent to the shader every ~0.5s.
@@ -85,6 +101,26 @@ export class UniformBridge {
      */
     exitIdle() {
         this.idleMode = false;
+    }
+
+    /**
+     * Receive full VAD emotion state from the SER worker.
+     * Called approximately every 2 seconds. Values are EMA-smoothed
+     * in update() for frame-rate-safe shader consumption.
+     */
+    setEmotionState(emotion: EmotionState): void {
+        this.rawEmotion = emotion;
+    }
+
+    /**
+     * Get the current smoothed emotion values (for external inspection/testing).
+     */
+    getSmoothedEmotion(): { valence: number; arousal: number; dominance: number } {
+        return {
+            valence: this.smoothedValence,
+            arousal: this.smoothedArousal,
+            dominance: this.smoothedDominance,
+        };
     }
 
     update() {
@@ -150,6 +186,24 @@ export class UniformBridge {
         renderUniforms.uTension.value = Math.max(0, Math.min(1, tension));
         renderUniforms.uEnergy.value = Math.max(0, Math.min(1, energy));
 
+        // ── EMA SMOOTH EMOTION STATE ──────────────────────────────
+        // Smoothly interpolate raw SER values for frame-rate use.
+        // The SER worker fires every ~2s, so raw values would cause
+        // jarring step-changes without smoothing.
+        const ema = UniformBridge.EMOTION_EMA_ALPHA;
+        this.smoothedValence += (this.rawEmotion.valence - this.smoothedValence) * ema;
+        this.smoothedArousal += (this.rawEmotion.arousal - this.smoothedArousal) * ema;
+        this.smoothedDominance += (this.rawEmotion.dominance - this.smoothedDominance) * ema;
+
+        // ── EMOTION → PHYSICS MODULATION ─────────────────────────
+        // Map VAD dimensions to particle physics offsets:
+        //   Arousal    → noise amplitude boost (excited = chaotic)
+        //   Valence    → spring constant offset (positive = lighter)
+        //   Dominance  → repulsion strength boost (dominant = assertive)
+        const arousalNoiseOffset = this.smoothedArousal * 0.4;
+        const valenceSpringOffset = -this.smoothedValence * 0.3;
+        const dominanceRepulsionOffset = this.smoothedDominance * 0.2;
+
         // ── OVERRIDES → SHADER UNIFORMS ──────────────────────
         // Apply SemanticBackend overrides, or let WorkspaceEngine provide
         // fallback tracking if SemanticBackend doesn't provide them.
@@ -160,9 +214,31 @@ export class UniformBridge {
         }
 
         if (this.noiseOverride !== null) {
-            uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, this.noiseOverride));
+            uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, this.noiseOverride + arousalNoiseOffset));
         } else if (this.workspaceEngine) {
-            uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, this.workspaceEngine.getNoiseAmplitude()));
+            uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, this.workspaceEngine.getNoiseAmplitude() + arousalNoiseOffset));
+        } else {
+            // No override and no workspace engine — just apply emotion offset
+            uniforms.uNoiseAmplitude.value = Math.max(0, Math.min(2, uniforms.uNoiseAmplitude.value + arousalNoiseOffset));
+        }
+
+        // ── SPRING OVERRIDE (TRANSITION CHOREOGRAPHY) ────────────
+        // SemanticBackend sets springOverride during dissolve/reform/settle.
+        // Also applies valence-based spring modulation.
+        if (this.springOverride !== null) {
+            uniforms.uSpringK.value = Math.max(0.1, this.springOverride + valenceSpringOffset);
+        } else {
+            // Apply valence offset to the base spring constant from config
+            const baseSpring = uniforms.uSpringK.value;
+            uniforms.uSpringK.value = Math.max(0.1, baseSpring + valenceSpringOffset);
+        }
+
+        // ── DOMINANCE → REPULSION ────────────────────────────────
+        uniforms.uRepulsionStrength.value = Math.max(0, uniforms.uRepulsionStrength.value + dominanceRepulsionOffset);
+
+        // ── TRANSITION PHASE UNIFORM ─────────────────────────────
+        if (uniforms.uTransitionPhase) {
+            uniforms.uTransitionPhase.value = this.transitionPhase;
         }
 
         // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────

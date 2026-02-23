@@ -27,6 +27,22 @@ from app.schemas import GenerateResponse
 
 logger = structlog.get_logger(__name__)
 
+# ── NLP setup for cache key normalization ────────────────────────────────────
+import nltk  # noqa: E402
+from nltk.stem import WordNetLemmatizer  # noqa: E402
+
+# Ensure wordnet corpus is available (no-op if already downloaded)
+try:
+    nltk.data.find("corpora/wordnet")
+except LookupError:
+    nltk.download("wordnet", quiet=True)
+try:
+    nltk.data.find("corpora/omw-1.4")
+except LookupError:
+    nltk.download("omw-1.4", quiet=True)
+
+_lemmatizer = WordNetLemmatizer()
+
 # ── Stop words stripped during key normalization ─────────────────────────────
 _ARTICLES = frozenset({"a", "an", "the"})
 
@@ -61,6 +77,7 @@ class ShapeCache:
         # a storage read, the key is registered here. Concurrent callers
         # await the event instead of issuing duplicate reads.
         self._in_flight: dict[str, asyncio.Event] = {}
+        self._in_flight_lock = asyncio.Lock()
 
         # ── Collision tracking ───────────────────────────────────────────
         # Maps hash → original normalized text, used to detect when two
@@ -99,21 +116,23 @@ class ShapeCache:
         return self._bucket is not None or not self._bucket_name
 
     # ── Key normalization ────────────────────────────────────────────────
-    # Deliberately minimal: lowercase, strip punctuation, remove articles.
-    # No depluralization (too fragile) and no adjective stripping (that's
-    # semantic normalization and belongs in the pipeline orchestrator).
+    # Lowercase, strip punctuation, remove articles, lemmatize nouns.
+    # Lemmatization collapses plural→singular ("dragons"→"dragon") so
+    # singular and plural forms share a cache entry.
+    # Adjectives are preserved: "red dragon" ≠ "blue dragon".
 
     @staticmethod
     def normalize_key(text: str) -> str:
         """Normalize input text to a canonical cache key.
 
-        Strips punctuation, lowercases, removes articles.
-        Does NOT depluralize — 'horses' stays 'horses'.
+        Strips punctuation, lowercases, removes articles, and lemmatizes
+        each word (noun form) so "horses" → "horse", etc.
         Does NOT strip adjectives — 'red dragon' stays 'red dragon'.
         """
         text = text.lower().strip()
         text = re.sub(r"[^\w\s]", "", text)
         words = [w for w in text.split() if w not in _ARTICLES]
+        words = [_lemmatizer.lemmatize(w) for w in words]
         return " ".join(words) if words else text
 
     @staticmethod
@@ -157,12 +176,23 @@ class ShapeCache:
                 logger.debug("cache_hit", tier="memory", text=text, key=key)
                 return self._memory[key]
 
-        # Tier 2: Cloud Storage (with coalescing)
+        # Tier 2: Cloud Storage (with coalescing, guarded by async lock)
         if self._bucket:
-            # Check if another coroutine is already fetching this key
-            if key in self._in_flight:
+            async with self._in_flight_lock:
+                # Check if another coroutine is already fetching this key
+                if key in self._in_flight:
+                    event = self._in_flight[key]
+                    # Release the lock before awaiting the event
+                else:
+                    event = None
+                    # We're the first — register in-flight
+                    new_event = asyncio.Event()
+                    self._in_flight[key] = new_event
+
+            if event is not None:
+                # Another coroutine is fetching — wait for it
                 logger.debug("cache_coalescing", text=text, key=key)
-                await self._in_flight[key].wait()
+                await event.wait()
                 # After the event fires, the result should be in memory
                 with self._lock:
                     if key in self._memory:
@@ -172,9 +202,7 @@ class ShapeCache:
                 self._misses += 1
                 return None
 
-            # We're the first — register in-flight and fetch
-            event = asyncio.Event()
-            self._in_flight[key] = event
+            # We're the first — fetch from storage
             try:
                 t0_storage = time.perf_counter()
                 loop = asyncio.get_event_loop()
@@ -195,8 +223,9 @@ class ShapeCache:
                     )
                     return result
             finally:
-                event.set()  # Wake any waiting coroutines
-                self._in_flight.pop(key, None)
+                new_event.set()  # Wake any waiting coroutines
+                async with self._in_flight_lock:
+                    self._in_flight.pop(key, None)
 
         self._misses += 1
         logger.debug("cache_miss", text=text, key=key)

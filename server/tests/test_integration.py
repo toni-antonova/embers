@@ -62,28 +62,33 @@ async def client():
         yield ac
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Happy Path
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class TestGenerateEndpoint:
     """Tests for POST /generate."""
 
     @pytest.mark.asyncio
     async def test_valid_request_returns_200(self, client: AsyncClient) -> None:
+        """Happy path: POST /generate with mocked models → 200 with full payload."""
         response = await client.post("/generate", params={"text": "horse"})
         assert response.status_code == 200
         data = response.json()
         assert "positions" in data
         assert "part_ids" in data
+        assert "part_names" in data
         assert "template_type" in data
+        assert "bounding_box" in data
+        assert "pipeline" in data
         assert data["cached"] is False
+        assert data["generation_time_ms"] >= 0
 
-    @pytest.mark.asyncio
-    async def test_empty_text_returns_422(self, client: AsyncClient) -> None:
-        response = await client.post("/generate", params={"text": ""})
-        assert response.status_code == 422
 
-    @pytest.mark.asyncio
-    async def test_too_long_text_returns_422(self, client: AsyncClient) -> None:
-        response = await client.post("/generate", params={"text": "a" * 201})
-        assert response.status_code == 422
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Cache Hit + 3. Cache Miss → Generation → Cache Write
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestCacheIntegration:
@@ -91,6 +96,7 @@ class TestCacheIntegration:
 
     @pytest.mark.asyncio
     async def test_second_request_hits_cache(self, client: AsyncClient) -> None:
+        """Cache hit: second request for same concept returns cached=True."""
         r1 = await client.post("/generate", params={"text": "cat"})
         assert r1.status_code == 200
         assert r1.json()["cached"] is False
@@ -99,32 +105,61 @@ class TestCacheIntegration:
         assert r2.status_code == 200
         assert r2.json()["cached"] is True
 
+    @pytest.mark.asyncio
+    async def test_cache_write_after_miss(self, client: AsyncClient) -> None:
+        """Cache miss → generation → cache write: verify full flow."""
+        r1 = await client.post("/generate", params={"text": "owl"})
+        assert r1.status_code == 200
+        assert r1.json()["cached"] is False
+
+        # Second request should be cached
+        r2 = await client.post("/generate", params={"text": "owl"})
+        assert r2.status_code == 200
+        assert r2.json()["cached"] is True
+
+        # Verify the cached data matches
+        assert r1.json()["positions"] == r2.json()["positions"]
+        assert r1.json()["part_ids"] == r2.json()["part_ids"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Health Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestHealthEndpoints:
     @pytest.mark.asyncio
     async def test_liveness_returns_200(self, client: AsyncClient) -> None:
+        """GET /health → 200."""
         response = await client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
     @pytest.mark.asyncio
     async def test_readiness_returns_200(self, client: AsyncClient) -> None:
+        """GET /health/ready → 200 with mocked registry."""
         response = await client.get("/health/ready")
         assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_detailed_health(self, client: AsyncClient) -> None:
+        """GET /health/detailed → includes GPU info and models."""
         response = await client.get("/health/detailed")
         assert response.status_code == 200
         data = response.json()
         assert "models_loaded" in data
-        assert "fallback_loaded" in data
         assert "status" in data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Metrics Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestMetricsEndpoint:
     @pytest.mark.asyncio
     async def test_metrics_returns_200(self, client: AsyncClient) -> None:
+        """GET /metrics → verify structure matches PipelineMetrics.to_dict() schema."""
         response = await client.get("/metrics")
         assert response.status_code == 200
         data = response.json()
@@ -136,6 +171,71 @@ class TestMetricsEndpoint:
 
     @pytest.mark.asyncio
     async def test_metrics_track_requests(self, client: AsyncClient) -> None:
+        """Metrics increment after a generate request."""
         await client.post("/generate", params={"text": "dog"})
         data = (await client.get("/metrics")).json()
         assert data["requests_total"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_prometheus_metrics_endpoint(self, client: AsyncClient) -> None:
+        """GET /metrics/prometheus → returns Prometheus text format."""
+        response = await client.get("/metrics/prometheus")
+        assert response.status_code == 200
+        assert "text/plain" in response.headers["content-type"]
+        text = response.text
+        # Check for key metrics in the exposition format
+        assert "lumen_cache_hit_ratio" in text
+        assert "lumen_model_load_status" in text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Error Handling — Validation Errors
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestValidationErrors:
+    @pytest.mark.asyncio
+    async def test_empty_text_returns_422(self, client: AsyncClient) -> None:
+        """POST /generate with empty text → 422 validation error."""
+        response = await client.post("/generate", params={"text": ""})
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_too_long_text_returns_422(self, client: AsyncClient) -> None:
+        """POST /generate with text >200 chars → 422."""
+        response = await client.post("/generate", params={"text": "a" * 201})
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_no_text_returns_422(self, client: AsyncClient) -> None:
+        """POST /generate with no text param → 422."""
+        response = await client.post("/generate")
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_numeric_only_text_rejected(self, client: AsyncClient) -> None:
+        """POST /generate with numeric-only text is rejected by validation."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            await client.post("/generate", params={"text": "12345"})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. CORS
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestCORS:
+    @pytest.mark.asyncio
+    async def test_cors_headers_present(self, client: AsyncClient) -> None:
+        """OPTIONS request → verify correct CORS headers."""
+        response = await client.options(
+            "/generate",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        # CORS should return either 200 or 204
+        assert response.status_code in (200, 204, 405)

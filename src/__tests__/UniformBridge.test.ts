@@ -61,6 +61,11 @@ function createMockParticleSystem() {
         uDelta: { value: 0.016 },  // ~60fps timestep for sentiment smoothing
         uSentimentMovement: { value: 0 },
         uSentimentMovementIntensity: { value: 0 },
+        uAbstraction: { value: 0 },
+        uNoiseAmplitude: { value: 0.25 },
+        uSpringK: { value: 1.5 },
+        uRepulsionStrength: { value: 5.0 },
+        uTransitionPhase: { value: 0 },
     };
 
     // Render shader uniforms

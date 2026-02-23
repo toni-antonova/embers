@@ -49,6 +49,7 @@ import { UniformBridge } from '../engine/UniformBridge';
 import { ServerShapeAdapter } from '../engine/ServerShapeAdapter';
 import type { ServerClient } from './ServerClient';
 import type { SessionLogger } from './SessionLogger';
+import type { AudioEngine } from './AudioEngine';
 
 // ── SEMANTIC EVENT LOG ───────────────────────────────────────────────
 // Every semantic decision is logged for session replay / debugging.
@@ -69,12 +70,38 @@ const FINAL_CONFIDENCE_THRESHOLD = 0.3;
 const INTERIM_CONFIDENCE_THRESHOLD = 0.6;
 const INTERIM_DEBOUNCE_MS = 300;      // Min ms between morph actions from interims
 const ABSTRACTION_DRIFT_RATE = 0.05;   // Rate abstraction rises when no keyword found
-const IDLE_ABSTRACTION_RISE = 0.002;   // Rate abstraction drifts up during silence reset
 const DEFAULT_SHAPE = 'ring';
 
 // Hierarchy traversal stage timing (seconds)
 const HIERARCHY_STAGE_DELAYS = [0.0, 0.5, 1.5]; // T+0s, T+0.5s, T+1.5s
 const HIERARCHY_ABSTRACTIONS = [0.9, 0.5];       // Stages 0 and 1 use these; stage 2 uses the keyword's own
+
+// ── TRANSITION CHOREOGRAPHY (S12) ───────────────────────────────────
+// Phase durations in seconds (base values — scaled by audio energy).
+export const TransitionPhase = {
+    Idle: 0,
+    Dissolve: 1,
+    Reform: 2,
+    Settle: 3,
+} as const;
+export type TransitionPhase = (typeof TransitionPhase)[keyof typeof TransitionPhase];
+
+const BASE_DISSOLVE_DURATION = 0.3;  // Particles scatter from current formation
+const BASE_REFORM_DURATION = 0.7;    // Particles pulled to new target
+const BASE_SETTLE_DURATION = 0.5;    // Noise reduces, spring overshoots then eases
+
+// Spring/noise modulation during transition phases
+const DISSOLVE_SPRING = 0.4;         // Weak spring → particles scatter
+const DISSOLVE_NOISE = 0.6;          // High noise → chaotic scatter
+const REFORM_SPRING_START = 0.8;     // Moderate spring → pulls to new target
+const REFORM_SPRING_END = 1.5;       // Gradually restoring
+const REFORM_NOISE = 0.35;           // Still elevated noise
+const SETTLE_SPRING_OVERSHOOT = 2.0; // Briefly tighter than normal
+const SETTLE_SPRING_FINAL = 1.5;     // Eases back to normal
+const SETTLE_NOISE = 0.15;           // Nearly normal noise
+
+// Idle decay constants
+const IDLE_DECAY_DURATION = 30.0;    // 30 seconds for gradual return to ring
 
 export class SemanticBackend {
     // ── DEPENDENCIES ─────────────────────────────────────────────────
@@ -84,6 +111,7 @@ export class SemanticBackend {
     private uniformBridge: UniformBridge;
     private sessionLogger: SessionLogger | null;
     private serverClient: ServerClient | null;
+    private audioEngine: AudioEngine | null;
 
     // ── STATE ────────────────────────────────────────────────────────
     private currentTarget: string = DEFAULT_SHAPE;
@@ -124,6 +152,21 @@ export class SemanticBackend {
     private hierarchyFinalAbstraction: number = 0.5;
     private _hierarchyLabel: string = '';
 
+    // ── TRANSITION CHOREOGRAPHY STATE (S12) ──────────────────────────
+    private transitionPhase: TransitionPhase = TransitionPhase.Idle;
+    private transitionElapsed: number = 0;
+    private transitionDurations: [number, number, number] = [
+        BASE_DISSOLVE_DURATION, BASE_REFORM_DURATION, BASE_SETTLE_DURATION
+    ];
+    // Pending target info: stored during Dissolve, applied during Reform
+    private pendingMorphState: SemanticState | null = null;
+    private pendingMorphMapping: KeywordMapping | null = null;
+
+    // Idle decay state
+    private idleDecayActive: boolean = false;
+    private idleDecayElapsed: number = 0;
+    private idleDecayStartAbstraction: number = 0.5;
+
     constructor(
         speechEngine: SpeechEngine,
         classifier: KeywordClassifier,
@@ -131,6 +174,7 @@ export class SemanticBackend {
         uniformBridge: UniformBridge,
         sessionLogger?: SessionLogger | null,
         serverClient?: ServerClient | null,
+        audioEngine?: AudioEngine | null,
     ) {
         this.speechEngine = speechEngine;
         this.classifier = classifier;
@@ -138,6 +182,7 @@ export class SemanticBackend {
         this.uniformBridge = uniformBridge;
         this.sessionLogger = sessionLogger || null;
         this.serverClient = serverClient || null;
+        this.audioEngine = audioEngine || null;
 
         // Subscribe to transcript events — callback only queues, never mutates state
         this.unsubscribe = this.speechEngine.onTranscript(
@@ -171,20 +216,36 @@ export class SemanticBackend {
         this.timeSinceLastUtterance += dt;
 
         // ── 5-MINUTE CONTINUOUS SILENCE RESET ────────────────────────
-        // After 5 minutes of no speech at all, slowly drift back to ring.
-        if (this.timeSinceLastUtterance > SILENCE_RESET_THRESHOLD && this.currentTarget !== DEFAULT_SHAPE) {
-            console.log('[SemanticBackend] 5-min silence — drifting to ring');
-            this.currentTarget = DEFAULT_SHAPE;
-            this.particleSystem.setTarget(DEFAULT_SHAPE);
-            this.targetAbstraction = 0.7; // Semi-fluid
+        // After 5 minutes of no speech at all, start 30-second gradual decay.
+        if (this.timeSinceLastUtterance > SILENCE_RESET_THRESHOLD && this.currentTarget !== DEFAULT_SHAPE && !this.idleDecayActive) {
+            console.log('[SemanticBackend] 5-min silence — starting 30s gradual decay to ring');
+            this.idleDecayActive = true;
+            this.idleDecayElapsed = 0;
+            this.idleDecayStartAbstraction = this.currentAbstraction;
             this.logEvent('', this.makeDefaultState(), 'hold');
         }
 
-        // During extended silence, slowly raise abstraction for fluid breathing
-        if (this.timeSinceLastUtterance > SILENCE_RESET_THRESHOLD) {
-            this.targetAbstraction = Math.min(1.0,
-                this.targetAbstraction + IDLE_ABSTRACTION_RISE * dt
-            );
+        // ── IDLE DECAY ANIMATION (30s gradual) ───────────────────────
+        if (this.idleDecayActive) {
+            this.idleDecayElapsed += dt;
+            const progress = Math.min(1.0, this.idleDecayElapsed / IDLE_DECAY_DURATION);
+            // Ease-out curve for smooth deceleration
+            const eased = 1 - Math.pow(1 - progress, 2);
+
+            // Gradually raise abstraction toward 1.0 (fluid)
+            this.targetAbstraction = this.idleDecayStartAbstraction + (1.0 - this.idleDecayStartAbstraction) * eased;
+
+            // Gradually reduce spring constant for floating feel
+            this.uniformBridge.springOverride = 1.5 - eased * 0.8; // 1.5 → 0.7
+
+            // At the end, switch to ring
+            if (progress >= 1.0) {
+                this.currentTarget = DEFAULT_SHAPE;
+                this.particleSystem.setTarget(DEFAULT_SHAPE);
+                this.idleDecayActive = false;
+                this.uniformBridge.springOverride = null;
+                console.log('[SemanticBackend] Idle decay complete — now ring');
+            }
         }
 
         // ── ABSTRACTION LERP (temporal crystallization) ──────────────
@@ -209,6 +270,9 @@ export class SemanticBackend {
                 console.log('[SemanticBackend] Loosening complete');
             }
         }
+
+        // ── TRANSITION CHOREOGRAPHY TICK ──────────────────────────────
+        this.tickTransition(dt);
 
         // ── HIERARCHY TRAVERSAL TICK ──────────────────────────────────
         if (this.hierarchyActive && this.hierarchyMapping) {
@@ -296,6 +360,10 @@ export class SemanticBackend {
         this.uniformBridge.noiseOverride = null;
         this.uniformBridge.sentimentOverride = null;
         this.uniformBridge.emotionalIntensityOverride = null;
+        this.uniformBridge.springOverride = null;
+        this.uniformBridge.transitionPhase = 0;
+        this.transitionPhase = TransitionPhase.Idle;
+        this.idleDecayActive = false;
         console.log('[SemanticBackend] Disposed');
     }
 
@@ -380,14 +448,159 @@ export class SemanticBackend {
     /**
      * Apply a morph target change from a classification result.
      *
-     * IMPORTANT: ParticleSystem.setTarget() only swaps the morph target
-     * TEXTURE — it does NOT reset particle positions. The spring forces
-     * in velocity.frag.glsl pull particles toward the new target positions
-     * automatically. This means mid-crystallization interruptions (e.g.,
-     * saying "horse ocean" rapidly) create fluid redirects, not jarring snaps.
+     * TRANSITION CHOREOGRAPHY (S12):
+     * Instead of directly swapping the morph target, we now go through
+     * a dissolve→reform→settle sequence. The morph target swap happens
+     * at the Reform phase transition, not immediately.
+     *
+     * MID-TRANSITION INTERRUPTION:
+     * - During Dissolve/Reform: restart Dissolve with new target
+     * - During Settle: start new Dissolve with new target
+     * - During Idle: start Dissolve normally
      */
     private applyMorph(state: SemanticState, text: string): void {
-        const mapping = this.classifier.lookupKeyword(state.dominantWord);
+        // Store pending morph info
+        this.pendingMorphState = state;
+        this.pendingMorphMapping = this.classifier.lookupKeyword(state.dominantWord);
+
+        // Cancel idle decay if speech arrives
+        if (this.idleDecayActive) {
+            this.idleDecayActive = false;
+            this.uniformBridge.springOverride = null;
+        }
+
+        // Compute audio-responsive phase durations
+        this.computeTransitionDurations();
+
+        // Start or restart Dissolve phase
+        this.transitionPhase = TransitionPhase.Dissolve;
+        this.transitionElapsed = 0;
+        this.uniformBridge.transitionPhase = TransitionPhase.Dissolve;
+
+        // Apply dissolve overrides
+        this.uniformBridge.springOverride = DISSOLVE_SPRING;
+        if (!this.isLoosening) {
+            this.uniformBridge.noiseOverride = DISSOLVE_NOISE;
+        }
+
+        this._lastState = state;
+        this._lastAction = 'morph';
+        this.lastMorphTime = Date.now();
+
+        this.uniformBridge.sentimentOverride = state.sentiment;
+        this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
+        this.logEvent(text, state, 'morph');
+
+        // Log semantic event
+        this.sessionLogger?.log('semantic', {
+            dominantWord: state.dominantWord,
+            morphTarget: state.morphTarget,
+            abstractionLevel: state.abstractionLevel,
+            sentiment: state.sentiment,
+            confidence: state.confidence,
+        });
+    }
+
+    /**
+     * Tick the transition state machine. Called every frame from update().
+     */
+    private tickTransition(dt: number): void {
+        if (this.transitionPhase === TransitionPhase.Idle) return;
+
+        this.transitionElapsed += dt;
+
+        switch (this.transitionPhase) {
+            case TransitionPhase.Dissolve:
+                this.tickDissolve();
+                break;
+            case TransitionPhase.Reform:
+                this.tickReform();
+                break;
+            case TransitionPhase.Settle:
+                this.tickSettle();
+                break;
+        }
+    }
+
+    /**
+     * Dissolve phase: particles scatter from current formation.
+     * At end → switch morph target and enter Reform.
+     */
+    private tickDissolve(): void {
+        const duration = this.transitionDurations[0];
+        if (this.transitionElapsed >= duration) {
+            // Dissolve complete → switch target and enter Reform
+            this.executeMorphSwap();
+
+            this.transitionPhase = TransitionPhase.Reform;
+            this.transitionElapsed = 0;
+            this.uniformBridge.transitionPhase = TransitionPhase.Reform;
+            this.uniformBridge.springOverride = REFORM_SPRING_START;
+            this.uniformBridge.noiseOverride = REFORM_NOISE;
+
+            console.log('[SemanticBackend] Transition: Dissolve → Reform');
+        }
+    }
+
+    /**
+     * Reform phase: particles are pulled to new target positions.
+     * Spring constant gradually restores.
+     */
+    private tickReform(): void {
+        const duration = this.transitionDurations[1];
+        const progress = Math.min(1.0, this.transitionElapsed / duration);
+
+        // Gradually restore spring (lerp from start to end)
+        this.uniformBridge.springOverride = REFORM_SPRING_START + (REFORM_SPRING_END - REFORM_SPRING_START) * progress;
+
+        // Gradually reduce noise
+        const reformNoise = REFORM_NOISE * (1.0 - progress * 0.5);
+        this.uniformBridge.noiseOverride = reformNoise;
+
+        if (this.transitionElapsed >= duration) {
+            this.transitionPhase = TransitionPhase.Settle;
+            this.transitionElapsed = 0;
+            this.uniformBridge.transitionPhase = TransitionPhase.Settle;
+            this.uniformBridge.springOverride = SETTLE_SPRING_OVERSHOOT;
+            this.uniformBridge.noiseOverride = SETTLE_NOISE;
+
+            console.log('[SemanticBackend] Transition: Reform → Settle');
+        }
+    }
+
+    /**
+     * Settle phase: noise reduces to normal, spring overshoots then eases.
+     */
+    private tickSettle(): void {
+        const duration = this.transitionDurations[2];
+        const progress = Math.min(1.0, this.transitionElapsed / duration);
+
+        // Spring overshoots then eases back: overshoot → final
+        this.uniformBridge.springOverride = SETTLE_SPRING_OVERSHOOT + (SETTLE_SPRING_FINAL - SETTLE_SPRING_OVERSHOOT) * progress;
+
+        // Noise eases to null (back to normal)
+        const settleNoise = SETTLE_NOISE * (1.0 - progress);
+        this.uniformBridge.noiseOverride = settleNoise > 0.01 ? settleNoise : null;
+
+        if (this.transitionElapsed >= duration) {
+            // Transition complete → back to Idle
+            this.transitionPhase = TransitionPhase.Idle;
+            this.uniformBridge.transitionPhase = TransitionPhase.Idle;
+            this.uniformBridge.springOverride = null;
+            this.uniformBridge.noiseOverride = null;
+
+            console.log('[SemanticBackend] Transition: Settle → Idle');
+        }
+    }
+
+    /**
+     * Execute the actual morph target swap. Called at the Dissolve→Reform boundary.
+     * This is where the pending morph target is applied to the particle system.
+     */
+    private executeMorphSwap(): void {
+        const state = this.pendingMorphState;
+        if (!state) return;
+        const mapping = this.pendingMorphMapping;
 
         if (mapping) {
             // Start hierarchy traversal (overwrites any in-progress one)
@@ -411,16 +624,13 @@ export class SemanticBackend {
         } else {
             // No keyword mapping — check if we have a local shape or need the server
             if (this.particleSystem.morphTargets.hasTarget(state.morphTarget)) {
-                // Local procedural shape exists — use it instantly
                 if (state.morphTarget !== this.currentTarget) {
                     this.currentTarget = state.morphTarget;
                     this.particleSystem.setTarget(state.morphTarget);
                 }
             } else if (this.serverClient) {
-                // No local shape — request from server
                 this.requestServerShape(state.dominantWord, state.morphTarget);
             } else {
-                // No server client — fall back to whatever the classifier suggested
                 if (state.morphTarget !== this.currentTarget) {
                     this.currentTarget = state.morphTarget;
                     this.particleSystem.setTarget(state.morphTarget);
@@ -434,23 +644,6 @@ export class SemanticBackend {
                 );
             }
         }
-
-        this._lastState = state;
-        this._lastAction = 'morph';
-        this.lastMorphTime = Date.now();
-
-        this.uniformBridge.sentimentOverride = state.sentiment;
-        this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
-        this.logEvent(text, state, 'morph');
-
-        // Log semantic event
-        this.sessionLogger?.log('semantic', {
-            dominantWord: state.dominantWord,
-            morphTarget: state.morphTarget,
-            abstractionLevel: state.abstractionLevel,
-            sentiment: state.sentiment,
-            confidence: state.confidence,
-        });
     }
 
     /**
@@ -534,5 +727,45 @@ export class SemanticBackend {
             classification,
             action,
         });
+    }
+
+    /**
+     * Compute audio-responsive transition phase durations.
+     * Higher energy (louder speech) → faster transitions.
+     */
+    private computeTransitionDurations(): void {
+        let energyScale = 1.0;
+        if (this.audioEngine) {
+            const energy = this.audioEngine.getFeatures().energy;
+            // lerp(1.5, 0.5, energy): low energy → 1.5x (slow), high energy → 0.5x (fast)
+            energyScale = 1.5 - energy * 1.0;
+        }
+
+        this.transitionDurations = [
+            BASE_DISSOLVE_DURATION * energyScale,
+            BASE_REFORM_DURATION * energyScale,
+            BASE_SETTLE_DURATION * energyScale,
+        ];
+    }
+
+    /**
+     * Get current transition phase (for testing/inspection).
+     */
+    get currentTransitionPhase(): TransitionPhase {
+        return this.transitionPhase;
+    }
+
+    /**
+     * Get current transition durations (for testing).
+     */
+    getTransitionDurations(): [number, number, number] {
+        return [...this.transitionDurations] as [number, number, number];
+    }
+
+    /**
+     * Check if idle decay animation is active (for testing).
+     */
+    get isIdleDecayActive(): boolean {
+        return this.idleDecayActive;
     }
 }
