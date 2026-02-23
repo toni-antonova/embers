@@ -688,7 +688,9 @@ name = "lumen-server"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "accelerate" },
     { name = "cachetools" },
+    { name = "diffusers" },
     { name = "fastapi" },
     { name = "google-cloud-storage" },
     { name = "numpy" },
@@ -727,8 +729,10 @@ ml = [
 
 [package.metadata]
 requires-dist = [
+    { name = "accelerate", specifier = ">=1.7" },
     { name = "accelerate", marker = "extra == 'ml'", specifier = ">=1.12" },
     { name = "cachetools", specifier = ">=7.0" },
+    { name = "diffusers", specifier = ">=0.33" },
     { name = "diffusers", marker = "extra == 'ml'", specifier = ">=0.36" },
     { name = "dirty-equals", marker = "extra == 'dev'", specifier = ">=0.11" },
     { name = "fastapi", specifier = ">=0.129" },
