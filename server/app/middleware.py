@@ -7,7 +7,7 @@ import time
 import uuid
 
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -20,7 +20,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     Skips logging for /health (too noisy from Cloud Run probes).
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:  # noqa: ANN001
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # noqa: ANN001
         request_id = str(uuid.uuid4())[:8]
         request.state.request_id = request_id
         start = time.perf_counter()

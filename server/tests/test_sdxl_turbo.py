@@ -17,7 +17,6 @@ from app.models.protocol import TextToImageModel
 from app.pipeline.prompt_templates import get_canonical_prompt
 from app.pipeline.template_matcher import get_template
 
-
 # ── Module-level mocks for GPU-only dependencies ────────────────────────────
 # torch and diffusers may not be installed locally, so we inject mocks
 # into sys.modules before importing the SUT.
@@ -67,9 +66,7 @@ def _create_model(mock_pipe=None):
     if mock_pipe is None:
         mock_pipe = _make_mock_pipeline()
 
-    with patch(
-        "app.models.sdxl_turbo.StableDiffusionXLPipeline"
-    ) as MockPipeline:
+    with patch("app.models.sdxl_turbo.StableDiffusionXLPipeline") as MockPipeline:
         MockPipeline.from_pretrained.return_value = mock_pipe
 
         from app.models.sdxl_turbo import SDXLTurboModel

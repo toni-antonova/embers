@@ -2,7 +2,7 @@
 # Tests — Template Matcher
 # ─────────────────────────────────────────────────────────────────────────────
 
-from app.pipeline.template_matcher import get_template, TEMPLATES, TemplateInfo
+from app.pipeline.template_matcher import TEMPLATES, TemplateInfo, get_template
 
 
 class TestGetTemplate:

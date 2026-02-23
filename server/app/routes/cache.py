@@ -2,6 +2,8 @@
 # Cache Routes — monitoring and management
 # ─────────────────────────────────────────────────────────────────────────────
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 
 from app.cache.shape_cache import ShapeCache
@@ -11,7 +13,7 @@ router = APIRouter()
 
 
 @router.get("/cache/stats")
-async def cache_stats(cache: ShapeCache = Depends(get_cache)) -> dict:
+async def cache_stats(cache: ShapeCache = Depends(get_cache)) -> dict[str, Any]:
     """Return cache hit/miss statistics and health metrics.
 
     Response schema:

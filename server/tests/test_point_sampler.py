@@ -3,6 +3,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 import numpy as np
+import pytest
 import trimesh
 
 from app.pipeline.point_sampler import (
@@ -93,11 +94,8 @@ class TestSampleFromPartMeshes:
         assert part_ids.dtype == np.uint8
 
     def test_empty_raises(self):
-        try:
+        with pytest.raises(ValueError):
             sample_from_part_meshes([], total_points=100)
-            assert False, "Should have raised ValueError"
-        except ValueError:
-            pass
 
 
 class TestSampleFromLabeledMesh:
@@ -123,11 +121,8 @@ class TestSampleFromLabeledMesh:
     def test_mismatched_labels_raises(self):
         mesh = _make_box()
         wrong_labels = np.zeros(5, dtype=np.uint8)  # Wrong size
-        try:
+        with pytest.raises(ValueError):
             sample_from_labeled_mesh(mesh, wrong_labels, total_points=100)
-            assert False, "Should have raised ValueError"
-        except ValueError:
-            pass
 
     def test_positions_normalized(self):
         mesh = _make_box(center=(10, 10, 10), size=5.0)
@@ -201,8 +196,6 @@ class TestLabeledMeshEdgeCases:
         mesh = _make_box()
         labels = np.zeros(len(mesh.faces), dtype=np.uint8)
         for count in [100, 512, 2048]:
-            positions, part_ids = sample_from_labeled_mesh(
-                mesh, labels, total_points=count
-            )
+            positions, part_ids = sample_from_labeled_mesh(mesh, labels, total_points=count)
             assert positions.shape == (count, 3)
             assert part_ids.shape == (count,)

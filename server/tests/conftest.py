@@ -59,7 +59,9 @@ def mock_cache() -> ShapeCache:
 
 
 @pytest.fixture
-def client(test_settings: Settings, mock_registry: ModelRegistry, mock_cache: ShapeCache) -> TestClient:
+def client(
+    test_settings: Settings, mock_registry: ModelRegistry, mock_cache: ShapeCache
+) -> TestClient:
     """FastAPI TestClient with mocked dependencies.
 
     We clear the settings cache and set env vars so the lifespan

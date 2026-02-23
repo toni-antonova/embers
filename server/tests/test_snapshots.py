@@ -34,28 +34,32 @@ class TestTemplateSnapshots:
         template = get_template("horse")
         prompt = get_canonical_prompt("horse", template.template_type)
         assert prompt == snapshot(
-            "3D render of a horse, side view, white background, centered, full body visible, studio lighting, standing pose, four legs visible"
+            "3D render of a horse, side view, white background, centered,"
+            " full body visible, studio lighting, standing pose, four legs visible"
         )
 
     def test_person_prompt(self):
         template = get_template("person")
         prompt = get_canonical_prompt("person", template.template_type)
         assert prompt == snapshot(
-            "3D render of a person, side view, white background, centered, full body visible, studio lighting, T-pose, symmetrical, arms extended"
+            "3D render of a person, side view, white background, centered,"
+            " full body visible, studio lighting, T-pose, symmetrical, arms extended"
         )
 
     def test_eagle_prompt(self):
         template = get_template("eagle")
         prompt = get_canonical_prompt("eagle", template.template_type)
         assert prompt == snapshot(
-            "3D render of a eagle, side view, white background, centered, full body visible, studio lighting, wings slightly spread, perched"
+            "3D render of a eagle, side view, white background, centered,"
+            " full body visible, studio lighting, wings slightly spread, perched"
         )
 
     def test_car_prompt(self):
         template = get_template("car")
         prompt = get_canonical_prompt("car", template.template_type)
         assert prompt == snapshot(
-            "3D render of a car, side view, white background, centered, full body visible, studio lighting, three-quarter view, all wheels visible"
+            "3D render of a car, side view, white background, centered,"
+            " full body visible, studio lighting, three-quarter view, all wheels visible"
         )
 
     def test_unknown_prompt(self):
@@ -63,7 +67,8 @@ class TestTemplateSnapshots:
         template = get_template("zygomorphic")
         prompt = get_canonical_prompt("zygomorphic", template.template_type)
         assert prompt == snapshot(
-            "3D render of a zygomorphic, side view, white background, centered, full body visible, studio lighting"
+            "3D render of a zygomorphic, side view, white background,"
+            " centered, full body visible, studio lighting"
         )
 
 
@@ -82,9 +87,7 @@ class TestTemplateMatcherSnapshots:
         template = get_template("chair")
         assert template.template_type == snapshot("furniture")
         assert template.num_parts == snapshot(3)
-        assert template.part_names == snapshot(
-            ["seat", "backrest", "legs"]
-        )
+        assert template.part_names == snapshot(["seat", "backrest", "legs"])
 
     def test_unknown_gets_default(self):
         template = get_template("flibbertigibbet")

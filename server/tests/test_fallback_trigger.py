@@ -97,42 +97,38 @@ class TestFallbackTrigger:
         # Mock the fallback models — inject via get_or_load
         mock_hunyuan = _make_mock_hunyuan()
         mock_gsam = _make_mock_gsam(
-            ["head", "body", "front_left_leg", "front_right_leg",
-             "rear_left_leg", "rear_right_leg"]
+            ["head", "body", "front_left_leg", "front_right_leg", "rear_left_leg", "rear_right_leg"]
         )
 
-        with patch.object(
-            registry,
-            "get_or_load",
-            side_effect=lambda name, factory: (
-                mock_hunyuan if "hunyuan" in name else mock_gsam
+        with (
+            patch.object(
+                registry,
+                "get_or_load",
+                side_effect=lambda name, factory: mock_hunyuan if "hunyuan" in name else mock_gsam,
             ),
+            patch("app.services.pipeline.render_multiview_with_id_pass") as mock_render,
         ):
-            # Patch render to return simple test data
-            with patch(
-                "app.services.pipeline.render_multiview_with_id_pass"
-            ) as mock_render:
-                # Create fake render results: 3 views with simple face-ID maps
-                cube = trimesh.creation.box(extents=[1, 1, 1])
-                n_faces = len(cube.faces)
+            # Create fake render results: 3 views with simple face-ID maps
+            cube = trimesh.creation.box(extents=[1, 1, 1])
+            n_faces = len(cube.faces)
 
-                def fake_render(mesh, **kwargs):
-                    results = []
-                    for _ in range(3):
-                        color_img = PIL.Image.new("RGB", (512, 512))
-                        fid_map = np.full((512, 512), -1, dtype=np.int32)
-                        # Top half of image shows some faces
-                        for i in range(min(n_faces, 256)):
-                            row = i // 512
-                            col = i % 512
-                            fid_map[row, col] = i
-                        results.append((color_img, fid_map))
-                    return results
+            def fake_render(mesh, **kwargs):
+                results = []
+                for _ in range(3):
+                    color_img = PIL.Image.new("RGB", (512, 512))
+                    fid_map = np.full((512, 512), -1, dtype=np.int32)
+                    # Top half of image shows some faces
+                    for i in range(min(n_faces, 256)):
+                        row = i // 512
+                        col = i % 512
+                        fid_map[row, col] = i
+                    results.append((color_img, fid_map))
+                return results
 
-                mock_render.side_effect = fake_render
+            mock_render.side_effect = fake_render
 
-                request = GenerateRequest(text="horse")
-                response = await orchestrator.generate(request)
+            request = GenerateRequest(text="horse")
+            response = await orchestrator.generate(request)
 
         # ── Verify output ────────────────────────────────────────────────
         assert response.pipeline == "hunyuan3d_grounded_sam"
@@ -162,10 +158,7 @@ class TestFallbackTrigger:
 
         # Mock PartCrafter with 6 REAL meshes (all with >1 vertex)
         partcrafter = MagicMock()
-        meshes = [
-            trimesh.creation.box(extents=[0.2, 0.2, 0.2])
-            for _ in range(6)
-        ]
+        meshes = [trimesh.creation.box(extents=[0.2, 0.2, 0.2]) for _ in range(6)]
         partcrafter.generate.return_value = meshes
         registry.register("partcrafter", partcrafter)
 

@@ -15,7 +15,6 @@ from hypothesis.extra.numpy import arrays
 from app.cache.shape_cache import ShapeCache
 from app.pipeline.point_sampler import normalize_positions
 
-
 # ─── Strategies (reusable random data generators) ────────────────────────────
 
 # Random 3D point clouds: shape (N, 3), reasonable float range.

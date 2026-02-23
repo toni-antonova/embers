@@ -112,7 +112,8 @@ class TestRespxBasicUsage:
     @respx.mock
     async def test_unmocked_raises(self):
         """By default, unmocked requests raise an error (fail-safe)."""
-        # No routes mocked — any request should fail
+        # No routes mocked — respx raises AllMockedAssertionError
+        # (not httpx.HTTPError) when assert_all_mocked=True (the default)
         async with httpx.AsyncClient() as client:
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="not mocked"):
                 await client.get("https://api.example.com/unexpected")

@@ -53,7 +53,7 @@ class SDXLTurboModel:
         logger.info("sdxl_turbo_loading", model_id=_MODEL_ID, device=device)
         t0 = time.perf_counter()
 
-        self._pipe = StableDiffusionXLPipeline.from_pretrained(
+        self._pipe = StableDiffusionXLPipeline.from_pretrained(  # type: ignore[no-untyped-call]
             _MODEL_ID,
             torch_dtype=torch.float16,
             variant="fp16",
@@ -63,11 +63,7 @@ class SDXLTurboModel:
         self._pipe.set_progress_bar_config(disable=True)
 
         elapsed = time.perf_counter() - t0
-        vram_used = (
-            torch.cuda.memory_allocated(device) / 1e9
-            if torch.cuda.is_available()
-            else 0.0
-        )
+        vram_used = torch.cuda.memory_allocated(device) / 1e9 if torch.cuda.is_available() else 0.0
         logger.info(
             "sdxl_turbo_loaded",
             load_time_s=round(elapsed, 2),

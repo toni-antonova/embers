@@ -17,7 +17,6 @@ from PIL import Image
 from app.models.protocol import ImageToPartsModel
 from app.pipeline.point_sampler import sample_from_part_meshes
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -63,7 +62,9 @@ def _create_model(mock_pipe=None, mock_rmbg=None, num_parts=3):
     mock_rmbg.eval.return_value = mock_rmbg
 
     # PartCrafterPipeline.from_pretrained → returns mock_pipe
-    mock_src_pipelines.pipeline_partcrafter.PartCrafterPipeline.from_pretrained.return_value = mock_pipe
+    mock_src_pipelines.pipeline_partcrafter.PartCrafterPipeline.from_pretrained.return_value = (
+        mock_pipe
+    )
     mock_pipe.to.return_value = mock_pipe
 
     # prepare_image → returns a simple white PIL image
@@ -200,9 +201,7 @@ class TestPointSamplingIntegration:
         big_mesh = trimesh.creation.box(extents=[10, 10, 10])  # 600 area
         small_mesh = trimesh.creation.box(extents=[1, 1, 1])  # 6 area
 
-        positions, part_ids = sample_from_part_meshes(
-            [big_mesh, small_mesh], total_points=2048
-        )
+        positions, part_ids = sample_from_part_meshes([big_mesh, small_mesh], total_points=2048)
 
         big_count = np.sum(part_ids == 0)
         small_count = np.sum(part_ids == 1)
@@ -237,8 +236,8 @@ class TestPipelineFallback:
 
     def test_pipeline_returns_mock_without_partcrafter(self):
         """When PartCrafter isn't registered, pipeline returns mock data."""
-        from app.config import Settings
         from app.cache.shape_cache import ShapeCache
+        from app.config import Settings
         from app.models.registry import ModelRegistry
         from app.services.pipeline import PipelineOrchestrator
 
@@ -256,9 +255,7 @@ class TestPipelineFallback:
         from app.pipeline.template_matcher import get_template
 
         template = get_template("horse")
-        positions, part_ids, part_names, pipeline = orchestrator._generate_sync(
-            "horse", template
-        )
+        positions, part_ids, part_names, pipeline = orchestrator._generate_sync("horse", template)
 
         assert pipeline == "mock"
         assert positions.shape == (2048, 3)
@@ -299,11 +296,12 @@ class TestDebugGenerateMeshEndpoint:
     def test_returns_503_when_model_not_loaded(self):
         from unittest.mock import AsyncMock
 
+        from fastapi.testclient import TestClient
+
         from app.cache.shape_cache import ShapeCache
         from app.config import Settings
-        from app.models.registry import ModelRegistry
         from app.main import create_app
-        from fastapi.testclient import TestClient
+        from app.models.registry import ModelRegistry
 
         settings = Settings(
             cache_bucket="",
@@ -332,11 +330,12 @@ class TestDebugGenerateMeshEndpoint:
     def test_returns_json_when_models_loaded(self):
         from unittest.mock import AsyncMock
 
+        from fastapi.testclient import TestClient
+
         from app.cache.shape_cache import ShapeCache
         from app.config import Settings
-        from app.models.registry import ModelRegistry
         from app.main import create_app
-        from fastapi.testclient import TestClient
+        from app.models.registry import ModelRegistry
 
         settings = Settings(
             cache_bucket="",
@@ -398,7 +397,7 @@ class TestEncodingRoundTrips:
     """Verify encode/decode round-trips for base64 transport."""
 
     def test_float32_round_trip(self):
-        from app.pipeline.encoding import encode_float32, decode_float32
+        from app.pipeline.encoding import decode_float32, encode_float32
 
         original = np.random.randn(100, 3).astype(np.float32)
         encoded = encode_float32(original)
@@ -406,7 +405,7 @@ class TestEncodingRoundTrips:
         np.testing.assert_array_equal(original, decoded)
 
     def test_uint8_round_trip(self):
-        from app.pipeline.encoding import encode_uint8, decode_uint8
+        from app.pipeline.encoding import decode_uint8, encode_uint8
 
         original = np.arange(50, dtype=np.uint8)
         encoded = encode_uint8(original)

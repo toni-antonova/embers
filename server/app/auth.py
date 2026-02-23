@@ -15,9 +15,10 @@
 
 
 import secrets
+from typing import Any
 
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -26,11 +27,13 @@ logger = structlog.get_logger(__name__)
 # Paths exempt from API key authentication.
 # Health probes must be unauthenticated for Cloud Run liveness/readiness.
 # Root "/" returns 404 by default but should not require auth (crawlers, etc).
-_EXEMPT_PATHS: frozenset[str] = frozenset({
-    "/",
-    "/health",
-    "/health/ready",
-})
+_EXEMPT_PATHS: frozenset[str] = frozenset(
+    {
+        "/",
+        "/health",
+        "/health/ready",
+    }
+)
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
@@ -43,11 +46,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     allowing local development and test suites to run without secrets.
     """
 
-    def __init__(self, app, *, api_key: str) -> None:  # noqa: ANN001
+    def __init__(self, app: Any, *, api_key: str) -> None:
         super().__init__(app)
         self._api_key = api_key
 
-    async def dispatch(self, request: Request, call_next) -> Response:  # noqa: ANN001
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Skip auth for exempt paths (health probes, root)
         if request.url.path in _EXEMPT_PATHS:
             return await call_next(request)

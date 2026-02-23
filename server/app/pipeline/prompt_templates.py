@@ -3,21 +3,20 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-
 # ── Category-specific prompt suffixes ────────────────────────────────────────
 # Appended after the base prompt to improve mesh quality for each category.
 
 _CATEGORY_SUFFIXES: dict[str, str] = {
-    "quadruped":  ", standing pose, four legs visible",
-    "biped":      ", T-pose, symmetrical, arms extended",
-    "bird":       ", wings slightly spread, perched",
-    "fish":       ", swimming pose, fins visible",
-    "vehicle":    ", three-quarter view, all wheels visible",
-    "aircraft":   ", slight bank angle, both wings visible",
-    "furniture":  ", three-quarter view, all legs visible",
-    "plant":      ", full tree visible, roots to canopy",
-    "building":   ", front-facing, full structure visible",
-    "insect":     ", top-down slight angle, wings spread",
+    "quadruped": ", standing pose, four legs visible",
+    "biped": ", T-pose, symmetrical, arms extended",
+    "bird": ", wings slightly spread, perched",
+    "fish": ", swimming pose, fins visible",
+    "vehicle": ", three-quarter view, all wheels visible",
+    "aircraft": ", slight bank angle, both wings visible",
+    "furniture": ", three-quarter view, all legs visible",
+    "plant": ", full tree visible, roots to canopy",
+    "building": ", front-facing, full structure visible",
+    "insect": ", top-down slight angle, wings spread",
 }
 
 

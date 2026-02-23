@@ -3,13 +3,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.cache.shape_cache import ShapeCache
 from app.config import Settings
 from app.models.registry import ModelRegistry
-from app.schemas import GenerateRequest, GenerateResponse, BoundingBox, QualityLevel
+from app.schemas import BoundingBox, GenerateRequest, GenerateResponse, QualityLevel
 from app.services.pipeline import PipelineOrchestrator
 
 

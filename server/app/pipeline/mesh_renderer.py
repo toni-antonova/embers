@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 import PIL.Image
@@ -31,15 +32,19 @@ _VIEW_CONFIGS = {
 }
 
 
-def _look_at(eye: tuple, target: tuple = (0, 0, 0), up: tuple = (0, 1, 0)) -> np.ndarray:
+def _look_at(
+    eye: tuple[float, ...],
+    target: tuple[float, ...] = (0, 0, 0),
+    up: tuple[float, ...] = (0, 1, 0),
+) -> np.ndarray[Any, Any]:
     """Compute a 4x4 camera-to-world transform (look-at matrix)."""
-    eye = np.array(eye, dtype=np.float64)
-    target = np.array(target, dtype=np.float64)
-    up = np.array(up, dtype=np.float64)
+    eye_arr = np.array(eye, dtype=np.float64)
+    target_arr = np.array(target, dtype=np.float64)
+    up_arr = np.array(up, dtype=np.float64)
 
-    forward = target - eye
+    forward = target_arr - eye_arr
     forward /= np.linalg.norm(forward)
-    right = np.cross(forward, up)
+    right = np.cross(forward, up_arr)
     right /= np.linalg.norm(right)
     true_up = np.cross(right, forward)
 
@@ -47,7 +52,7 @@ def _look_at(eye: tuple, target: tuple = (0, 0, 0), up: tuple = (0, 1, 0)) -> np
     mat[:3, 0] = right
     mat[:3, 1] = true_up
     mat[:3, 2] = -forward
-    mat[:3, 3] = eye
+    mat[:3, 3] = eye_arr
     return mat
 
 
@@ -85,7 +90,7 @@ def render_multiview_with_id_pass(
     """
     import time
 
-    import pyrender
+    import pyrender  # type: ignore[import-untyped]
 
     if views is None:
         views = ["side", "front", "three_quarter"]
@@ -104,16 +109,12 @@ def render_multiview_with_id_pass(
         config = _VIEW_CONFIGS.get(view_name, _VIEW_CONFIGS["side"])
 
         # ── Color pass ───────────────────────────────────────────────────
-        color_image = _render_color_pass(
-            centered_mesh, config, resolution, pyrender
-        )
+        color_image = _render_color_pass(centered_mesh, config, resolution, pyrender)
 
         # ── Face-ID pass ─────────────────────────────────────────────────
         # Each face gets a unique color. No anti-aliasing, no alpha blending,
         # GL_NEAREST filtering to prevent color interpolation at edges.
-        face_id_map = _render_id_pass(
-            centered_mesh, config, resolution, pyrender
-        )
+        face_id_map = _render_id_pass(centered_mesh, config, resolution, pyrender)
 
         results.append((color_image, face_id_map))
 
@@ -131,9 +132,9 @@ def render_multiview_with_id_pass(
 
 def _render_color_pass(
     mesh: trimesh.Trimesh,
-    config: dict,
+    config: dict[str, Any],
     resolution: int,
-    pyrender: object,
+    pyrender: Any,
 ) -> PIL.Image.Image:
     """Render a color pass of the mesh from the given viewpoint."""
     scene = pyrender.Scene(bg_color=[0, 0, 0, 0])
@@ -161,10 +162,10 @@ def _render_color_pass(
 
 def _render_id_pass(
     mesh: trimesh.Trimesh,
-    config: dict,
+    config: dict[str, Any],
     resolution: int,
-    pyrender: object,
-) -> np.ndarray:
+    pyrender: Any,
+) -> np.ndarray[Any, Any]:
     """Render a face-ID pass — each face has a unique color.
 
     ID pass configuration:
@@ -184,9 +185,7 @@ def _render_id_pass(
     # Create a copy with per-face vertex colors
     # Expand to per-vertex by duplicating vertices for each face
     id_mesh = mesh.copy()
-    id_mesh.visual = trimesh.visual.ColorVisuals(
-        mesh=id_mesh, face_colors=face_colors
-    )
+    id_mesh.visual = trimesh.visual.ColorVisuals(mesh=id_mesh, face_colors=face_colors)
 
     scene = pyrender.Scene(
         bg_color=[0, 0, 0, 0],
@@ -210,8 +209,7 @@ def _render_id_pass(
     renderer = pyrender.OffscreenRenderer(resolution, resolution)
     color, _ = renderer.render(
         scene,
-        flags=pyrender.constants.RenderFlags.FLAT
-        | pyrender.constants.RenderFlags.SKIP_CULL_FACES,
+        flags=pyrender.constants.RenderFlags.FLAT | pyrender.constants.RenderFlags.SKIP_CULL_FACES,
     )
     renderer.delete()
 

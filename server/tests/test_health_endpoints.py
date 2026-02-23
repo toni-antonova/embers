@@ -6,8 +6,6 @@
 
 from dirty_equals import IsInstance, IsNonNegative, IsStr
 
-from app.schemas import LivenessResponse, ReadinessResponse
-
 
 class TestLivenessProbe:
     """GET /health — near-zero cost, always 200."""

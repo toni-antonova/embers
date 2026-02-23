@@ -3,24 +3,23 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-from enum import Enum
+from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class QualityLevel(str, Enum):
+class QualityLevel(StrEnum):
     """Generation quality mode."""
 
-    fast = "fast"          # Primary pipeline only (PartCrafter)
+    fast = "fast"  # Primary pipeline only (PartCrafter)
     standard = "standard"  # With fallback (Hunyuan3D + Grounded SAM)
 
 
 class GenerateRequest(BaseModel):
     """Incoming request to generate a 3D point cloud."""
 
-    text: str = Field(
-        ..., min_length=1, max_length=200, description="Noun/concept to generate"
-    )
+    text: str = Field(..., min_length=1, max_length=200, description="Noun/concept to generate")
     verb: str | None = Field(None, max_length=100, description="Optional verb for animation")
     num_parts: int | None = Field(None, ge=1, le=16, description="Part count hint")
     quality: QualityLevel = QualityLevel.standard
@@ -76,5 +75,5 @@ class HealthDetailResponse(BaseModel):
     gpu_name: str | None = None
     gpu_memory_used_gb: float = 0
     cache_connected: bool = False
-    cache_stats: dict = Field(default_factory=dict)
+    cache_stats: dict[str, Any] = Field(default_factory=dict)
     uptime_seconds: int = 0

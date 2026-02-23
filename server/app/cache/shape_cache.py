@@ -19,17 +19,18 @@ import hashlib
 import re
 import threading
 import time
+from typing import Any
 
 import structlog
-from cachetools import LRUCache
+from cachetools import LRUCache  # type: ignore[import-untyped]
 
 from app.schemas import GenerateResponse
 
 logger = structlog.get_logger(__name__)
 
 # ── NLP setup for cache key normalization ────────────────────────────────────
-import nltk  # noqa: E402
-from nltk.stem import WordNetLemmatizer  # noqa: E402
+import nltk  # type: ignore[import-untyped]  # noqa: E402
+from nltk.stem import WordNetLemmatizer  # type: ignore[import-untyped]  # noqa: E402
 
 # Ensure wordnet corpus is available (no-op if already downloaded)
 try:
@@ -58,10 +59,10 @@ class ShapeCache:
 
     def __init__(self, bucket_name: str = "", memory_capacity: int = 200) -> None:
         self._bucket_name = bucket_name
-        self._memory: LRUCache = LRUCache(maxsize=memory_capacity)
+        self._memory: LRUCache[str, GenerateResponse] = LRUCache(maxsize=memory_capacity)
         self._lock = threading.Lock()
-        self._client = None
-        self._bucket = None
+        self._client: Any = None
+        self._bucket: Any = None
 
         # ── Stats ────────────────────────────────────────────────────────
         self._memory_hits = 0
@@ -97,7 +98,7 @@ class ShapeCache:
     def _connect_sync(self) -> None:
         """Synchronous Cloud Storage connection."""
         try:
-            from google.cloud import storage
+            from google.cloud import storage  # type: ignore[import-untyped]
 
             self._client = storage.Client()
             self._bucket = self._client.bucket(self._bucket_name)
@@ -174,7 +175,7 @@ class ShapeCache:
                 self._memory_retrieval_total_ms += elapsed_ms
                 self._memory_retrieval_count += 1
                 logger.debug("cache_hit", tier="memory", text=text, key=key)
-                return self._memory[key]
+                return self._memory[key]  # type: ignore[no-any-return]
 
         # Tier 2: Cloud Storage (with coalescing, guarded by async lock)
         if self._bucket:
@@ -197,7 +198,7 @@ class ShapeCache:
                 with self._lock:
                     if key in self._memory:
                         self._memory_hits += 1
-                        return self._memory[key]
+                        return self._memory[key]  # type: ignore[no-any-return]
                 # Still not there — the original fetch must have failed
                 self._misses += 1
                 return None
@@ -206,9 +207,7 @@ class ShapeCache:
             try:
                 t0_storage = time.perf_counter()
                 loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None, self._get_from_storage, key
-                )
+                result = await loop.run_in_executor(None, self._get_from_storage, key)
                 elapsed_ms = (time.perf_counter() - t0_storage) * 1000
 
                 if result is not None:
@@ -218,7 +217,10 @@ class ShapeCache:
                     with self._lock:
                         self._memory[key] = result  # Promote to memory
                     logger.debug(
-                        "cache_hit", tier="storage", text=text, key=key,
+                        "cache_hit",
+                        tier="storage",
+                        text=text,
+                        key=key,
                         retrieval_ms=round(elapsed_ms, 1),
                     )
                     return result
@@ -236,9 +238,7 @@ class ShapeCache:
         try:
             blob = self._bucket.blob(f"shapes/{key}.json")
             if blob.exists():
-                return GenerateResponse.model_validate_json(
-                    blob.download_as_text()
-                )
+                return GenerateResponse.model_validate_json(blob.download_as_text())
         except Exception as e:
             logger.warning("cache_read_failed", key=key, error=str(e))
         return None
@@ -259,9 +259,7 @@ class ShapeCache:
         # Tier 2: Cloud Storage (fire and forget in executor)
         if self._bucket:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, self._set_in_storage, key, response
-            )
+            await loop.run_in_executor(None, self._set_in_storage, key, response)
 
     def _set_in_storage(self, key: str, response: GenerateResponse) -> None:
         """Synchronous Cloud Storage write. Runs in executor."""
@@ -322,9 +320,7 @@ class ShapeCache:
                 try:
                     data = blob.download_as_text()
                     response = GenerateResponse.model_validate_json(data)
-                    key = blob.name.removeprefix("shapes/").removesuffix(
-                        ".json"
-                    )
+                    key = blob.name.removeprefix("shapes/").removesuffix(".json")
                     with self._lock:
                         self._memory[key] = response
                     loaded += 1
@@ -361,7 +357,7 @@ class ShapeCache:
 
     # ── Stats ────────────────────────────────────────────────────────────
 
-    async def stats(self) -> dict:
+    async def stats(self) -> dict[str, Any]:
         """Return cache hit/miss statistics."""
         total = self._memory_hits + self._storage_hits + self._misses
 
@@ -384,9 +380,7 @@ class ShapeCache:
             "memory_hits": self._memory_hits,
             "storage_hits": self._storage_hits,
             "misses": self._misses,
-            "hit_rate": round(
-                (self._memory_hits + self._storage_hits) / max(total, 1), 3
-            ),
+            "hit_rate": round((self._memory_hits + self._storage_hits) / max(total, 1), 3),
             "avg_memory_retrieval_ms": avg_mem_ms,
             "avg_storage_retrieval_ms": avg_stor_ms,
         }

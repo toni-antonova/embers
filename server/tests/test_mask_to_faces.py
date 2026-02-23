@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from app.pipeline.mask_to_faces import (
     _find_symmetric_pair,
@@ -13,9 +12,7 @@ from app.pipeline.mask_to_faces import (
 )
 
 
-def _make_face_id_map(
-    face_indices: list[int], h: int = 4, w: int = 4
-) -> np.ndarray:
+def _make_face_id_map(face_indices: list[int], h: int = 4, w: int = 4) -> np.ndarray:
     """Create a simple face-ID map from a flat list of face indices."""
     arr = np.full((h, w), -1, dtype=np.int32)
     for i, fidx in enumerate(face_indices):
@@ -79,7 +76,7 @@ class TestOverlappingMasks:
         views = [({"body": mask_body, "head": mask_head}, face_id_map)]
 
         labels = map_masks_to_faces(views, centroids)
-        head_idx = 1 if labels[0] != labels[1] else 0
+        _ = 1 if labels[0] != labels[1] else 0
         # Face 0 should be labeled as head (smaller mask)
         assert labels[0] != labels[1]
 
@@ -95,9 +92,7 @@ class TestUnlabeledFaces:
         mask[0, 0] = True  # Only face 0 is masked
 
         # Face 0 at origin, face 1 nearby, face 2 far away
-        centroids = np.array(
-            [[0, 0, 0], [0.1, 0, 0], [10, 10, 10]], dtype=np.float32
-        )
+        centroids = np.array([[0, 0, 0], [0.1, 0, 0], [10, 10, 10]], dtype=np.float32)
         views = [({"body": mask}, face_id_map)]
 
         labels = map_masks_to_faces(views, centroids)
@@ -106,7 +101,7 @@ class TestUnlabeledFaces:
 
     def test_no_masks_fallback_to_part_0(self) -> None:
         """If no masks match any faces, all get assigned to part 0."""
-        face_id_map = np.array(
+        _face_id_map = np.array(
             [[0, 1, 2, 3], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]],
             dtype=np.int32,
         )

@@ -49,7 +49,7 @@ class GenerationTimeoutError(LumenError):
 class GPUOutOfMemoryError(LumenError):
     """Raised when CUDA OOM occurs during generation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "GPU memory exhausted. Retry after a few seconds.",
             status_code=503,

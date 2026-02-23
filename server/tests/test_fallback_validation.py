@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import PIL.Image
@@ -38,9 +38,7 @@ class TestHunyuan3DGeneration:
         mesh = model.generate(test_image)
 
         assert isinstance(mesh, trimesh.Trimesh)
-        assert len(mesh.vertices) > 100, (
-            f"Expected >100 vertices, got {len(mesh.vertices)}"
-        )
+        assert len(mesh.vertices) > 100, f"Expected >100 vertices, got {len(mesh.vertices)}"
 
 
 @pytest.mark.skipif(not HAS_GPU, reason="Requires NVIDIA GPU")
@@ -70,9 +68,7 @@ class TestVRAMBudget:
         total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
 
         # On an L4 (24GB), total should be under 20GB with all models
-        assert allocated_gb < 20.0, (
-            f"VRAM usage {allocated_gb:.1f}GB exceeds 20GB budget"
-        )
+        assert allocated_gb < 20.0, f"VRAM usage {allocated_gb:.1f}GB exceeds 20GB budget"
         assert total_gb > 20.0, f"Expected L4 GPU (24GB), got {total_gb:.1f}GB"
 
 
@@ -90,9 +86,9 @@ class TestFallbackTrigger:
         from app.cache.shape_cache import ShapeCache
         from app.config import Settings
         from app.models.registry import ModelRegistry
+        from app.schemas import GenerateRequest
         from app.services.metrics import PipelineMetrics
         from app.services.pipeline import PipelineOrchestrator
-        from app.schemas import GenerateRequest
 
         settings = Settings(cache_bucket="", skip_model_load=True)
         registry = ModelRegistry(settings)

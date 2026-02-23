@@ -16,6 +16,8 @@
 #                    GPU stats, memory, cache, uptime — for humans only.
 # ─────────────────────────────────────────────────────────────────────────────
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
@@ -74,7 +76,7 @@ async def health_detailed(
     registry: ModelRegistry = Depends(get_model_registry),
     cache: ShapeCache = Depends(get_cache),
     metrics: PipelineMetrics = Depends(get_metrics),
-) -> dict:
+) -> dict[str, Any]:
     """Detailed health check with GPU info, fallback status, and metrics."""
     gpu_info = _get_gpu_info()
     metrics_data = metrics.to_dict()
@@ -93,12 +95,12 @@ async def health_detailed(
 @router.get("/metrics")
 async def metrics_endpoint(
     metrics: PipelineMetrics = Depends(get_metrics),
-) -> dict:
+) -> dict[str, Any]:
     """Pipeline performance metrics — latency, hit rates, GPU peak."""
     return metrics.to_dict()
 
 
-def _get_gpu_info() -> dict:
+def _get_gpu_info() -> dict[str, Any]:
     """Get GPU info, gracefully handling CPU-only environments."""
     try:
         import torch

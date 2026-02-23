@@ -7,7 +7,7 @@ import numpy as np
 import trimesh
 
 
-def normalize_positions(positions: np.ndarray) -> tuple[np.ndarray, dict]:
+def normalize_positions(positions: np.ndarray) -> tuple[np.ndarray, dict[str, list[float]]]:
     """Center at origin and scale to fit within [-1, 1] bounding box.
 
     Args:
@@ -114,8 +114,7 @@ def sample_from_labeled_mesh(
     """
     if len(face_labels) != len(mesh.faces):
         raise ValueError(
-            f"face_labels length ({len(face_labels)}) doesn't match "
-            f"mesh faces ({len(mesh.faces)})"
+            f"face_labels length ({len(face_labels)}) doesn't match mesh faces ({len(mesh.faces)})"
         )
 
     points, face_indices = trimesh.sample.sample_surface(mesh, total_points)

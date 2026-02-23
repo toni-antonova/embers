@@ -15,7 +15,6 @@ from app.main import create_app
 from app.models.registry import ModelRegistry
 from app.services.metrics import PipelineMetrics
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 _TEST_API_KEY = "test-secret-key-2026"

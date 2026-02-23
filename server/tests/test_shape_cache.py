@@ -6,13 +6,12 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.cache.shape_cache import ShapeCache
 from app.schemas import BoundingBox, GenerateResponse
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -89,14 +88,10 @@ class TestNormalization:
         )
 
     def test_red_dragon_blue_dragon_different_keys(self) -> None:
-        assert ShapeCache.normalize_key("red dragon") != ShapeCache.normalize_key(
-            "blue dragon"
-        )
+        assert ShapeCache.normalize_key("red dragon") != ShapeCache.normalize_key("blue dragon")
 
     def test_the_horse_a_horse_same_key(self) -> None:
-        assert ShapeCache.normalize_key("the horse") == ShapeCache.normalize_key(
-            "a horse"
-        )
+        assert ShapeCache.normalize_key("the horse") == ShapeCache.normalize_key("a horse")
 
     def test_empty_input(self) -> None:
         assert ShapeCache.normalize_key("") == ""
@@ -214,9 +209,7 @@ class TestTwoTier:
         return c
 
     @pytest.mark.asyncio
-    async def test_storage_hit_promotes_to_memory(
-        self, storage_cache: ShapeCache
-    ) -> None:
+    async def test_storage_hit_promotes_to_memory(self, storage_cache: ShapeCache) -> None:
         resp = _make_response("dog")
         await storage_cache.set("dog", resp)
 
@@ -235,9 +228,7 @@ class TestTwoTier:
         assert stats["storage_hits"] == 1
 
     @pytest.mark.asyncio
-    async def test_count_stored_shapes(
-        self, storage_cache: ShapeCache
-    ) -> None:
+    async def test_count_stored_shapes(self, storage_cache: ShapeCache) -> None:
         await storage_cache.set("dog", _make_response("dog"))
         await storage_cache.set("cat", _make_response("cat"))
         count = await storage_cache.count_stored_shapes()
@@ -266,9 +257,7 @@ class TestTwoTier:
         assert len(storage_cache._memory) == 1
 
     @pytest.mark.asyncio
-    async def test_preload_missing_concept(
-        self, storage_cache: ShapeCache
-    ) -> None:
+    async def test_preload_missing_concept(self, storage_cache: ShapeCache) -> None:
         result = await storage_cache.preload_to_memory("unicorn")
         assert result is False
 
@@ -298,6 +287,7 @@ class TestCoalescing:
             storage_reads += 1
             # Simulate slow storage read
             import time
+
             time.sleep(0.05)
             cache._bucket = bucket
             return original_get(key)
@@ -348,9 +338,7 @@ class TestThreadSafety:
         def writer(n: int) -> None:
             try:
                 loop = asyncio.new_event_loop()
-                loop.run_until_complete(
-                    cache.set(f"concept_{n}", _make_response(f"concept_{n}"))
-                )
+                loop.run_until_complete(cache.set(f"concept_{n}", _make_response(f"concept_{n}")))
                 loop.close()
             except Exception as e:
                 errors.append(e)

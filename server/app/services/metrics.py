@@ -16,6 +16,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -34,13 +35,12 @@ class PipelineMetrics:
     errors_total: int = 0
 
     # Bounded -- only keeps last 1000 latencies, oldest auto-evicted
-    _latency_history: deque = field(
-        default_factory=lambda: deque(maxlen=1000), repr=False
-    )
+    _latency_history: deque[float] = field(default_factory=lambda: deque(maxlen=1000), repr=False)
 
     # Track GPU generation timestamps for rate-limit enforcement
-    _generation_timestamps: deque = field(
-        default_factory=lambda: deque(maxlen=500), repr=False
+    _generation_timestamps: deque[float] = field(
+        default_factory=lambda: deque(maxlen=500),
+        repr=False,
     )
 
     _gpu_memory_peak_gb: float = 0.0
@@ -111,7 +111,7 @@ class PipelineMetrics:
         with self._lock:
             self._gpu_memory_peak_gb = max(self._gpu_memory_peak_gb, gb)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize metrics for the /metrics endpoint."""
         with self._lock:
             latencies = sorted(self._latency_history)
@@ -119,9 +119,7 @@ class PipelineMetrics:
             return {
                 "requests_total": self.requests_total,
                 "cache_hits": self.cache_hits,
-                "cache_hit_rate": round(
-                    self.cache_hits / max(self.requests_total, 1), 3
-                ),
+                "cache_hit_rate": round(self.cache_hits / max(self.requests_total, 1), 3),
                 "partcrafter_successes": self.partcrafter_successes,
                 "partcrafter_failures": self.partcrafter_failures,
                 "fallback_successes": self.fallback_successes,

@@ -13,9 +13,8 @@
 import asyncio
 import time
 
-import structlog
-
 import numpy as np
+import structlog
 from opentelemetry import trace
 
 from app.cache.shape_cache import ShapeCache
@@ -36,8 +35,9 @@ from app.pipeline.point_sampler import (
     sample_from_part_meshes,
 )
 from app.pipeline.prompt_templates import get_canonical_prompt
-from app.pipeline.template_matcher import get_template
+from app.pipeline.template_matcher import TemplateInfo, get_template
 from app.schemas import BoundingBox, GenerateRequest, GenerateResponse
+from app.services.metrics import PipelineMetrics
 
 logger = structlog.get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -58,8 +58,8 @@ class PipelineOrchestrator:
         registry: ModelRegistry,
         cache: ShapeCache,
         settings: Settings,
-        metrics: object | None = None,
-    ):
+        metrics: PipelineMetrics | None = None,
+    ) -> None:
         self._registry = registry
         self._cache = cache
         self._settings = settings
@@ -128,10 +128,10 @@ class PipelineOrchestrator:
                 self._run_in_executor(request.text, template),
                 timeout=self._settings.generation_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise GenerationTimeoutError(
                 request.text, self._settings.generation_timeout_seconds
-            )
+            ) from None
         except Exception as e:
             # Catch CUDA OOM directly — more precise than string matching
             _is_oom = False
@@ -181,14 +181,14 @@ class PipelineOrchestrator:
         return response
 
     async def _run_in_executor(
-        self, text: str, template: object
+        self, text: str, template: TemplateInfo
     ) -> tuple[np.ndarray, np.ndarray, list[str], str]:
         """Run synchronous GPU work in a thread to avoid blocking the event loop."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._generate_sync, text, template)
 
     def _generate_sync(
-        self, text: str, template: object
+        self, text: str, template: TemplateInfo
     ) -> tuple[np.ndarray, np.ndarray, list[str], str]:
         """Synchronous GPU pipeline — runs in thread pool via run_in_executor.
 
@@ -222,9 +222,7 @@ class PipelineOrchestrator:
         if reference_image is not None and self._registry.has("partcrafter"):
             partcrafter = self._registry.get("partcrafter")
             t0 = time.perf_counter()
-            part_meshes = partcrafter.generate(
-                reference_image, num_parts=template.num_parts
-            )
+            part_meshes = partcrafter.generate(reference_image, num_parts=template.num_parts)
             mesh_ms = round((time.perf_counter() - t0) * 1000, 1)
 
             # Count real meshes (non-dummy) — dummies have only 1 vertex
@@ -276,8 +274,8 @@ class PipelineOrchestrator:
             try:
                 fallback_t0 = time.perf_counter()
 
-                from app.models.hunyuan3d import Hunyuan3DTurboModel
                 from app.models.grounded_sam import GroundedSAM2Model
+                from app.models.hunyuan3d import Hunyuan3DTurboModel
 
                 hunyuan = self._registry.get_or_load(
                     "hunyuan3d_turbo",
@@ -293,9 +291,7 @@ class PipelineOrchestrator:
                 step_a_ms = round((time.perf_counter() - fallback_t0) * 1000, 1)
 
                 # Check cumulative fallback timeout (default 15s)
-                fallback_timeout = getattr(
-                    self._settings, "fallback_timeout_seconds", 15
-                )
+                fallback_timeout = getattr(self._settings, "fallback_timeout_seconds", 15)
                 if (time.perf_counter() - fallback_t0) > fallback_timeout:
                     logger.warning(
                         "fallback_timeout",
@@ -333,9 +329,7 @@ class PipelineOrchestrator:
                 )
                 pipeline_used = "hunyuan3d_grounded_sam"
 
-                fallback_total_ms = round(
-                    (time.perf_counter() - fallback_t0) * 1000, 1
-                )
+                fallback_total_ms = round((time.perf_counter() - fallback_t0) * 1000, 1)
                 logger.info(
                     "fallback_pipeline_complete",
                     text=text,
@@ -404,4 +398,3 @@ class PipelineOrchestrator:
         part_ids = rng.integers(0, template.num_parts, total_points).astype(np.uint8)
 
         return positions, part_ids, template.part_names, pipeline_used
-

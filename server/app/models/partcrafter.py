@@ -19,7 +19,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 import PIL.Image
 import structlog
@@ -78,7 +77,7 @@ class PartCrafterModel:
 
         # ── Load BriaRMBG (background removal) ─────────────────────────────
         t1 = time.perf_counter()
-        from src.models.briarmbg import BriaRMBG  # type: ignore[import-untyped]
+        from src.models.briarmbg import BriaRMBG  # type: ignore[import-not-found]
 
         self._rmbg = BriaRMBG.from_pretrained(rmbg_dir).to(device)
         self._rmbg.eval()
@@ -87,21 +86,15 @@ class PartCrafterModel:
 
         # ── Load PartCrafter pipeline ───────────────────────────────────────
         t2 = time.perf_counter()
-        from src.pipelines.pipeline_partcrafter import (  # type: ignore[import-untyped]
+        from src.pipelines.pipeline_partcrafter import (  # type: ignore[import-not-found]
             PartCrafterPipeline,
         )
 
-        self._pipe = PartCrafterPipeline.from_pretrained(partcrafter_dir).to(
-            device, torch.float16
-        )
+        self._pipe = PartCrafterPipeline.from_pretrained(partcrafter_dir).to(device, torch.float16)
         pipe_elapsed = time.perf_counter() - t2
 
         total_elapsed = time.perf_counter() - t0
-        vram_used = (
-            torch.cuda.memory_allocated(device) / 1e9
-            if torch.cuda.is_available()
-            else 0.0
-        )
+        vram_used = torch.cuda.memory_allocated(device) / 1e9 if torch.cuda.is_available() else 0.0
         logger.info(
             "partcrafter_loaded",
             total_time_s=round(total_elapsed, 2),
@@ -146,7 +139,7 @@ class PartCrafterModel:
             ``real_parts`` attribute on each mesh indicates whether it's
             a genuine output or a dummy replacement for a decoding failure.
         """
-        from src.utils.image_utils import prepare_image  # type: ignore[import-untyped]
+        from src.utils.image_utils import prepare_image  # type: ignore[import-not-found]
 
         num_parts = max(1, min(num_parts, _MAX_PARTS))
 

@@ -7,7 +7,6 @@
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
-
 from prometheus_client import (
     CollectorRegistry,
     Counter,
@@ -61,9 +60,7 @@ _model_load_status = Gauge(
 )
 
 
-def _sync_metrics(
-    metrics: PipelineMetrics, model_registry: ModelRegistry
-) -> None:
+def _sync_metrics(metrics: PipelineMetrics, model_registry: ModelRegistry) -> None:
     """Sync PipelineMetrics data into Prometheus gauges."""
     data = metrics.to_dict()
 

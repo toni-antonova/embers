@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import structlog
-from scipy.spatial import KDTree
+from scipy.spatial import KDTree  # type: ignore[import-untyped]
 
 logger = structlog.get_logger(__name__)
 
@@ -59,7 +59,7 @@ def map_masks_to_faces(
         return face_labels
 
     # Build part name → index mapping
-    unique_parts = []
+    unique_parts: list[str] = []
     part_to_idx: dict[str, int] = {}
     for part_name, _, _, _ in all_mask_entries:
         if part_name not in part_to_idx:

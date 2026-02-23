@@ -71,33 +71,31 @@ class TestHunyuan3DGenerate:
     @patch("app.models.hunyuan3d.torch.inference_mode", lambda: lambda fn: fn)
     def test_generate_returns_trimesh(self, mock_pipeline: MagicMock) -> None:
         """generate() should return a trimesh.Trimesh object."""
-        with patch.dict(
-            "sys.modules",
-            {"hunyuan3d": MagicMock()},
-        ):
-            import importlib
-            from unittest.mock import PropertyMock
-
-            # Patch the pipeline class
-            with patch(
+        with (
+            patch.dict(
+                "sys.modules",
+                {"hunyuan3d": MagicMock()},
+            ),
+            patch(
                 "app.models.hunyuan3d.Hunyuan3DTurboModel.__init__",
                 return_value=None,
-            ) as mock_init:
-                from app.models.hunyuan3d import Hunyuan3DTurboModel
+            ),
+        ):
+            from app.models.hunyuan3d import Hunyuan3DTurboModel
 
-                model = Hunyuan3DTurboModel.__new__(Hunyuan3DTurboModel)
-                model._device = "cpu"
-                model._pipeline = mock_pipeline
+            model = Hunyuan3DTurboModel.__new__(Hunyuan3DTurboModel)
+            model._device = "cpu"
+            model._pipeline = mock_pipeline
 
-                import PIL.Image
+            import PIL.Image
 
-                test_image = PIL.Image.new("RGB", (512, 512), color="red")
+            test_image = PIL.Image.new("RGB", (512, 512), color="red")
 
-                result = model.generate(test_image)
+            result = model.generate(test_image)
 
-                assert isinstance(result, trimesh.Trimesh)
-                assert len(result.vertices) > 0
-                mock_pipeline.assert_called_once()
+            assert isinstance(result, trimesh.Trimesh)
+            assert len(result.vertices) > 0
+            mock_pipeline.assert_called_once()
 
     @patch("app.models.hunyuan3d.torch.inference_mode", lambda: lambda fn: fn)
     def test_generate_with_non_trimesh_output(self) -> None:

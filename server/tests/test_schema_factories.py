@@ -5,8 +5,7 @@
 # instances that respect all field constraints (min_length, ge, le, etc).
 # ─────────────────────────────────────────────────────────────────────────────
 
-import pytest
-from dirty_equals import IsInstance, IsNonNegative, IsPositiveInt, IsStr
+from dirty_equals import IsInstance, IsNonNegative, IsStr
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from app.schemas import (
@@ -14,11 +13,8 @@ from app.schemas import (
     GenerateRequest,
     GenerateResponse,
     HealthDetailResponse,
-    LivenessResponse,
     QualityLevel,
-    ReadinessResponse,
 )
-
 
 # ─── Factories ───────────────────────────────────────────────────────────────
 # Define once, generate unlimited valid instances. polyfactory reads the

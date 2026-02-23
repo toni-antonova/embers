@@ -52,9 +52,13 @@ class GroundedSAM2Model:
         self._device = device
 
         # Import here to avoid loading at module level
-        from groundingdino.util.inference import load_model as load_gdino
-        from segment_anything_2.build_sam import build_sam2
-        from segment_anything_2.sam2_image_predictor import SAM2ImagePredictor
+        from groundingdino.util.inference import (
+            load_model as load_gdino,  # type: ignore[import-not-found]
+        )
+        from segment_anything_2.build_sam import build_sam2  # type: ignore[import-not-found]
+        from segment_anything_2.sam2_image_predictor import (
+            SAM2ImagePredictor,  # type: ignore[import-not-found]
+        )
 
         # GroundingDINO
         self._gdino = load_gdino(
@@ -80,9 +84,7 @@ class GroundedSAM2Model:
         return 4.5
 
     @torch.inference_mode()
-    def segment(
-        self, image: PIL.Image.Image, prompts: list[str]
-    ) -> dict[str, np.ndarray]:
+    def segment(self, image: PIL.Image.Image, prompts: list[str]) -> dict[str, np.ndarray]:
         """Segment image into parts using text prompts.
 
         Args:
@@ -93,6 +95,7 @@ class GroundedSAM2Model:
             Dict mapping part name → binary mask (H, W) as numpy bool array.
         """
         import time
+
         from groundingdino.util.inference import predict as gdino_predict
 
         t0 = time.perf_counter()

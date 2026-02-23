@@ -56,9 +56,7 @@ async def client():
     partcrafter.generate.return_value = meshes
     registry.register("partcrafter", partcrafter)
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
 

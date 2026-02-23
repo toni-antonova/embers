@@ -5,6 +5,7 @@
 # The --factory flag tells uvicorn to call create_app() for the app instance.
 # ─────────────────────────────────────────────────────────────────────────────
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
@@ -31,9 +32,7 @@ from app.services.pipeline import PipelineOrchestrator
 logger = structlog.get_logger(__name__)
 
 
-async def _rate_limit_exceeded_handler(
-    request: Request, exc: RateLimitExceeded
-) -> JSONResponse:
+async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """Return a structured JSON 429 consistent with LumenError responses."""
     logger.warning(
         "rate_limit_exceeded",
@@ -66,9 +65,7 @@ def _configure_otel(exporter_type: str) -> None:
         try:
             from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 
-            provider.add_span_processor(
-                BatchSpanProcessor(CloudTraceSpanExporter())
-            )
+            provider.add_span_processor(BatchSpanProcessor(CloudTraceSpanExporter()))  # type: ignore[no-untyped-call]
         except ImportError:
             logger.warning("gcp_trace_exporter_not_available")
             return
@@ -83,7 +80,7 @@ def _configure_otel(exporter_type: str) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage startup and shutdown lifecycle.
 
     Replaces the deprecated @app.on_event("startup") / "shutdown" pattern.
@@ -136,9 +133,7 @@ async def lifespan(app: FastAPI):
     await cache.disconnect()
 
 
-async def _load_models_and_warm_cache(
-    registry: ModelRegistry, cache: ShapeCache
-) -> None:
+async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache) -> None:
     """Load ML models then warm the cache — both run in background.
 
     Model init is CPU/GPU-bound, so we run it in a thread to avoid
@@ -243,7 +238,7 @@ def create_app() -> FastAPI:
 
     # ── Attach rate limiter to app state (required by slowapi) ───────────────
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
     # ── Middleware stack ─────────────────────────────────────────────────────
     # Starlette applies middleware in reverse order of add_middleware calls.

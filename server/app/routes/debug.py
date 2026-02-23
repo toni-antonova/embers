@@ -7,6 +7,7 @@
 
 import io
 import time
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
@@ -66,7 +67,7 @@ async def health_detail(
 @router.get("/models")
 async def list_models(
     registry: ModelRegistry = Depends(get_model_registry),
-) -> dict:
+) -> dict[str, Any]:
     """List all loaded models and their status."""
     return {
         "models": registry.loaded_names,
@@ -77,7 +78,7 @@ async def list_models(
 @router.get("/cache/stats")
 async def cache_stats(
     cache: ShapeCache = Depends(get_cache),
-) -> dict:
+) -> dict[str, Any]:
     """Return detailed cache statistics."""
     return await cache.stats()
 
@@ -85,7 +86,7 @@ async def cache_stats(
 @router.post("/cache/clear")
 async def cache_clear(
     cache: ShapeCache = Depends(get_cache),
-) -> dict:
+) -> dict[str, Any]:
     """Clear the in-memory cache. Cloud Storage is not affected."""
     cache.clear_memory()
     return {"status": "cleared"}
@@ -136,7 +137,7 @@ async def generate_image(
 async def generate_mesh(
     request: GenerateImageRequest,
     registry: ModelRegistry = Depends(get_model_registry),
-) -> dict:
+) -> dict[str, Any]:
     """Run the full SDXL → PartCrafter → point sampling pipeline.
 
     Returns structured JSON with timing breakdown, part counts,
@@ -186,4 +187,3 @@ async def generate_mesh(
         },
         "positions_shape": list(positions.shape),
     }
-
