@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     max_request_text_length: int = 200
     generation_timeout_seconds: int = 15
     max_points: int = 2048
+    generation_rate_limit_per_minute: int = 20  # Tighter cap on GPU work (cache misses)
 
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = "INFO"
