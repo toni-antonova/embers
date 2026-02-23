@@ -380,3 +380,63 @@ Key design decisions:
 </details>
 
 </details>
+
+---
+
+<details>
+<summary><strong>51. Deploy Fix: torch-cluster + Client HTTP Integration (Prompt 06)</strong></summary>
+
+**Date:** 2026-02-22
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+Two distinct pieces of work in one session:
+
+**A) Server Deploy Fix — PartCrafter `torch_cluster` dependency**
+- PartCrafter model loading failed on Cloud Run due to missing `torch_cluster` (PyTorch Geometric extension)
+- Added `torch-cluster` to `pyproject.toml` with `[tool.uv.extra-build-dependencies]` for build-time torch access
+- Added `lets preflight` command — verifies all ML imports resolve on CPU before committing to a slow Cloud Build
+- Added `.gcloudignore` — reduces Cloud Build upload from 1.8 GB to ~50 MB
+
+**B) Client HTTP Integration (Prompt 06) — `ServerClient` + `ServerShapeAdapter`**
+- **`ServerClient.ts`** — HTTP client with `AbortController` cancellation (latest-wins), 10s timeout, base64→Float32Array/Uint8Array decoding, `warmUp()` for Cloud Run cold start
+- **`ServerShapeAdapter.ts`** — Expands 2,048 server points → 16,384 DataTexture pixels. First 2,048 are exact positions, remaining 14,336 use modular assignment with ±0.02 jitter
+- **`ParticleSystem.setTargetTexture()`** — Accepts raw DataTexture (bypasses name-based MorphTargets lookup)
+- **`MorphTargets.hasTarget()`** — Checks if local procedural shape exists
+- **`SemanticBackend.ts`** — Server fallback: if `hasTarget()` is false and `ServerClient` is configured, fetches from server async, falls back to closest local shape on failure
+- **`Canvas.tsx`** — Creates `ServerClient` singleton from `VITE_LUMEN_SERVER_URL`/`VITE_LUMEN_API_KEY` env vars, calls `warmUp()` on mount
+
+</details>
+
+<details>
+<summary><strong>Changes</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `server/pyproject.toml` | Added `torch-cluster` + `[tool.uv.extra-build-dependencies]` |
+| `server/lets.yaml` | Added `lets preflight` import verification command |
+| `.gcloudignore` | **NEW** — Excludes `.venv`, `node_modules`, `.git` from Cloud Build |
+| `src/services/ServerClient.ts` | **NEW** — HTTP client with abort, timeout, base64 decode |
+| `src/engine/ServerShapeAdapter.ts` | **NEW** — 2048→16384 expansion + part ID textures |
+| `src/engine/ParticleSystem.ts` | Added `setTargetTexture(tex, label)` |
+| `src/engine/MorphTargets.ts` | Added `hasTarget(name)` |
+| `src/services/SemanticBackend.ts` | Server fallback path + `requestServerShape()` |
+| `src/components/Canvas.tsx` | ServerClient singleton + warmUp on mount |
+| `.env.example` | **NEW** — Vite env vars for server URL and API key |
+| `src/__tests__/ServerClient.test.ts` | **NEW** — 8 tests |
+| `src/__tests__/ServerShapeAdapter.test.ts` | **NEW** — 8 tests |
+
+</details>
+
+<details>
+<summary><strong>Verification</strong></summary>
+
+- TypeScript compiles clean (`npx tsc --noEmit`) ✅
+- **335 tests pass** (16 new + 319 existing), 0 regressions ✅
+- `lets preflight` verifies all server ML imports locally on CPU ✅
+- Commits: `609cba3` (torch-cluster + deploy), `94ef3bd` (client HTTP integration)
+
+</details>
+
+</details>

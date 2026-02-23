@@ -37,6 +37,29 @@ commands:
       uv run mypy app/
       uv run pytest tests/ -v
 
+  preflight:
+    description: Verify all ML imports resolve (no GPU needed) — run before build
+    cmd: |
+      UV_TORCH_BACKEND=cpu uv run python -c "
+      # Core ML
+      import torch; print(f'✓ torch {torch.__version__}')
+      from diffusers import StableDiffusionXLPipeline; print('✓ StableDiffusionXLPipeline')
+      import torch_cluster; print('✓ torch_cluster')
+
+      # PartCrafter deps
+      import einops, omegaconf, jaxtyping, peft, trimesh
+      import cv2, skimage, sklearn, huggingface_hub
+      print('✓ PartCrafter deps')
+
+      # App modules
+      from app.models.partcrafter import PartCrafterModel; print('✓ PartCrafterModel')
+      from app.models.sdxl_turbo import SDXLTurboModel; print('✓ SDXLTurboModel (class only)')
+      from app.services.pipeline import PipelineOrchestrator; print('✓ PipelineOrchestrator')
+
+      print()
+      print('All imports pass — safe to build + deploy.')
+      "
+
   serve:
     description: Run server locally with hot reload
     cmd: uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8080 --reload
