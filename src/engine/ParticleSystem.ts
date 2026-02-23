@@ -243,6 +243,19 @@ export class ParticleSystem {
     }
 
     /**
+     * Set a raw DataTexture as the morph target (for server-generated shapes).
+     * Bypasses MorphTargets name-based lookup.
+     *
+     * @param texture - RGBA Float32 DataTexture (textureSize × textureSize)
+     * @param label - Optional label for logging (e.g., the noun that was requested)
+     */
+    setTargetTexture(texture: THREE.DataTexture, label: string = 'server') {
+        this.velocityVariable.material.uniforms.tMorphTarget.value = texture;
+        this.currentTarget = label;
+        console.log(`[ParticleSystem] Morph target → "${label}" (server texture)`);
+    }
+
+    /**
      * Set a blended morph target interpolated between two shapes.
      *
      * Used for the abstraction spectrum: e.g. blend between a concrete

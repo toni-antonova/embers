@@ -15,6 +15,7 @@ import type { CameraType, ColorMode } from './TuningPanel';
 import { WorkspaceEngine } from '../engine/WorkspaceEngine';
 import { AnalysisPanel } from './AnalysisPanel';
 import { SessionLogger } from '../services/SessionLogger';
+import { ServerClient } from '../services/ServerClient';
 
 export function Canvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -107,6 +108,17 @@ export function Canvas() {
     const sessionLoggerRef = useRef<SessionLogger | null>(null);
     if (!sessionLoggerRef.current) {
         sessionLoggerRef.current = new SessionLogger();
+    }
+
+    // ServerClient singleton — HTTP client for the Lumen Pipeline server.
+    // Reads URL and API key from Vite environment variables.
+    const serverClientRef = useRef<ServerClient | null>(null);
+    if (!serverClientRef.current) {
+        const serverUrl = import.meta.env.VITE_LUMEN_SERVER_URL;
+        const apiKey = import.meta.env.VITE_LUMEN_API_KEY || '';
+        if (serverUrl) {
+            serverClientRef.current = new ServerClient(serverUrl, apiKey);
+        }
     }
 
     // SemanticBackend ref — created inside useEffect after ParticleSystem exists.
@@ -223,9 +235,14 @@ export function Canvas() {
         // ── SEMANTIC BACKEND ──────────────────────────────────────────
         // Wires Speech → Classification → Morph pipeline.
         const semanticBackend = new SemanticBackend(
-            speechEngine, classifier, particles, uniformBridge, sessionLoggerRef.current
+            speechEngine, classifier, particles, uniformBridge,
+            sessionLoggerRef.current, serverClientRef.current,
         );
         semanticBackendRef.current = semanticBackend;
+
+        // ── SERVER WARM-UP ────────────────────────────────────────────
+        // Wake Cloud Run while user looks at idle particles.
+        serverClientRef.current?.warmUp();
 
         // ── RESIZE HANDLER ────────────────────────────────────────────────────
         const handleResize = () => {

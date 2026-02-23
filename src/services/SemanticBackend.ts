@@ -46,6 +46,8 @@ import type { SemanticState } from './KeywordClassifier';
 import type { KeywordMapping } from '../data/keywords';
 import { ParticleSystem } from '../engine/ParticleSystem';
 import { UniformBridge } from '../engine/UniformBridge';
+import { ServerShapeAdapter } from '../engine/ServerShapeAdapter';
+import type { ServerClient } from './ServerClient';
 import type { SessionLogger } from './SessionLogger';
 
 // ── SEMANTIC EVENT LOG ───────────────────────────────────────────────
@@ -81,6 +83,7 @@ export class SemanticBackend {
     private particleSystem: ParticleSystem;
     private uniformBridge: UniformBridge;
     private sessionLogger: SessionLogger | null;
+    private serverClient: ServerClient | null;
 
     // ── STATE ────────────────────────────────────────────────────────
     private currentTarget: string = DEFAULT_SHAPE;
@@ -127,12 +130,14 @@ export class SemanticBackend {
         particleSystem: ParticleSystem,
         uniformBridge: UniformBridge,
         sessionLogger?: SessionLogger | null,
+        serverClient?: ServerClient | null,
     ) {
         this.speechEngine = speechEngine;
         this.classifier = classifier;
         this.particleSystem = particleSystem;
         this.uniformBridge = uniformBridge;
         this.sessionLogger = sessionLogger || null;
+        this.serverClient = serverClient || null;
 
         // Subscribe to transcript events — callback only queues, never mutates state
         this.unsubscribe = this.speechEngine.onTranscript(
@@ -404,10 +409,22 @@ export class SemanticBackend {
                 `(word="${state.dominantWord}", stages=${mapping.hierarchy.join('\u2192')})`
             );
         } else {
-            // Fallback: no mapping found, direct morph
-            if (state.morphTarget !== this.currentTarget) {
-                this.currentTarget = state.morphTarget;
-                this.particleSystem.setTarget(state.morphTarget);
+            // No keyword mapping — check if we have a local shape or need the server
+            if (this.particleSystem.morphTargets.hasTarget(state.morphTarget)) {
+                // Local procedural shape exists — use it instantly
+                if (state.morphTarget !== this.currentTarget) {
+                    this.currentTarget = state.morphTarget;
+                    this.particleSystem.setTarget(state.morphTarget);
+                }
+            } else if (this.serverClient) {
+                // No local shape — request from server
+                this.requestServerShape(state.dominantWord, state.morphTarget);
+            } else {
+                // No server client — fall back to whatever the classifier suggested
+                if (state.morphTarget !== this.currentTarget) {
+                    this.currentTarget = state.morphTarget;
+                    this.particleSystem.setTarget(state.morphTarget);
+                }
             }
             this.targetAbstraction = state.abstractionLevel;
 
@@ -433,6 +450,63 @@ export class SemanticBackend {
             abstractionLevel: state.abstractionLevel,
             sentiment: state.sentiment,
             confidence: state.confidence,
+        });
+    }
+
+    /**
+     * Request a shape from the server for a word not in the local library.
+     * Async — particles stay in current state while waiting.
+     * Falls back to closest local shape on failure.
+     */
+    private requestServerShape(word: string, fallbackTarget: string): void {
+        if (!this.serverClient) return;
+
+        // Log the request
+        this.sessionLogger?.log('system', {
+            event: 'server_request',
+            noun: word,
+            timestamp: Date.now(),
+        });
+
+        console.log(`[SemanticBackend] 🌐 Requesting server shape for "${word}"...`);
+
+        this.serverClient.generateShape(word).then((response) => {
+            if (response) {
+                // Success — convert to DataTexture and apply
+                const texture = ServerShapeAdapter.toDataTexture(
+                    response,
+                    this.particleSystem.size,
+                );
+                this.particleSystem.setTargetTexture(texture, word);
+                this.currentTarget = word;
+
+                console.log(
+                    `[SemanticBackend] ✅ Server shape received for "${word}" ` +
+                    `(${response.pipeline}, ${response.generationTimeMs}ms, ` +
+                    `${response.partNames.length} parts)`,
+                );
+
+                // Log the response
+                this.sessionLogger?.log('system', {
+                    event: 'server_response',
+                    noun: word,
+                    cached: response.cached,
+                    pipeline: response.pipeline,
+                    generationTimeMs: response.generationTimeMs,
+                    partCount: response.partNames.length,
+                    templateType: response.templateType,
+                });
+            } else {
+                // Failed — fall back to closest local shape
+                console.warn(
+                    `[SemanticBackend] ⚠️ Server failed for "${word}", ` +
+                    `falling back to "${fallbackTarget}"`,
+                );
+                if (fallbackTarget !== this.currentTarget) {
+                    this.currentTarget = fallbackTarget;
+                    this.particleSystem.setTarget(fallbackTarget);
+                }
+            }
         });
     }
 

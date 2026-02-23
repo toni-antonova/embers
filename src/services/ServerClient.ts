@@ -1,0 +1,167 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ServerClient — HTTP client for the Lumen Pipeline API
+// ─────────────────────────────────────────────────────────────────────────────
+// Handles fetching server-generated shapes from the deployed Cloud Run
+// service. Supports request cancellation (latest-wins), timeout, and
+// graceful error handling (never throws — returns null on failure).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Decoded shape response from the server. */
+export interface ServerShapeResponse {
+    /** XYZ positions decoded from base64 Float32Array — 2048 × 3 floats */
+    positions: Float32Array;
+    /** Part IDs decoded from base64 Uint8Array — 2048 bytes */
+    partIds: Uint8Array;
+    /** Human-readable part names (e.g. ["head", "body", "tail"]) */
+    partNames: string[];
+    /** Template type (e.g. "quadruped", "humanoid") */
+    templateType: string;
+    /** Axis-aligned bounding box */
+    boundingBox: { min: number[]; max: number[] };
+    /** Whether this result was served from cache */
+    cached: boolean;
+    /** Server-side generation time in milliseconds */
+    generationTimeMs: number;
+    /** Pipeline that generated this shape (e.g. "partcrafter") */
+    pipeline: string;
+}
+
+/** Raw JSON response from the server (before base64 decoding). */
+interface RawServerResponse {
+    positions: string;
+    partIds: string;
+    partNames: string[];
+    templateType: string;
+    boundingBox: { min: number[]; max: number[] };
+    cached: boolean;
+    generationTimeMs: number;
+    pipeline: string;
+}
+
+const REQUEST_TIMEOUT_MS = 10_000;
+
+export class ServerClient {
+    private baseUrl: string;
+    private apiKey: string;
+    private pendingRequest: AbortController | null = null;
+
+    constructor(baseUrl: string, apiKey: string = '') {
+        // Strip trailing slash
+        this.baseUrl = baseUrl.replace(/\/+$/, '');
+        this.apiKey = apiKey;
+    }
+
+    /**
+     * Request a shape from the server. Cancels any pending request.
+     * Returns null if the request was cancelled, timed out, or failed.
+     */
+    async generateShape(
+        text: string,
+        verb?: string,
+        quality: 'fast' | 'standard' = 'standard',
+    ): Promise<ServerShapeResponse | null> {
+        // Cancel any in-flight request (latest-wins)
+        if (this.pendingRequest) {
+            this.pendingRequest.abort();
+            this.pendingRequest = null;
+        }
+
+        const controller = new AbortController();
+        this.pendingRequest = controller;
+
+        // Timeout: abort after REQUEST_TIMEOUT_MS
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+        try {
+            const body: Record<string, string> = { text };
+            if (verb) body.verb = verb;
+            if (quality) body.quality = quality;
+
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+            };
+            if (this.apiKey) {
+                headers['X-API-Key'] = this.apiKey;
+            }
+
+            const response = await fetch(`${this.baseUrl}/generate`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+
+            if (!response.ok) {
+                console.warn(
+                    `[ServerClient] Server error ${response.status} for "${text}"`,
+                );
+                return null;
+            }
+
+            const raw: RawServerResponse = await response.json();
+            return this.decodeResponse(raw);
+        } catch (err: unknown) {
+            if (err instanceof DOMException && err.name === 'AbortError') {
+                // Request was cancelled (either by timeout or by a newer request)
+                console.log(`[ServerClient] Request for "${text}" was cancelled`);
+            } else {
+                console.warn(`[ServerClient] Request failed for "${text}":`, err);
+            }
+            return null;
+        } finally {
+            clearTimeout(timeoutId);
+            if (this.pendingRequest === controller) {
+                this.pendingRequest = null;
+            }
+        }
+    }
+
+    /**
+     * Preflight ping to wake the server (Cloud Run cold start).
+     * Fire-and-forget — doesn't block anything.
+     */
+    warmUp(): void {
+        const headers: Record<string, string> = {};
+        if (this.apiKey) {
+            headers['X-API-Key'] = this.apiKey;
+        }
+
+        fetch(`${this.baseUrl}/health`, { headers }).catch(() => {
+            // Silently ignore — warm-up is best-effort
+        });
+    }
+
+    /** Decode the raw JSON response into typed arrays. */
+    private decodeResponse(raw: RawServerResponse): ServerShapeResponse {
+        return {
+            positions: this.decodeFloat32(raw.positions),
+            partIds: this.decodeUint8(raw.partIds),
+            partNames: raw.partNames,
+            templateType: raw.templateType,
+            boundingBox: raw.boundingBox,
+            cached: raw.cached,
+            generationTimeMs: raw.generationTimeMs,
+            pipeline: raw.pipeline,
+        };
+    }
+
+    /** Decode a base64 string to Float32Array. */
+    private decodeFloat32(base64: string): Float32Array {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return new Float32Array(bytes.buffer);
+    }
+
+    /** Decode a base64 string to Uint8Array. */
+    private decodeUint8(base64: string): Uint8Array {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+    }
+}

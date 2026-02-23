@@ -66,6 +66,14 @@ export class MorphTargets {
     }
 
     /**
+     * Check if a local procedural shape exists for the given name.
+     * Used to decide whether to query the server for a shape.
+     */
+    hasTarget(name: string): boolean {
+        return this.cache.has(name as MorphTargetName);
+    }
+
+    /**
      * Create a blended texture by linearly interpolating between two shapes.
      *
      * This is used for the abstraction spectrum: as abstractionLevel changes,
