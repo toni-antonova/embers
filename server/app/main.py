@@ -22,6 +22,7 @@ from app.logging_config import configure_logging
 from app.middleware import RequestContextMiddleware
 from app.models.registry import ModelRegistry
 from app.rate_limit import limiter
+from app.routes import cache as cache_routes
 from app.routes import debug, generate, health
 from app.services.pipeline import PipelineOrchestrator
 
@@ -77,9 +78,10 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.pipeline_orchestrator = orchestrator
 
-    # Load models in background after app is already serving
+    # Load models in background after app is already serving.
+    # Cache warming runs after models finish loading.
     if not settings.skip_model_load:
-        asyncio.create_task(_load_models(registry))
+        asyncio.create_task(_load_models_and_warm_cache(registry, cache))
 
     yield  # App is running, serving requests
 
@@ -87,12 +89,14 @@ async def lifespan(app: FastAPI):
     await cache.disconnect()
 
 
-async def _load_models(registry: ModelRegistry) -> None:
-    """Load ML models in background so the app serves probes immediately.
+async def _load_models_and_warm_cache(
+    registry: ModelRegistry, cache: ShapeCache
+) -> None:
+    """Load ML models then warm the cache — both run in background.
 
-    Runs as an asyncio task kicked off during lifespan.  Model init is
-    CPU/GPU-bound, so we run it in a thread to avoid blocking the event
-    loop (which would stall health probe responses).
+    Model init is CPU/GPU-bound, so we run it in a thread to avoid
+    blocking the event loop (which would stall health probe responses).
+    Cache warming runs after models finish loading.
     """
     import asyncio
 
@@ -133,6 +137,15 @@ async def _load_models(registry: ModelRegistry) -> None:
     except Exception:
         logger.exception("background_model_load_failed")
         raise
+
+    # ── Cache warming ────────────────────────────────────────────────────
+    # Load all pre-generated shapes from Cloud Storage into memory LRU.
+    # 50 entries × ~27KB ≈ 1.3MB — well within memory budget.
+    try:
+        loaded = await cache.load_all_cached()
+        logger.info("cache_warmed", shapes_loaded=loaded)
+    except Exception:
+        logger.exception("cache_warming_failed")
 
 
 def _parse_origins(allowed_origins: str) -> list[str]:
@@ -203,6 +216,7 @@ def create_app() -> FastAPI:
     # ── Routes ───────────────────────────────────────────────────────────────
     app.include_router(health.router, tags=["health"])
     app.include_router(generate.router, tags=["generate"])
+    app.include_router(cache_routes.router, tags=["cache"])
     if settings.enable_debug_routes:
         app.include_router(debug.router, prefix="/debug", tags=["debug"])
 

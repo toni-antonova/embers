@@ -4,12 +4,21 @@
 # Uses cachetools.LRUCache for proper LRU semantics.
 # Cloud Storage calls are synchronous (google-cloud-storage SDK), so all
 # storage I/O is wrapped in run_in_executor to avoid blocking the event loop.
+#
+# Thread safety:
+#   - self._lock guards the LRU dict (not thread-safe by default).
+#   - self._in_flight prevents thundering herd: concurrent requests for the
+#     same uncached key coalesce — only one triggers generation/storage read,
+#     others await the result.
 # ─────────────────────────────────────────────────────────────────────────────
 
+from __future__ import annotations
 
 import asyncio
 import hashlib
 import re
+import threading
+import time
 
 import structlog
 from cachetools import LRUCache
@@ -31,14 +40,34 @@ class ShapeCache:
     All Cloud Storage I/O runs in a thread executor.
     """
 
-    def __init__(self, bucket_name: str = "", memory_capacity: int = 100):
+    def __init__(self, bucket_name: str = "", memory_capacity: int = 200) -> None:
         self._bucket_name = bucket_name
         self._memory: LRUCache = LRUCache(maxsize=memory_capacity)
+        self._lock = threading.Lock()
         self._client = None
         self._bucket = None
+
+        # ── Stats ────────────────────────────────────────────────────────
         self._memory_hits = 0
         self._storage_hits = 0
         self._misses = 0
+        self._memory_retrieval_total_ms = 0.0
+        self._memory_retrieval_count = 0
+        self._storage_retrieval_total_ms = 0.0
+        self._storage_retrieval_count = 0
+
+        # ── Thundering herd prevention ───────────────────────────────────
+        # Maps normalized key → asyncio.Event. When a cache miss triggers
+        # a storage read, the key is registered here. Concurrent callers
+        # await the event instead of issuing duplicate reads.
+        self._in_flight: dict[str, asyncio.Event] = {}
+
+        # ── Collision tracking ───────────────────────────────────────────
+        # Maps hash → original normalized text, used to detect when two
+        # different inputs normalize to the same cache key.
+        self._key_origins: dict[str, str] = {}
+
+    # ── Connection ───────────────────────────────────────────────────────
 
     async def connect(self) -> None:
         """Initialize Cloud Storage client. Async wrapper around sync SDK."""
@@ -69,13 +98,18 @@ class ShapeCache:
         """Whether the cache backend is operational (memory always counts)."""
         return self._bucket is not None or not self._bucket_name
 
-    # ── Key normalization ────────────────────────────────────────────────────
+    # ── Key normalization ────────────────────────────────────────────────
+    # Deliberately minimal: lowercase, strip punctuation, remove articles.
+    # No depluralization (too fragile) and no adjective stripping (that's
+    # semantic normalization and belongs in the pipeline orchestrator).
 
     @staticmethod
     def normalize_key(text: str) -> str:
-        """Normalize input text to a canonical form.
+        """Normalize input text to a canonical cache key.
 
         Strips punctuation, lowercases, removes articles.
+        Does NOT depluralize — 'horses' stays 'horses'.
+        Does NOT strip adjectives — 'red dragon' stays 'red dragon'.
         """
         text = text.lower().strip()
         text = re.sub(r"[^\w\s]", "", text)
@@ -87,28 +121,82 @@ class ShapeCache:
         """SHA-256 hash of normalized text, first 16 hex chars."""
         return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
-    # ── Get ──────────────────────────────────────────────────────────────────
+    def _track_collision(self, key: str, normalized: str) -> None:
+        """Log if two different normalized texts produce the same hash."""
+        if key in self._key_origins:
+            existing = self._key_origins[key]
+            if existing != normalized:
+                logger.warning(
+                    "cache_key_collision",
+                    existing_text=existing,
+                    new_text=normalized,
+                    hash=key,
+                )
+        else:
+            self._key_origins[key] = normalized
+
+    # ── Get ──────────────────────────────────────────────────────────────
 
     async def get(self, text: str) -> GenerateResponse | None:
-        """Look up a cached shape. Checks memory first, then Cloud Storage."""
+        """Look up a cached shape. Checks memory first, then Cloud Storage.
+
+        If another coroutine is already fetching this key from storage,
+        this call awaits that result instead of issuing a duplicate read.
+        """
         normalized = self.normalize_key(text)
         key = self._hash_key(normalized)
 
-        # Tier 1: Memory
-        if key in self._memory:
-            self._memory_hits += 1
-            logger.debug("cache_hit", tier="memory", text=text, key=key)
-            return self._memory[key]
+        # Tier 1: Memory (guarded by lock)
+        t0 = time.perf_counter()
+        with self._lock:
+            if key in self._memory:
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                self._memory_hits += 1
+                self._memory_retrieval_total_ms += elapsed_ms
+                self._memory_retrieval_count += 1
+                logger.debug("cache_hit", tier="memory", text=text, key=key)
+                return self._memory[key]
 
-        # Tier 2: Cloud Storage
+        # Tier 2: Cloud Storage (with coalescing)
         if self._bucket:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, self._get_from_storage, key)
-            if result is not None:
-                self._storage_hits += 1
-                self._memory[key] = result  # Promote to memory
-                logger.debug("cache_hit", tier="storage", text=text, key=key)
-                return result
+            # Check if another coroutine is already fetching this key
+            if key in self._in_flight:
+                logger.debug("cache_coalescing", text=text, key=key)
+                await self._in_flight[key].wait()
+                # After the event fires, the result should be in memory
+                with self._lock:
+                    if key in self._memory:
+                        self._memory_hits += 1
+                        return self._memory[key]
+                # Still not there — the original fetch must have failed
+                self._misses += 1
+                return None
+
+            # We're the first — register in-flight and fetch
+            event = asyncio.Event()
+            self._in_flight[key] = event
+            try:
+                t0_storage = time.perf_counter()
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None, self._get_from_storage, key
+                )
+                elapsed_ms = (time.perf_counter() - t0_storage) * 1000
+
+                if result is not None:
+                    self._storage_hits += 1
+                    self._storage_retrieval_total_ms += elapsed_ms
+                    self._storage_retrieval_count += 1
+                    with self._lock:
+                        self._memory[key] = result  # Promote to memory
+                    logger.debug(
+                        "cache_hit", tier="storage", text=text, key=key,
+                        retrieval_ms=round(elapsed_ms, 1),
+                    )
+                    return result
+            finally:
+                event.set()  # Wake any waiting coroutines
+                self._in_flight.pop(key, None)
 
         self._misses += 1
         logger.debug("cache_miss", text=text, key=key)
@@ -119,25 +207,32 @@ class ShapeCache:
         try:
             blob = self._bucket.blob(f"shapes/{key}.json")
             if blob.exists():
-                return GenerateResponse.model_validate_json(blob.download_as_text())
+                return GenerateResponse.model_validate_json(
+                    blob.download_as_text()
+                )
         except Exception as e:
             logger.warning("cache_read_failed", key=key, error=str(e))
         return None
 
-    # ── Set ──────────────────────────────────────────────────────────────────
+    # ── Set ──────────────────────────────────────────────────────────────
 
     async def set(self, text: str, response: GenerateResponse) -> None:
         """Cache a shape in both memory and Cloud Storage."""
         normalized = self.normalize_key(text)
         key = self._hash_key(normalized)
 
-        # Tier 1: Memory
-        self._memory[key] = response
+        self._track_collision(key, normalized)
+
+        # Tier 1: Memory (guarded by lock)
+        with self._lock:
+            self._memory[key] = response
 
         # Tier 2: Cloud Storage (fire and forget in executor)
         if self._bucket:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._set_in_storage, key, response)
+            await loop.run_in_executor(
+                None, self._set_in_storage, key, response
+            )
 
     def _set_in_storage(self, key: str, response: GenerateResponse) -> None:
         """Synchronous Cloud Storage write. Runs in executor."""
@@ -150,22 +245,127 @@ class ShapeCache:
         except Exception as e:
             logger.warning("cache_write_failed", key=key, error=str(e))
 
-    # ── Stats ────────────────────────────────────────────────────────────────
+    # ── Bulk loading ─────────────────────────────────────────────────────
+
+    async def preload_to_memory(self, concept: str) -> bool:
+        """Fetch a single concept from Cloud Storage into memory LRU.
+
+        Returns True if the concept was found and loaded.
+        """
+        normalized = self.normalize_key(concept)
+        key = self._hash_key(normalized)
+
+        with self._lock:
+            if key in self._memory:
+                return True  # Already in memory
+
+        if not self._bucket:
+            return False
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, self._get_from_storage, key)
+        if result is not None:
+            with self._lock:
+                self._memory[key] = result
+            return True
+        return False
+
+    async def load_all_cached(self) -> int:
+        """Load all shapes from Cloud Storage into memory LRU.
+
+        Returns the number of shapes loaded. Used at startup to warm the
+        cache — 50 entries × ~27KB ≈ 1.3MB, well within memory budget.
+        """
+        if not self._bucket:
+            return 0
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._load_all_sync)
+
+    def _load_all_sync(self) -> int:
+        """Synchronous bulk load from Cloud Storage. Runs in executor."""
+        loaded = 0
+        try:
+            # TODO: Replace with counter blob if cache exceeds ~500 entries.
+            # At that point, list_blobs becomes an expensive paginated call.
+            blobs = self._bucket.list_blobs(prefix="shapes/")
+            for blob in blobs:
+                try:
+                    data = blob.download_as_text()
+                    response = GenerateResponse.model_validate_json(data)
+                    key = blob.name.removeprefix("shapes/").removesuffix(
+                        ".json"
+                    )
+                    with self._lock:
+                        self._memory[key] = response
+                    loaded += 1
+                except Exception as e:
+                    logger.warning(
+                        "cache_warmup_entry_failed",
+                        blob=blob.name,
+                        error=str(e),
+                    )
+        except Exception as e:
+            logger.warning("cache_warmup_failed", error=str(e))
+        return loaded
+
+    async def count_stored_shapes(self) -> int:
+        """Count shapes in Cloud Storage.
+
+        Note: lists all blobs with prefix 'shapes/'. Fine at ≤500 entries.
+        TODO: Replace with a counter blob if cache grows beyond ~500.
+        """
+        if not self._bucket:
+            return 0
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._count_sync)
+
+    def _count_sync(self) -> int:
+        """Synchronous blob count. Runs in executor."""
+        try:
+            blobs = list(self._bucket.list_blobs(prefix="shapes/"))
+            return len(blobs)
+        except Exception as e:
+            logger.warning("cache_count_failed", error=str(e))
+            return 0
+
+    # ── Stats ────────────────────────────────────────────────────────────
 
     async def stats(self) -> dict:
         """Return cache hit/miss statistics."""
         total = self._memory_hits + self._storage_hits + self._misses
+
+        storage_count = await self.count_stored_shapes()
+
+        avg_mem_ms = (
+            round(self._memory_retrieval_total_ms / self._memory_retrieval_count, 2)
+            if self._memory_retrieval_count > 0
+            else 0.0
+        )
+        avg_stor_ms = (
+            round(self._storage_retrieval_total_ms / self._storage_retrieval_count, 1)
+            if self._storage_retrieval_count > 0
+            else 0.0
+        )
+
         return {
             "memory_cache_size": len(self._memory),
+            "storage_cache_size": storage_count,
             "memory_hits": self._memory_hits,
             "storage_hits": self._storage_hits,
             "misses": self._misses,
-            "hit_rate": round((self._memory_hits + self._storage_hits) / max(total, 1), 3),
+            "hit_rate": round(
+                (self._memory_hits + self._storage_hits) / max(total, 1), 3
+            ),
+            "avg_memory_retrieval_ms": avg_mem_ms,
+            "avg_storage_retrieval_ms": avg_stor_ms,
         }
 
-    # ── Management ───────────────────────────────────────────────────────────
+    # ── Management ───────────────────────────────────────────────────────
 
     def clear_memory(self) -> None:
         """Clear the in-memory cache. Does not affect Cloud Storage."""
-        self._memory.clear()
+        with self._lock:
+            self._memory.clear()
         logger.info("cache_cleared")
