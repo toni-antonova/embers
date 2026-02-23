@@ -31,9 +31,9 @@ variable "min_instances" {
 }
 
 variable "max_instances" {
-  description = "Maximum Cloud Run instances"
+  description = "Maximum Cloud Run instances (GPU quota caps this at 3)"
   type        = number
-  default     = 5
+  default     = 3
 }
 
 variable "gpu_type" {
