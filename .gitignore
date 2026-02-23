@@ -66,3 +66,4 @@ infrastructure/terraform/deploy.tfplan
 planning/
 analysis/
 PRINCIPAL_ENGINEER_REVIEW.md
+*.xlsx
