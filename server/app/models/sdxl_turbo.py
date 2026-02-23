@@ -17,7 +17,7 @@ import time
 import PIL.Image
 import structlog
 import torch
-from diffusers import StableDiffusionXLPipeline
+from diffusers import AutoPipelineForText2Image
 
 logger = structlog.get_logger(__name__)
 
@@ -53,7 +53,7 @@ class SDXLTurboModel:
         logger.info("sdxl_turbo_loading", model_id=_MODEL_ID, device=device)
         t0 = time.perf_counter()
 
-        self._pipe = StableDiffusionXLPipeline.from_pretrained(
+        self._pipe = AutoPipelineForText2Image.from_pretrained(
             _MODEL_ID,
             torch_dtype=torch.float16,
             variant="fp16",
