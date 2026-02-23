@@ -74,6 +74,27 @@ class ModelRegistry:
         """Whether model loading was skipped (dev/test mode)."""
         return self._settings.skip_model_load
 
+    def unload(self, name: str) -> None:
+        """Unload a model and free its VRAM.
+
+        Deletes model reference, removes from registry, and calls
+        torch.cuda.empty_cache(). Used to offload fallback models
+        (Hunyuan3D, Grounded SAM) after use when VRAM > 18GB.
+        """
+        if name not in self._models:
+            return
+        del self._models[name]
+        if name in self._loaded_names:
+            self._loaded_names.remove(name)
+        try:
+            import torch
+
+            torch.cuda.empty_cache()
+        except ImportError:
+            pass
+        logger.info("model_unloaded", model=name)
+        self._log_vram()
+
     def _log_vram(self) -> None:
         """Log current GPU VRAM usage if available."""
         try:

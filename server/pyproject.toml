@@ -51,6 +51,10 @@ dependencies = [
 
     # Rate limiting
     "slowapi>=0.1.9",
+
+    # Headless rendering (fallback pipeline)
+    "pyrender>=0.1.45",
+    "PyOpenGL>=3.1",
 ]
 
 [project.optional-dependencies]

@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     python3.13 python3.13-venv python3.13-dev \
-    libegl1 libgl1 libglib2.0-0 \
+    libosmesa6 libosmesa6-dev libgl1 libglib2.0-0 \
     curl \
     g++ make \
     && rm -rf /var/lib/apt/lists/*
@@ -44,7 +44,7 @@ WORKDIR /home/appuser/server
 # ---- Environment ----
 ENV HF_HOME=/home/appuser/models
 ENV TRANSFORMERS_CACHE=/home/appuser/models
-ENV PYOPENGL_PLATFORM=egl
+ENV PYOPENGL_PLATFORM=osmesa
 ENV UV_PYTHON=python3.13
 ENV UV_TORCH_BACKEND=cu128
 

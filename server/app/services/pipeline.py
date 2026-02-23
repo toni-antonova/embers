@@ -22,7 +22,13 @@ from app.config import Settings
 from app.exceptions import GenerationFailedError, GenerationTimeoutError, GPUOutOfMemoryError
 from app.models.registry import ModelRegistry
 from app.pipeline.encoding import compute_bbox, encode_float32, encode_uint8
-from app.pipeline.point_sampler import normalize_positions, sample_from_part_meshes
+from app.pipeline.mask_to_faces import map_masks_to_faces
+from app.pipeline.mesh_renderer import render_multiview_with_id_pass
+from app.pipeline.point_sampler import (
+    normalize_positions,
+    sample_from_labeled_mesh,
+    sample_from_part_meshes,
+)
 from app.pipeline.prompt_templates import get_canonical_prompt
 from app.pipeline.template_matcher import get_template
 from app.schemas import BoundingBox, GenerateRequest, GenerateResponse
@@ -206,7 +212,123 @@ class PipelineOrchestrator:
 
                 return positions, part_ids, part_names, pipeline_used
 
-        # ── Fallback: Mock point cloud ──────────────────────────────────────
+        # ── Fallback: Hunyuan3D + Grounded SAM ─────────────────────────────
+        # Triggers when PartCrafter fails or returns insufficient parts.
+        # Lazy-loads fallback models via registry.get_or_load().
+        if reference_image is not None:
+            try:
+                fallback_t0 = time.perf_counter()
+
+                from app.models.hunyuan3d import Hunyuan3DTurboModel
+                from app.models.grounded_sam import GroundedSAM2Model
+
+                hunyuan = self._registry.get_or_load(
+                    "hunyuan3d_turbo",
+                    lambda: Hunyuan3DTurboModel(device="cuda"),
+                )
+                grounded_sam = self._registry.get_or_load(
+                    "grounded_sam2",
+                    lambda: GroundedSAM2Model(device="cuda"),
+                )
+
+                # Step A: Generate monolithic mesh
+                mesh = hunyuan.generate(reference_image)
+                step_a_ms = round((time.perf_counter() - fallback_t0) * 1000, 1)
+
+                # Check cumulative fallback timeout (default 15s)
+                fallback_timeout = getattr(
+                    self._settings, "fallback_timeout_seconds", 15
+                )
+                if (time.perf_counter() - fallback_t0) > fallback_timeout:
+                    logger.warning(
+                        "fallback_timeout",
+                        text=text,
+                        elapsed_s=round(time.perf_counter() - fallback_t0, 1),
+                    )
+                    raise TimeoutError("Fallback pipeline exceeded timeout")
+
+                # Step B: Multi-view render + face-ID pass
+                step_b_t0 = time.perf_counter()
+                view_results = render_multiview_with_id_pass(mesh)
+                step_b_ms = round((time.perf_counter() - step_b_t0) * 1000, 1)
+
+                # Step C: Segment with Grounded SAM
+                step_c_t0 = time.perf_counter()
+                views_for_mapping = []
+                for color_img, face_id_map in view_results:
+                    masks = grounded_sam.segment(color_img, template.part_names)
+                    views_for_mapping.append((masks, face_id_map))
+                step_c_ms = round((time.perf_counter() - step_c_t0) * 1000, 1)
+
+                # Step D: Map masks to mesh faces
+                step_d_t0 = time.perf_counter()
+                face_centroids = mesh.triangles_center
+                face_labels = map_masks_to_faces(
+                    views_for_mapping,
+                    face_centroids,
+                    part_names=template.part_names,
+                )
+                step_d_ms = round((time.perf_counter() - step_d_t0) * 1000, 1)
+
+                # Step E: Sample points
+                positions, part_ids = sample_from_labeled_mesh(
+                    mesh, face_labels, total_points=total_points
+                )
+                pipeline_used = "hunyuan3d_grounded_sam"
+
+                fallback_total_ms = round(
+                    (time.perf_counter() - fallback_t0) * 1000, 1
+                )
+                logger.info(
+                    "fallback_pipeline_complete",
+                    text=text,
+                    mesh_gen_ms=step_a_ms,
+                    render_ms=step_b_ms,
+                    segment_ms=step_c_ms,
+                    mask_map_ms=step_d_ms,
+                    total_ms=fallback_total_ms,
+                    vertices=len(mesh.vertices),
+                    faces=len(mesh.faces),
+                )
+
+                # ── VRAM offload ─────────────────────────────────────────
+                # Offload fallback models if VRAM > 18GB to prevent OOM
+                # on subsequent requests.
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        allocated_gb = torch.cuda.memory_allocated() / 1e9
+                        if allocated_gb > 18.0:
+                            logger.info(
+                                "vram_offload_triggered",
+                                allocated_gb=round(allocated_gb, 1),
+                            )
+                            self._registry.unload("hunyuan3d_turbo")
+                            self._registry.unload("grounded_sam2")
+                except ImportError:
+                    pass
+
+                return positions, part_ids, template.part_names, pipeline_used
+
+            except Exception as e:
+                # Check for CUDA OOM — re-raise for caller's OOM handler
+                try:
+                    import torch
+
+                    if isinstance(e, torch.cuda.OutOfMemoryError):
+                        raise
+                except ImportError:
+                    pass
+                logger.warning(
+                    "fallback_pipeline_failed",
+                    text=text,
+                    error=str(e),
+                )
+
+        # ── Final safety net: Mock point cloud ───────────────────────────────
+        # If both PartCrafter AND Hunyuan fail, return a procedural sphere.
+        logger.warning("all_pipelines_failed_using_mock", text=text)
         rng = np.random.default_rng(hash(text) % (2**32))
         theta = rng.uniform(0, 2 * np.pi, total_points)
         phi = rng.uniform(0, np.pi, total_points)
