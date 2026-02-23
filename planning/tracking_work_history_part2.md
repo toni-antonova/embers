@@ -12,6 +12,8 @@ A continuation of the linear log of all meaningful code, architecture, and confi
 | 48 | MILESTONE: SDXL Turbo API — Live Text-to-Image Inference 🏎️ | 2026-02-22 |
 | 49 | Prompt 03 Audit — AutoPipelineForText2Image Revert + Quality Verification | 2026-02-22 |
 | 50 | PartCrafter Integration — Image → Part-Decomposed Meshes → Point Clouds | 2026-02-22 |
+| 51 | Deploy Fix: torch-cluster + Client HTTP Integration (Prompt 06) | 2026-02-22 |
+| 52 | A1: Audio Pipeline Upgrades — Pitchy F0, Tiered STT, SER, AudioWorklet | 2026-02-22 |
 
 ---
 
@@ -436,6 +438,59 @@ Two distinct pieces of work in one session:
 - **335 tests pass** (16 new + 319 existing), 0 regressions ✅
 - `lets preflight` verifies all server ML imports locally on CPU ✅
 - Commits: `609cba3` (torch-cluster + deploy), `94ef3bd` (client HTTP integration)
+
+</details>
+
+---
+
+<details>
+<summary><strong>52. A1: Audio Pipeline Upgrades — Pitchy F0, Tiered STT, SER, AudioWorklet</strong></summary>
+
+**Date:** 2026-02-22
+**Branch:** `client/a1-audio-pipeline`
+**Commit:** `0960f63`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+First task from the corrected Agent 2 Client Animation Pipeline spec. Enhanced the existing audio pipeline with four new capabilities:
+
+1. **Pitchy F0 Pitch Extraction** — Added McLeod Pitch Method (via `pitchy`) to `AudioEngine.ts` using a parallel `AnalyserNode`. Computes fundamental frequency, speaker-relative deviation, and confidence. EMA baseline tracks the speaker's typical F0.
+
+2. **Tiered STT Manager** — `stt-manager.ts` wraps the existing `SpeechEngine` and adds Moonshine STT as an async upgrade via `@huggingface/transformers`. Starts with Web Speech immediately, loads Moonshine in background, defers swap until the current utterance finalizes (`isFinal: true`) to avoid dropping words mid-sentence.
+
+3. **SER Web Worker** — `ser-worker.ts` runs wav2vec2-base Speech Emotion Recognition in a dedicated Web Worker. Maps emotion classes to VAD (valence/arousal/dominance) via Russell's circumplex model.
+
+4. **AudioWorklet + Audio Uniforms** — `audio-worklet.ts` captures raw PCM on the audio thread with dual ring buffers. `audio-uniforms.ts` packs all features into `Float32Array(16)` for GPU uniform upload.
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `src/services/AudioEngine.ts` | **MODIFIED** — 3 new `AudioFeatures` fields, parallel `AnalyserNode`, `processPitch()`, EMA baseline |
+| `src/audio/types.ts` | **NEW** — Shared interfaces: `PitchData`, `EmotionState`, `AudioUniformLayout`, `STTTier`, worker messages |
+| `src/audio/stt-manager.ts` | **NEW** — Tiered STT wrapping `SpeechEngine` + async Moonshine upgrade |
+| `src/audio/audio-worklet.ts` | **NEW** — AudioWorklet processor with dual ring buffers |
+| `src/audio/ser-worker.ts` | **NEW** — Web Worker for wav2vec2-base emotion recognition |
+| `src/audio/audio-uniforms.ts` | **NEW** — GPU uniform aggregator |
+| `src/__tests__/AudioEngine.pitch.test.ts` | **NEW** — 6 tests |
+| `src/__tests__/STTManager.test.ts` | **NEW** — 8 tests |
+| `src/__tests__/AudioUniforms.test.ts` | **NEW** — 17 tests |
+| `package.json` | Added `pitchy`, `@huggingface/transformers` |
+
+</details>
+
+<details>
+<summary><strong>Verification</strong></summary>
+
+- **69 tests pass** (38 original + 31 new), 0 regressions ✅
+- All 23 original `AudioEngine.test.ts` tests unchanged and passing ✅
+- All 15 original `SpeechEngine.test.ts` tests unchanged and passing ✅
+
+</details>
 
 </details>
 
