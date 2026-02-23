@@ -68,7 +68,7 @@ def _create_model(mock_pipe=None):
         mock_pipe = _make_mock_pipeline()
 
     with patch(
-        "app.models.sdxl_turbo.AutoPipelineForText2Image"
+        "app.models.sdxl_turbo.StableDiffusionXLPipeline"
     ) as MockPipeline:
         MockPipeline.from_pretrained.return_value = mock_pipe
 
