@@ -1,4 +1,5 @@
 import Meyda from 'meyda';
+import { PitchDetector } from 'pitchy';
 import { TuningConfig } from './TuningConfig';
 
 /**
@@ -15,6 +16,11 @@ export interface AudioFeatures {
     flatness: number;          // Spectral flatness (noise vs tone) → used in breathiness blend
     textureComplexity: number; // MFCC variance → vocal texture richness → noise variation
     rolloff: number;           // Spectral rolloff → voice brightness → particle edge crispness
+
+    // ── PITCH (A1 upgrade — Pitchy F0 extraction) ────────────────
+    pitch: number;             // Raw F0 in Hz (0 when no pitch detected)
+    pitchDeviation: number;    // Normalized deviation from speaker baseline (-1.0 to +1.0)
+    pitchConfidence: number;   // Pitch clarity/confidence (0.0–1.0)
 }
 
 /**
@@ -52,7 +58,10 @@ export class AudioEngine {
         breathiness: 0,
         flatness: 0,
         textureComplexity: 0,
-        rolloff: 0
+        rolloff: 0,
+        pitch: 0,
+        pitchDeviation: 0,
+        pitchConfidence: 0,
     };
 
     /**
@@ -88,6 +97,17 @@ export class AudioEngine {
     // callback in some browser/Meyda version combos, killing ALL features.
     private prevRms = 0;
 
+    // ── PITCH TRACKING STATE (A1 — Pitchy F0) ─────────────────────────
+    // The AnalyserNode captures raw time-domain audio in parallel with
+    // Meyda's ScriptProcessorNode. Pitchy's McLeod Pitch Method runs on
+    // these raw samples to extract the fundamental frequency.
+    private pitchAnalyser: AnalyserNode | null = null;
+    private pitchBuffer: Float32Array<ArrayBuffer> | null = null;
+    private pitchDetector: PitchDetector<Float32Array<ArrayBuffer>> | null = null;
+    private pitchBaseline = 0;           // EMA of speaker's typical F0 (Hz)
+    private pitchBaselineAlpha = 0.01;   // Slow-moving baseline
+    private pitchBaselineInitialized = false;
+
     // ── DIAGNOSTIC LOGGING ────────────────────────────────────────────
     // Temporary: logs raw feature values every ~1s so the user can see
     // if features are being extracted correctly. Remove after debugging.
@@ -121,6 +141,18 @@ export class AudioEngine {
             // ── STEP 4: Connect mic stream to AudioContext ────────────
             this.source = this.audioContext.createMediaStreamSource(stream);
             console.log('[AudioEngine] Step 4: ✅ MediaStreamSource connected');
+
+            // ── STEP 4b: Set up Pitchy AnalyserNode (A1 upgrade) ──────
+            // A parallel AnalyserNode captures raw time-domain samples for
+            // Pitchy's McLeod Pitch Method. This runs alongside Meyda's
+            // ScriptProcessorNode — both read from the same source.
+            const pitchFftSize = 2048; // ~46ms at 44.1kHz — good for speech F0
+            this.pitchAnalyser = this.audioContext.createAnalyser();
+            this.pitchAnalyser.fftSize = pitchFftSize;
+            this.source.connect(this.pitchAnalyser);
+            this.pitchBuffer = new Float32Array(pitchFftSize) as Float32Array<ArrayBuffer>;
+            this.pitchDetector = PitchDetector.forFloat32Array(pitchFftSize);
+            console.log('[AudioEngine] Step 4b: ✅ Pitchy AnalyserNode connected (fftSize=%d)', pitchFftSize);
 
             // ── STEP 5: Create Meyda analyzer ─────────────────────────
             this.analyzer = Meyda.createMeydaAnalyzer({
@@ -158,6 +190,9 @@ export class AudioEngine {
         if (this.analyzer) {
             this.analyzer.stop();
         }
+        if (this.pitchAnalyser) {
+            this.pitchAnalyser.disconnect();
+        }
         if (this.source) {
             this.source.disconnect();
         }
@@ -167,6 +202,9 @@ export class AudioEngine {
         this.audioContext = null;
         this.source = null;
         this.analyzer = null;
+        this.pitchAnalyser = null;
+        this.pitchBuffer = null;
+        this.pitchDetector = null;
         console.log('[AudioEngine] Stopped');
     }
 
@@ -290,6 +328,13 @@ export class AudioEngine {
             this.config?.get('audioSmoothing.rolloff') ?? 0.88
         );
 
+        // ── 7. PITCHY F0 → PITCH (A1 upgrade) ────────────────────────
+        // Extract pitch from the parallel AnalyserNode's time-domain data.
+        // Pitchy's McLeod Pitch Method is fast enough for real-time use
+        // (~0.1ms per 2048-sample frame). The baseline EMA tracks the
+        // speaker's typical F0 so the deviation is relative.
+        this.processPitch();
+
         // ── DIAGNOSTIC LOGGING (TEMPORARY) ───────────────────────────
         // Three-tier logging to pinpoint exactly where signal drops.
         // Remove this entire block once the pipeline is verified working.
@@ -306,14 +351,83 @@ export class AudioEngine {
                 `[SMOOTH] energy:${this.features.energy.toFixed(3)} ` +
                 `tension:${this.features.tension.toFixed(3)} ` +
                 `urgency:${this.features.urgency.toFixed(3)} ` +
-                `breath:${this.features.breathiness.toFixed(3)}`
+                `breath:${this.features.breathiness.toFixed(3)} ` +
+                `pitch:${this.features.pitch.toFixed(1)}Hz dev:${this.features.pitchDeviation.toFixed(3)}`
             );
             // Tier 3: Auto-calibration state — if these are NaN/Infinity/0, that's the bug
             console.log(
                 `[CALIBRATION] maxRms:${this.maxRms.toFixed(6)} ` +
                 `prevRms:${this.prevRms.toFixed(6)} ` +
                 `normRms:${normRms.toFixed(3)} normDelta:${normDelta.toFixed(3)} ` +
-                `normZcr:${normZcr.toFixed(3)} normFlat:${normFlatness.toFixed(3)}`
+                `normZcr:${normZcr.toFixed(3)} normFlat:${normFlatness.toFixed(3)} ` +
+                `pitchBaseline:${this.pitchBaseline.toFixed(1)}`
+            );
+        }
+    }
+
+    // ── PITCH PROCESSING (A1 upgrade) ─────────────────────────────────
+
+    /**
+     * Extract F0 pitch from the AnalyserNode's time-domain data using
+     * Pitchy's McLeod Pitch Method. Updates pitch, pitchDeviation, and
+     * pitchConfidence in the features object.
+     *
+     * Called from processFeatures() on every Meyda callback (~86fps
+     * at 512-sample buffer / 44.1kHz). The AnalyserNode's data is
+     * always available — it captures audio continuously.
+     */
+    private processPitch(): void {
+        if (!this.pitchAnalyser || !this.pitchBuffer || !this.pitchDetector) {
+            // Pitch hardware not set up (e.g., before start() or in tests)
+            return;
+        }
+
+        // Grab the latest time-domain samples from the AnalyserNode
+        this.pitchAnalyser.getFloatTimeDomainData(this.pitchBuffer);
+
+        // Run Pitchy's McLeod Pitch Method
+        const [pitchHz, clarity] = this.pitchDetector.findPitch(
+            this.pitchBuffer,
+            this.audioContext!.sampleRate
+        );
+
+        // Confidence = Pitchy's clarity value (0.0–1.0)
+        const confidence = Math.max(0, Math.min(1, clarity));
+        this.features.pitchConfidence = this.smooth(
+            this.features.pitchConfidence, confidence, 0.7
+        );
+
+        if (confidence >= 0.5 && pitchHz > 50 && pitchHz < 1000) {
+            // Valid pitch detected within human speech range (50–1000 Hz)
+            this.features.pitch = this.smooth(
+                this.features.pitch, pitchHz, 0.6
+            );
+
+            // Update baseline EMA (tracks speaker's typical F0)
+            if (!this.pitchBaselineInitialized) {
+                // First valid pitch — initialize baseline immediately
+                this.pitchBaseline = pitchHz;
+                this.pitchBaselineInitialized = true;
+            } else {
+                this.pitchBaseline = this.smooth(
+                    this.pitchBaseline, pitchHz, 1 - this.pitchBaselineAlpha
+                );
+            }
+
+            // Compute normalized deviation: (current - baseline) / baseline
+            // Clamped to [-1, +1]
+            if (this.pitchBaseline > 0) {
+                const rawDeviation = (pitchHz - this.pitchBaseline) / this.pitchBaseline;
+                const clampedDeviation = Math.max(-1, Math.min(1, rawDeviation));
+                this.features.pitchDeviation = this.smooth(
+                    this.features.pitchDeviation, clampedDeviation, 0.6
+                );
+            }
+        } else {
+            // No reliable pitch — decay toward zero
+            this.features.pitch = this.smooth(this.features.pitch, 0, 0.9);
+            this.features.pitchDeviation = this.smooth(
+                this.features.pitchDeviation, 0, 0.85
             );
         }
     }
