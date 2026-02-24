@@ -26,28 +26,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
 import { SpeechEngine } from '../services/SpeechEngine';
-import type { STTStatus, TranscriptEvent } from '../services/SpeechEngine';
+import type { STTStatus } from '../services/SpeechEngine';
 import type { TuningConfig } from '../services/TuningConfig';
-import type { SemanticEvent } from '../services/SemanticBackend';
-import {
-    accumulateGhostWords,
-    cleanupExpiredWords,
-    ghostWordOpacity,
-} from '../services/GhostTranscript';
-import type { GhostWord } from '../services/GhostTranscript';
 
 // ── COMPONENT PROPS ──────────────────────────────────────────────────
-const GHOST_CLEANUP_MS = 200;
 
 interface UIOverlayProps {
     audioEngine: AudioEngine;
     speechEngine: SpeechEngine;
     tuningConfig: TuningConfig;
-    lastTranscript: TranscriptEvent | null;
-    lastSemanticEvent: SemanticEvent | null;
 }
 
-export function UIOverlay({ audioEngine, speechEngine, tuningConfig, lastTranscript, lastSemanticEvent }: UIOverlayProps) {
+export function UIOverlay({ audioEngine, speechEngine, tuningConfig }: UIOverlayProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
     const [denied, setDenied] = useState(false);
@@ -67,59 +57,7 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, lastTranscr
     const [sttStatus, setSttStatus] = useState<STTStatus>('off');
     const [sttError, setSttError] = useState('');
 
-    // ── GHOST TRANSCRIPT STATE ──────────────────────────────────────
-    const [ghostWords, setGhostWords] = useState<GhostWord[]>([]);
-    const ghostIdCounter = useRef(0);
-    const ghostScrollRef = useRef<HTMLDivElement>(null);
-    const prevTranscriptRef = useRef<string | null>(null);
 
-    // Accumulate words from new final transcripts
-    useEffect(() => {
-        if (!lastTranscript || !lastTranscript.isFinal) return;
-        if (lastTranscript.text === prevTranscriptRef.current) return;
-        prevTranscriptRef.current = lastTranscript.text;
-
-        setGhostWords(prev => {
-            const result = accumulateGhostWords(prev, lastTranscript, lastSemanticEvent, ghostIdCounter.current);
-            ghostIdCounter.current = result.nextId;
-            return result.words;
-        });
-    }, [lastTranscript, lastSemanticEvent]);
-
-    // Auto-scroll ghost transcript to bottom
-    useEffect(() => {
-        if (ghostScrollRef.current) {
-            ghostScrollRef.current.scrollTop = ghostScrollRef.current.scrollHeight;
-        }
-    }, [ghostWords]);
-
-    // Periodic cleanup of expired ghost words
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setGhostWords(prev => cleanupExpiredWords(prev));
-        }, GHOST_CLEANUP_MS);
-        return () => clearInterval(timer);
-    }, []);
-
-    // ── PROCESSING INDICATOR ─────────────────────────────────────────
-    // Shows a shimmer bar when a final transcript was received,
-    // indicating the model is processing the input.
-    const [isProcessing, setIsProcessing] = useState(false);
-    const processingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    useEffect(() => {
-        if (!lastTranscript || !lastTranscript.isFinal) return;
-        setIsProcessing(true);
-        // Clear any existing timeout
-        if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
-        // Auto-clear after 2.5s (typical server response time)
-        processingTimerRef.current = setTimeout(() => setIsProcessing(false), 2500);
-    }, [lastTranscript]);
-
-    // Clean up processing timer on unmount
-    useEffect(() => {
-        return () => { if (processingTimerRef.current) clearTimeout(processingTimerRef.current); };
-    }, []);
 
     // ── MODE TOGGLE ──────────────────────────────────────────────────
     // Toggles between Simple (pre-built shapes) and Complex (server-rendered).
@@ -219,41 +157,7 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, lastTranscr
                     </div>
                 )}
 
-                {/* ── GHOST TRANSCRIPT (fading word history) ──────── */}
-                {(isListening || ghostWords.length > 0) && (
-                    <div
-                        ref={ghostScrollRef}
-                        className="ghost-transcript"
-                    >
-                        {ghostWords.length > 0 ? (
-                            ghostWords.map(gw => {
-                                const opacity = ghostWordOpacity(gw);
-                                return (
-                                    <span
-                                        key={gw.id}
-                                        className={`ghost-word${gw.isKeyword ? ' keyword' : ''}`}
-                                        style={{ opacity }}
-                                    >
-                                        {gw.text}
-                                    </span>
-                                );
-                            })
-                        ) : (
-                            <span className="ghost-transcript-hint">
-                                {lastTranscript && !lastTranscript.isFinal
-                                    ? 'listening…'
-                                    : 'speak to see words…'}
-                            </span>
-                        )}
-                    </div>
-                )}
 
-                {/* ── PROCESSING BAR (thinking shimmer) ───────────── */}
-                {isProcessing && isListening && (
-                    <div className="processing-bar">
-                        <div className="processing-bar__fill" />
-                    </div>
-                )}
             </div>
 
             {/* ── MIC BUTTON ──────────────────────────────────────── */}

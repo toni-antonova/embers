@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { TranscriptEvent } from '../services/SpeechEngine';
 import { UIOverlay } from './UIOverlay';
+import { GhostTitle } from './GhostTitle';
 import { TuningPanel } from './TuningPanel';
 import type { CameraType, ColorMode } from './TuningPanel';
 import { AnalysisPanel } from './AnalysisPanel';
@@ -137,13 +138,16 @@ export function Canvas() {
                     </button>
                 </div>
             ) : (
-                <canvas
-                    key={canvasKey}
-                    ref={canvasRef}
-                    style={{ display: 'block', width: '100%', height: '100%' }}
-                />
+                <>
+                    <GhostTitle />
+                    <canvas
+                        key={canvasKey}
+                        ref={canvasRef}
+                        style={{ display: 'block', width: '100%', height: '100%' }}
+                    />
+                </>
             )}
-            <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} tuningConfig={tuningConfig} lastTranscript={lastTranscript} lastSemanticEvent={lastSemanticEvent} />
+            <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} tuningConfig={tuningConfig} />
             <TuningPanel
                 config={tuningConfig}
                 audioEngine={audioEngine}
