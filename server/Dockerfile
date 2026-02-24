@@ -8,13 +8,13 @@
 #
 # If the base image doesn't exist yet, build it first:
 #   gcloud builds submit --config infrastructure/cloudbuild-base.yaml \
-#     --project=lumen-pipeline --region=us-east4 server/
+#     --project=lumen-pipeline --region=us-central1 server/
 #
 # Fallback: set BUILD_ARG BASE_IMAGE=nvidia/cuda:12.8.0-runtime-ubuntu24.04
 # to do a full build (slow but works without the base image).
 # ============================================================
 
-ARG BASE_IMAGE=us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base:latest
+ARG BASE_IMAGE=us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base:latest
 
 FROM ${BASE_IMAGE}
 

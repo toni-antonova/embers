@@ -28,6 +28,11 @@ resource "google_storage_bucket" "frontend" {
     max_age_seconds = 3600
   }
 
+  # Bucket location is immutable — don't recreate bucket on region changes
+  lifecycle {
+    ignore_changes = [location]
+  }
+
   depends_on = [google_project_service.required_apis]
 }
 

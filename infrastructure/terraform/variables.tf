@@ -15,7 +15,7 @@ variable "project_id" {
 variable "region" {
   description = "GCP region for all resources"
   type        = string
-  default     = "us-east4"
+  default     = "us-central1"
 }
 
 variable "service_name" {
@@ -27,19 +27,19 @@ variable "service_name" {
 variable "min_instances" {
   description = "Minimum Cloud Run instances (0 = scale to zero)"
   type        = number
-  default     = 3
+  default     = 1
 }
 
 variable "max_instances" {
-  description = "Maximum Cloud Run instances (GPU quota caps this at 3)"
+  description = "Maximum Cloud Run instances (GPU quota caps this at 1)"
   type        = number
-  default     = 3
+  default     = 1
 }
 
 variable "gpu_type" {
   description = "GPU accelerator type for Cloud Run"
   type        = string
-  default     = "nvidia-l4"
+  default     = "nvidia-rtx-pro-6000"
 }
 
 variable "container_image" {

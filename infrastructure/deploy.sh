@@ -35,7 +35,7 @@ if [ "$DEPLOY_ONLY" = false ]; then
   gcloud builds submit \
     --config infrastructure/cloudbuild.yaml \
     --substitutions=COMMIT_SHA="$SHA" \
-    --project=lumen-pipeline --region=us-east4 \
+    --project=lumen-pipeline --region=us-central1 \
     .
   echo "✓ Image pushed: :$SHA and :latest"
 fi

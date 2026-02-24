@@ -13,7 +13,7 @@
 #
 # Build manually:
 #   gcloud builds submit --config infrastructure/cloudbuild-base.yaml \
-#     --project=lumen-pipeline --region=us-east4 server/
+#     --project=lumen-pipeline --region=us-central1 server/
 #
 # Or let the weekly Cloud Build trigger handle it automatically.
 # ============================================================

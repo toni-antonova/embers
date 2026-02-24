@@ -67,9 +67,9 @@ class TestVRAMBudget:
         allocated_gb = torch.cuda.memory_allocated() / 1e9
         total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
 
-        # On an L4 (24GB), total should be under 20GB with all models
-        assert allocated_gb < 20.0, f"VRAM usage {allocated_gb:.1f}GB exceeds 20GB budget"
-        assert total_gb > 20.0, f"Expected L4 GPU (24GB), got {total_gb:.1f}GB"
+        # On an RTX Pro 6000 (96GB), total should be under 80GB with all models
+        assert allocated_gb < 80.0, f"VRAM usage {allocated_gb:.1f}GB exceeds 80GB budget"
+        assert total_gb > 80.0, f"Expected RTX Pro 6000 GPU (96GB), got {total_gb:.1f}GB"
 
 
 # ── CPU-Safe Tests (Mocked) ─────────────────────────────────────────────────
@@ -129,4 +129,4 @@ class TestFallbackTrigger:
         assert settings.vram_offload_threshold_gb == 12.0
 
         default_settings = Settings()
-        assert default_settings.vram_offload_threshold_gb == 18.0
+        assert default_settings.vram_offload_threshold_gb == 80.0

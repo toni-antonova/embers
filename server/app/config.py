@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     generation_timeout_seconds: int = 15
     max_points: int = 2048
     generation_rate_limit_per_minute: int = 20  # Tighter cap on GPU work (cache misses)
-    vram_offload_threshold_gb: float = 18.0  # Offload fallback models if VRAM exceeds this
+    vram_offload_threshold_gb: float = 80.0  # Offload fallback models if VRAM exceeds this (RTX Pro 6000: 96GB)
     eager_load_all: bool = False  # GCE: set EAGER_LOAD_ALL=true to preload fallback models
 
     # ── Logging ──────────────────────────────────────────────────────────────

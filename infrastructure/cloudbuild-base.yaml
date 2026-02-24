@@ -14,7 +14,7 @@
 # Manual usage:
 #   gcloud builds submit \
 #     --config infrastructure/cloudbuild-base.yaml \
-#     --project=lumen-pipeline --region=us-east4 \
+#     --project=lumen-pipeline --region=us-central1 \
 #     server/
 #
 # Rebuild triggers:
@@ -23,7 +23,7 @@
 #   - Manual when CUDA/Python version changes
 
 substitutions:
-  _BASE_IMAGE: "us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base"
+  _BASE_IMAGE: "us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base"
 
 options:
   logging: CLOUD_LOGGING_ONLY

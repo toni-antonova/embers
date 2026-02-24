@@ -98,7 +98,7 @@ commands:
     cmd: |
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild-base.yaml \
-        --project=lumen-pipeline --region=us-east4 \
+        --project=lumen-pipeline --region=us-central1 \
         server/
 
   build-local:
@@ -114,16 +114,16 @@ commands:
     cmd: |
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
-        --project=lumen-pipeline --region=us-east4 \
+        --project=lumen-pipeline --region=us-central1 \
         .
 
   deploy:
     description: Deploy latest image to Cloud Run (image-only, no config change)
     cmd: |
       gcloud run services update lumen-pipeline \
-        --image=us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
+        --image=us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
         --project=lumen-pipeline \
-        --region=us-east4
+        --region=us-central1
 
   apply-terraform:
     description: Apply Terraform config (infra changes)
@@ -137,15 +137,15 @@ commands:
       echo "── 2/4 Building image via Cloud Build..." &&
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
-        --project=lumen-pipeline --region=us-east4 \
+        --project=lumen-pipeline --region=us-central1 \
         . &&
       echo "── 3/4 Deploying new revision..." &&
       gcloud run services update lumen-pipeline \
-        --image=us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
+        --image=us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
         --project=lumen-pipeline \
-        --region=us-east4 &&
+        --region=us-central1 &&
       echo "── 4/4 Checking health..." &&
-      SERVICE_URL=$(gcloud run services describe lumen-pipeline --project=lumen-pipeline --region=us-east4 --format='value(status.url)') &&
+      SERVICE_URL=$(gcloud run services describe lumen-pipeline --project=lumen-pipeline --region=us-central1 --format='value(status.url)') &&
       for i in $(seq 1 30); do
         STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$SERVICE_URL/health/ready" 2>/dev/null || echo "000")
         if [ "$STATUS" = "200" ]; then
@@ -168,7 +168,7 @@ commands:
     cmd: |
       cd .. && \
       VITE_LUMEN_SERVER_URL=$(gcloud run services describe lumen-pipeline \
-        --project=lumen-pipeline --region=us-east4 \
+        --project=lumen-pipeline --region=us-central1 \
         --format='value(status.url)') \
       npm run build && \
       BUCKET=$(cd infrastructure/terraform && terraform output -raw frontend_bucket_name) && \

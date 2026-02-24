@@ -61,8 +61,8 @@ images:
   - '${_IMAGE_URI}'
 
 substitutions:
-  _IMAGE_URI: 'us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest'
-  _BASE_IMAGE: 'us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base:latest'
+  _IMAGE_URI: 'us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest'
+  _BASE_IMAGE: 'us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base:latest'
   _VM_NAME: 'lumen-gce-gpu'
   _ZONE: 'us-west1-b'
   _CACHE_BUCKET: 'lumen-shape-cache-lumen-pipeline'

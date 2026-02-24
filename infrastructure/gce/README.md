@@ -106,10 +106,10 @@ The Cloud Run deployment is **always running** and unmodified. To roll back:
 
 | | Cloud Run (current) | GCE VM (this) |
 |---|---|---|
-| **GPU** | 3× NVIDIA L4 (24 GB each) | 1× NVIDIA L40S (48 GB) |
-| **Models loaded** | 2 (primary only) | 4 (primary + fallback) |
-| **Fallback latency** | ~20–40s cold-load (timeout) | ~2–4s (already loaded) |
-| **Scaling** | Auto (0–3 instances) | Fixed (1 VM) |
+| **GPU** | 1× NVIDIA RTX Pro 6000 (96 GB) | 1× NVIDIA L40S (48 GB) |
+| **Models loaded** | 4 (all, eager-loaded) | 4 (primary + fallback) |
+| **Fallback latency** | ~2–4s (already loaded) | ~2–4s (already loaded) |
+| **Scaling** | Auto (0–1 instances) | Fixed (1 VM) |
 | **Monthly cost** | ~$1,500–1,800 | ~$2,050 on-demand / ~$615 CUD |
 
 ## File Layout

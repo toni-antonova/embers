@@ -8,7 +8,7 @@
 # Guidance scale is 0.0 — the model is distilled and does NOT use
 # classifier-free guidance.
 #
-# VRAM: ~3 GB in float16 on NVIDIA L4 (24 GB total)
+# VRAM: ~3 GB in float16 on NVIDIA RTX Pro 6000 (96 GB total)
 # Speed: ~1 second per 512×512 image at 4 steps
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ class SDXLTurboModel:
 
     Satisfies the ``TextToImageModel`` protocol defined in
     ``app.models.protocol``.  Generates 512×512 RGB images in 1-4
-    denoising steps (~1 s on an L4 GPU in float16).
+    denoising steps (~1 s on an RTX Pro 6000 GPU in float16).
 
     The generated image is intended as a *canonical reference* that
     downstream mesh generators (PartCrafter / Hunyuan3D) consume to

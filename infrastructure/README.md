@@ -10,7 +10,7 @@ Client (React + Three.js)
   │  POST /generate { text: "horse", verb: "galloping" }
   │
   ▼
-Cloud Run (NVIDIA L4 24GB, ~$0.50/hr)
+Cloud Run (NVIDIA RTX Pro 6000 96GB, us-central1)
   ├── SDXL Turbo       → image    (~1s,  3GB VRAM)
   ├── PartCrafter      → meshes   (~0.5s, 4GB VRAM)  [PRIMARY]
   │   └── Fallback → Hunyuan3D-2 Turbo + Grounded SAM 2

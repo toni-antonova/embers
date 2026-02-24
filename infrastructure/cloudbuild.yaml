@@ -3,7 +3,7 @@
 # Usage:
 #   gcloud builds submit \
 #     --config infrastructure/cloudbuild.yaml \
-#     --project=lumen-pipeline --region=us-east4 \
+#     --project=lumen-pipeline --region=us-central1 \
 #     .
 #
 # Layer caching:
@@ -14,8 +14,8 @@
 # GPU + Secret Manager config lives in Terraform, not here.
 
 substitutions:
-  _IMAGE: "us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline"
-  _BASE_IMAGE: "us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base"
+  _IMAGE: "us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline"
+  _BASE_IMAGE: "us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-base"
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -12,7 +12,7 @@
 #   2. PartCrafterPipeline generates N part meshes from the white-bg image
 #   3. None outputs (decoding failures) are replaced with dummy trimeshes
 #
-# VRAM: ~4 GB in float16 on NVIDIA L4 (+ ~0.2 GB for RMBG)
+# VRAM: ~4 GB in float16 on NVIDIA RTX Pro 6000 (+ ~0.2 GB for RMBG)
 # Speed: ~5–10s per generation at 50 inference steps
 # ─────────────────────────────────────────────────────────────────────────────
 

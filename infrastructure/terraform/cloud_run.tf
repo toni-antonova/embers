@@ -26,6 +26,9 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
   # Ensure traffic always routes to the latest revision
   ingress = "INGRESS_TRAFFIC_ALL"
 
+  # RTX Pro 6000 GPU is a preview feature — requires BETA launch stage
+  launch_stage = "BETA"
+
   template {
     # ── Scaling ──────────────────────────────────────────────────────────────
     scaling {
@@ -38,9 +41,13 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
 
     # ── GPU-required annotations ─────────────────────────────────────────────
     annotations = {
-      "run.googleapis.com/gpu-type"              = var.gpu_type
       "run.googleapis.com/cpu-throttling"         = "false"
       "run.googleapis.com/startup-cpu-boost"      = "true"
+    }
+
+    # ── GPU node selector (required for RTX Pro 6000 Blackwell) ───────────────
+    node_selector {
+      accelerator = var.gpu_type
     }
 
     # ── Disable GPU zonal redundancy (avoids separate quota requirement) ─────
@@ -106,8 +113,8 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
       # ── Resource Limits ──────────────────────────────────────────────────
       resources {
         limits = {
-          cpu    = "8"
-          memory = "32Gi"
+          cpu    = "20"
+          memory = "80Gi"
           "nvidia.com/gpu" = "1"
         }
         cpu_idle          = false  # Keep CPU allocated while GPU is active

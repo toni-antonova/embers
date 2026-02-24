@@ -38,7 +38,7 @@ if [ -f "$SETUP_MARKER" ]; then
 
   # Container was removed (e.g. Docker update) — re-pull and re-run
   log "Container not found — re-pulling and re-running"
-  gcloud auth configure-docker us-east4-docker.pkg.dev,us-west1-docker.pkg.dev --quiet
+  gcloud auth configure-docker us-central1-docker.pkg.dev,us-west1-docker.pkg.dev --quiet
   docker pull "$IMAGE"
 
   API_KEY=$(gcloud secrets versions access latest --secret=lumen-api-key --project="${project_id}" --quiet)
@@ -125,7 +125,7 @@ log "Docker + NVIDIA Container Toolkit installed"
 # Step 3: Authenticate to Artifact Registry
 # ─────────────────────────────────────────────────────────────────────────────
 log "Authenticating to Artifact Registry..."
-gcloud auth configure-docker us-east4-docker.pkg.dev,us-west1-docker.pkg.dev --quiet
+gcloud auth configure-docker us-central1-docker.pkg.dev,us-west1-docker.pkg.dev --quiet
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 4: Pull the container image
