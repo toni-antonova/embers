@@ -381,8 +381,8 @@ export class AudioEngine {
      * always available — it captures audio continuously.
      */
     private processPitch(): void {
-        if (!this.pitchAnalyser || !this.pitchBuffer || !this.pitchDetector) {
-            // Pitch hardware not set up (e.g., before start() or in tests)
+        if (!this.pitchAnalyser || !this.pitchBuffer || !this.pitchDetector || !this.audioContext) {
+            // Pitch hardware not set up (e.g., before start() or after stop())
             return;
         }
 
@@ -392,7 +392,7 @@ export class AudioEngine {
         // Run Pitchy's McLeod Pitch Method
         const [pitchHz, clarity] = this.pitchDetector.findPitch(
             this.pitchBuffer,
-            this.audioContext!.sampleRate
+            this.audioContext.sampleRate
         );
 
         // Confidence = Pitchy's clarity value (0.0–1.0)

@@ -182,13 +182,16 @@ class ShapeCache:
 
         # Tier 2: Cloud Storage (with coalescing, guarded by async lock)
         if self._bucket:
+            new_event: asyncio.Event | None = None
+            event: asyncio.Event | None = None
+
             async with self._in_flight_lock:
-                # Check if another coroutine is already fetching this key
                 if key in self._in_flight:
+                    # Another coroutine is already fetching — grab a
+                    # local reference so we can safely await outside
+                    # the lock even if the fetcher cleans up _in_flight.
                     event = self._in_flight[key]
-                    # Release the lock before awaiting the event
                 else:
-                    event = None
                     # We're the first — register in-flight
                     new_event = asyncio.Event()
                     self._in_flight[key] = new_event
@@ -228,9 +231,10 @@ class ShapeCache:
                     )
                     return result
             finally:
-                new_event.set()  # Wake any waiting coroutines
-                async with self._in_flight_lock:
-                    self._in_flight.pop(key, None)
+                if new_event is not None:
+                    new_event.set()  # Wake any waiting coroutines
+                    async with self._in_flight_lock:
+                        self._in_flight.pop(key, None)
 
         self._misses += 1
         logger.debug("cache_miss", text=text, key=key)

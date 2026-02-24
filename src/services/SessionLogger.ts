@@ -55,7 +55,7 @@ export class SessionLogger {
         });
 
         // Enforce cap — evict oldest audio events first
-        if (this.events.length > MAX_EVENTS) {
+        while (this.events.length > MAX_EVENTS) {
             this.evictOldest();
         }
     }
