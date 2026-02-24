@@ -40,8 +40,8 @@ export function Canvas() {
     const [lastTranscript, setLastTranscript] = useState<TranscriptEvent | null>(null);
     const [lastSemanticEvent, setLastSemanticEvent] = useState<SemanticEvent | null>(null);
     const [cameraType, setCameraType] = useState<CameraType>('orthographic');
-    const [colorMode, setColorMode] = useState<ColorMode>('white');
-    const [sentimentEnabled, setSentimentEnabled] = useState(false);
+    const [colorMode, setColorMode] = useState<ColorMode>('color');
+    const [sentimentEnabled, setSentimentEnabled] = useState(true);
     const [sentimentMovementEnabled, setSentimentMovementEnabled] = useState(true);
 
     // Service singletons (persist across canvas remounts)

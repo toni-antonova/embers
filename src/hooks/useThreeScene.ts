@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { ParticleSystem } from '../engine/ParticleSystem';
 import { UniformBridge } from '../engine/UniformBridge';
 import { SemanticBackend } from '../services/SemanticBackend';
+import { SERManager } from '../audio/SERManager';
 import type { CameraType } from '../components/TuningPanel';
 import type { Singletons } from './useSingletons';
 
@@ -122,6 +123,25 @@ export function useThreeScene(
             sessionLogger, serverClient,
         );
         semanticBackendRef.current = semanticBackend;
+
+        // ── SER MANAGER (Speech Emotion Recognition) ──────────────
+        // Bridges AudioEngine's mic stream → SER Web Worker for
+        // prosodic emotion detection. Polls until AudioEngine is ready
+        // (i.e., user has clicked the mic button).
+        const serManager = new SERManager(audioEngine, uniformBridge);
+        let serPollCount = 0;
+        const serPollId = setInterval(() => {
+            if (serManager.active) {
+                clearInterval(serPollId);
+                return;
+            }
+            serManager.start();
+            serPollCount++;
+            if (serPollCount > 60) { // Give up after ~2 minutes
+                clearInterval(serPollId);
+                console.warn('[SER Manager] Gave up waiting for AudioEngine after 2 min');
+            }
+        }, 2000);
 
         // ── SERVER WARM-UP ────────────────────────────────────────────
         serverClient?.warmUp();
@@ -232,7 +252,20 @@ export function useThreeScene(
                 semanticBackendRef.current?.lastState || null,
             );
 
-            // Semantic pipeline runs first — may set overrides UniformBridge needs
+            // ── SPLIT-PHASE UPDATE PROTOCOL ──────────────────────────────
+            // Phase 1: ParticleSystem writes config baselines to uniforms.
+            // Phase 2: SemanticBackend + UniformBridge apply modulations on top.
+            // Phase 3: ParticleSystem runs GPU compute with fully modulated values.
+            //
+            // Previously, ParticleSystem.update() did phases 1+3 together,
+            // which meant UniformBridge's emotion/transition overrides were
+            // silently overwritten before the GPU ever saw them.
+            if (particleSystemRef.current) {
+                // Phase 1: Write config baselines (spring, drag, noise, etc.)
+                particleSystemRef.current.writeConfigUniforms(dt);
+            }
+
+            // Phase 2: Semantic pipeline sets overrides, UniformBridge modulates
             semanticBackendRef.current?.update(dt);
             uniformBridgeRef.current?.update();
 
@@ -257,7 +290,8 @@ export function useThreeScene(
                     raycasterRef.current.ray.intersectPlane(planeZ, targetVec);
                     particleSystemRef.current.setPointer(targetVec, true);
                 }
-                particleSystemRef.current.update(dt);
+                // Phase 3: GPU compute sees fully modulated uniforms
+                particleSystemRef.current.computeAndRender();
             }
 
             // Render: motion blur fade → clear depth → particles
@@ -297,6 +331,9 @@ export function useThreeScene(
                 particleSystemRef.current.dispose();
                 particleSystemRef.current = null;
             }
+
+            clearInterval(serPollId);
+            serManager.stop();
 
             renderer.dispose();
             renderer.forceContextLoss();

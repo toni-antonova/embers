@@ -55,8 +55,7 @@ const EMOTION_VAD: Record<string, { valence: number; arousal: number; dominance:
     surprise: { valence: 0.3, arousal: 0.8, dominance: 0.4 },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let classifier: any = null;
+let classifier: any = null; // HF pipeline() return type
 let isReady = false;
 
 /**
@@ -66,20 +65,37 @@ async function initModel(): Promise<void> {
     try {
         const { pipeline } = await import('@huggingface/transformers');
 
-        classifier = await pipeline(
-            'audio-classification',
-            SER_MODEL_ID,
-            {
-                device: 'webgpu' as any,
-                dtype: 'fp32',
-            }
-        );
+        // Try WebGPU first (fast: ~200ms inference), fall back to WASM (universal: ~1-2s)
+        let device: 'webgpu' | 'wasm' = 'webgpu';
+        try {
+            classifier = await pipeline(
+                'audio-classification',
+                SER_MODEL_ID,
+                {
+                    device: 'webgpu',
+                    dtype: 'fp32' as const,
+                }
+            );
+            console.log('[SER Worker] ✅ Model loaded (WebGPU backend)');
+        } catch (gpuErr) {
+            console.warn('[SER Worker] WebGPU unavailable, falling back to WASM:', gpuErr);
+            device = 'wasm';
+            classifier = await pipeline(
+                'audio-classification',
+                SER_MODEL_ID,
+                {
+                    device: 'wasm',
+                    dtype: 'fp32' as const,
+                }
+            );
+            console.log('[SER Worker] ✅ Model loaded (WASM fallback — inference will be slower but works everywhere)');
+        }
 
         isReady = true;
         postResponse({ type: 'ready' });
-        console.log('[SER Worker] ✅ Model loaded');
+        console.log(`[SER Worker] Backend: ${device}`);
     } catch (err) {
-        console.warn('[SER Worker] Model load failed:', err);
+        console.warn('[SER Worker] ❌ Model load failed completely (both WebGPU and WASM):', err);
         postResponse({
             type: 'error',
             error: `SER model load failed: ${err instanceof Error ? err.message : String(err)}`,
