@@ -155,6 +155,38 @@ describe('ServerClient', () => {
         expect(opts.headers['X-API-Key']).toBe(API_KEY);
     });
 
+    it('isConnected starts false', () => {
+        const client = new ServerClient(BASE_URL, API_KEY);
+        expect(client.isConnected).toBe(false);
+    });
+
+    it('isConnected becomes true after successful warmUp', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const client = new ServerClient(BASE_URL, API_KEY);
+        client.warmUp();
+
+        // Wait for the fire-and-forget promise to resolve
+        await vi.waitFor(() => {
+            expect(client.isConnected).toBe(true);
+        });
+    });
+
+    it('isConnected becomes true after successful generateShape', async () => {
+        const raw = makeRawResponse();
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(raw),
+        }));
+
+        const client = new ServerClient(BASE_URL, API_KEY);
+        expect(client.isConnected).toBe(false);
+
+        await client.generateShape('horse');
+        expect(client.isConnected).toBe(true);
+    });
+
     it('preserves metadata fields from response', async () => {
         const raw = makeRawResponse();
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
