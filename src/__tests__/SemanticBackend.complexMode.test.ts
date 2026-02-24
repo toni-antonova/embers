@@ -46,7 +46,7 @@ function createMockParticleSystem() {
         setTarget: vi.fn(),
         setTargetTexture: vi.fn(),
         morphTargets: {
-            hasTarget: vi.fn((_: string) => false),
+            hasTarget: vi.fn().mockReturnValue(false),
         },
         velocityVariable: {
             material: { uniforms: { uDelta: { value: 0.016 } } }

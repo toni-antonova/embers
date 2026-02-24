@@ -162,6 +162,7 @@ export class SpeechEngine {
             try {
                 this.recognition.abort();
             } catch {
+                // abort() can throw if recognition is already stopped; safe to ignore
             }
             this.recognition = null;
         }

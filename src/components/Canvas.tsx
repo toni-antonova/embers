@@ -151,7 +151,7 @@ export function Canvas() {
                 </div>
             ) : (
                 <>
-                    <GhostTitle />
+                    <GhostTitle speechEngine={speechEngine} semanticBackend={semanticBackendRef.current} />  {/* eslint-disable-line react-hooks/refs */}
                     <canvas
                         key={canvasKey}
                         ref={canvasRef}

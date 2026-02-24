@@ -66,7 +66,7 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerPro
     const toggleMode = () => {
         const next = !complexMode;
         setComplexMode(next);
-        tuningConfig.complexMode = next;
+        Object.assign(tuningConfig, { complexMode: next });
     };
 
     // ── MIC TOGGLE ───────────────────────────────────────────────────

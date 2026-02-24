@@ -472,7 +472,7 @@ function StatusRow({ label, statusKey, textRefs, dotRefs }: {
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {/* eslint-disable-next-line react-hooks/immutability -- intentional imperative DOM ref */}
                 <span
-                    ref={(el) => { if (dotRefs.current) dotRefs.current[statusKey] = el; }}
+                    ref={(el) => { if (dotRefs.current) dotRefs.current[statusKey] = el; }} // eslint-disable-line react-hooks/immutability
                     style={{
                         width: '6px',
                         height: '6px',
