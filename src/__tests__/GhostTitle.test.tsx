@@ -74,11 +74,12 @@ afterEach(() => {
 // ══════════════════════════════════════════════════════════════════════
 
 describe('GhostTitle — Placeholder', () => {
-    it('renders empty ghost text before any speech', () => {
+    it('shows empty placeholder before any speech', () => {
         const { container } = render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
-        const textSpan = container.querySelector('.ghost-title__text');
-        expect(textSpan).toBeInTheDocument();
-        expect(textSpan?.textContent).toBe('');
+        // PLACEHOLDER_TEXT is '' — verify the placeholder span exists but no ghost-word spans
+        const placeholderSpan = container.querySelector('.ghost-title__text');
+        expect(placeholderSpan).toBeInTheDocument();
+        expect(container.querySelectorAll('.ghost-word').length).toBe(0);
     });
 
     it('subscribes to SpeechEngine on mount', () => {
@@ -105,13 +106,14 @@ describe('GhostTitle — Live Transcript', () => {
     });
 
     it('removes placeholder after first speech', () => {
-        render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
+        const { container } = render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
 
         act(() => {
             mockSpeech.pushTranscript('hello', true);
         });
 
-        expect(screen.queryByText('speak to shape light')).not.toBeInTheDocument();
+        // Placeholder span should be replaced by live transcript mode
+        expect(container.querySelector('.ghost-title__text--live')).toBeInTheDocument();
     });
 
     it('ignores interim (non-final) transcripts', () => {
@@ -121,9 +123,9 @@ describe('GhostTitle — Live Transcript', () => {
             mockSpeech.pushTranscript('partial text', false);
         });
 
-        // No final words should appear — ghost text stays empty
-        const words = container.querySelectorAll('.ghost-word');
-        expect(words.length).toBe(0);
+        // Placeholder should still be visible — no live transcript mode
+        expect(container.querySelector('.ghost-title__text--live')).not.toBeInTheDocument();
+        expect(container.querySelectorAll('.ghost-word').length).toBe(0);
     });
 
     it('accumulates words from multiple transcripts', () => {
