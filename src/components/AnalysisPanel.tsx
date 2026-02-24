@@ -1,11 +1,18 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
 import { WorkspaceEngine } from '../engine/WorkspaceEngine';
 import { SemanticBackend } from '../services/SemanticBackend';
+import type { SemanticEvent } from '../services/SemanticBackend';
 import { ParticleSystem } from '../engine/ParticleSystem';
 import { SpeechEngine } from '../services/SpeechEngine';
 import type { TranscriptEvent } from '../services/SpeechEngine';
 import type { SessionLogger } from '../services/SessionLogger';
+import {
+    accumulateGhostWords,
+    cleanupExpiredWords,
+    ghostWordOpacity,
+} from '../services/GhostTranscript';
+import type { GhostWord } from '../services/GhostTranscript';
 
 interface AnalysisPanelProps {
     audioEngine: AudioEngine | null;
@@ -13,6 +20,7 @@ interface AnalysisPanelProps {
     semanticBackend: SemanticBackend | null;
     particleSystem: ParticleSystem | null;
     lastTranscript: TranscriptEvent | null;
+    lastSemanticEvent: SemanticEvent | null;
     sessionLogger: SessionLogger | null;
     speechEngine: SpeechEngine | null;
     serActive: boolean;
@@ -36,12 +44,15 @@ function updateText(key: string, text: string, refs: React.MutableRefObject<Reco
     }
 }
 
+const GHOST_CLEANUP_MS = 200;
+
 export function AnalysisPanel({
     audioEngine,
     workspaceEngine,
     semanticBackend,
     particleSystem,
     lastTranscript,
+    lastSemanticEvent,
     sessionLogger,
     speechEngine,
     serActive
@@ -66,6 +77,40 @@ export function AnalysisPanel({
     const requestRef = useRef<number>(0);
     const lastFpsTimeRef = useRef<number>(0);
     const framesRef = useRef<number>(0);
+
+    // ── GHOST TRANSCRIPT STATE ───────────────────────────────────────
+    const [ghostWords, setGhostWords] = useState<GhostWord[]>([]);
+    const ghostIdCounter = useRef(0);
+    const ghostScrollRef = useRef<HTMLDivElement>(null);
+    const prevTranscriptRef = useRef<string | null>(null);
+
+    // Accumulate words from new final transcripts
+    useEffect(() => {
+        if (!lastTranscript || !lastTranscript.isFinal) return;
+        if (lastTranscript.text === prevTranscriptRef.current) return;
+        prevTranscriptRef.current = lastTranscript.text;
+
+        setGhostWords(prev => {
+            const result = accumulateGhostWords(prev, lastTranscript, lastSemanticEvent, ghostIdCounter.current);
+            ghostIdCounter.current = result.nextId;
+            return result.words;
+        });
+    }, [lastTranscript, lastSemanticEvent]);
+
+    // Auto-scroll ghost transcript to bottom
+    useEffect(() => {
+        if (ghostScrollRef.current) {
+            ghostScrollRef.current.scrollTop = ghostScrollRef.current.scrollHeight;
+        }
+    }, [ghostWords]);
+
+    // Periodic cleanup of expired ghost words — re-render to update opacity
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setGhostWords(prev => cleanupExpiredWords(prev));
+        }, GHOST_CLEANUP_MS);
+        return () => clearInterval(timer);
+    }, []);
 
 
     // Main animation loop for updating values directly in the DOM
@@ -278,8 +323,44 @@ export function AnalysisPanel({
             </Section>
 
             <Section title="TRANSCRIPT">
-                <div style={{ opacity: lastTranscript ? (lastTranscript.isFinal ? 1 : 0.6) : 0.3, fontStyle: 'italic', minHeight: '3em' }}>
-                    {lastTranscript ? lastTranscript.text : '...'}
+                <div
+                    ref={ghostScrollRef}
+                    style={{
+                        minHeight: '3em',
+                        maxHeight: '8em',
+                        overflowY: 'auto',
+                        lineHeight: 1.6,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '3px',
+                        alignContent: 'flex-start',
+                    }}
+                >
+                    {ghostWords.length > 0 ? (
+                        ghostWords.map(gw => {
+                            const opacity = ghostWordOpacity(gw);
+                            return (
+                                <span
+                                    key={gw.id}
+                                    style={{
+                                        opacity,
+                                        fontStyle: 'italic',
+                                        color: gw.isKeyword ? '#ffcc66' : 'rgba(255,255,255,0.9)',
+                                        fontWeight: gw.isKeyword ? 'bold' : 'normal',
+                                        transition: 'opacity 0.2s linear',
+                                    }}
+                                >
+                                    {gw.text}
+                                </span>
+                            );
+                        })
+                    ) : (
+                        <span style={{ opacity: 0.3, fontStyle: 'italic' }}>
+                            {lastTranscript && !lastTranscript.isFinal
+                                ? '⏳ listening…'
+                                : '...'}
+                        </span>
+                    )}
                 </div>
             </Section>
 

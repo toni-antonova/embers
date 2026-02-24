@@ -189,6 +189,7 @@ export function Canvas() {
                 semanticBackend={semanticBackendRef.current}  /* eslint-disable-line react-hooks/refs */
                 particleSystem={particleSystemRef.current}  /* eslint-disable-line react-hooks/refs */
                 lastTranscript={lastTranscript}
+                lastSemanticEvent={lastSemanticEvent}
                 sessionLogger={singletons.sessionLogger}
                 speechEngine={speechEngine}
                 serActive={serManagerRef.current?.active ?? false}  /* eslint-disable-line react-hooks/refs */
