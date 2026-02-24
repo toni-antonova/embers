@@ -74,9 +74,12 @@ afterEach(() => {
 // ══════════════════════════════════════════════════════════════════════
 
 describe('GhostTitle — Placeholder', () => {
-    it('shows placeholder text before any speech', () => {
-        render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
-        expect(screen.getByText('speak to shape light')).toBeInTheDocument();
+    it('shows empty placeholder before any speech', () => {
+        const { container } = render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
+        // PLACEHOLDER_TEXT is '' — verify the placeholder span exists but no ghost-word spans
+        const placeholderSpan = container.querySelector('.ghost-title__text');
+        expect(placeholderSpan).toBeInTheDocument();
+        expect(container.querySelectorAll('.ghost-word').length).toBe(0);
     });
 
     it('subscribes to SpeechEngine on mount', () => {
@@ -103,24 +106,26 @@ describe('GhostTitle — Live Transcript', () => {
     });
 
     it('removes placeholder after first speech', () => {
-        render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
+        const { container } = render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
 
         act(() => {
             mockSpeech.pushTranscript('hello', true);
         });
 
-        expect(screen.queryByText('speak to shape light')).not.toBeInTheDocument();
+        // Placeholder span should be replaced by live transcript mode
+        expect(container.querySelector('.ghost-title__text--live')).toBeInTheDocument();
     });
 
     it('ignores interim (non-final) transcripts', () => {
-        render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
+        const { container } = render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
 
         act(() => {
             mockSpeech.pushTranscript('partial text', false);
         });
 
-        // Placeholder should still be visible
-        expect(screen.getByText('speak to shape light')).toBeInTheDocument();
+        // Placeholder should still be visible — no live transcript mode
+        expect(container.querySelector('.ghost-title__text--live')).not.toBeInTheDocument();
+        expect(container.querySelectorAll('.ghost-word').length).toBe(0);
     });
 
     it('accumulates words from multiple transcripts', () => {
