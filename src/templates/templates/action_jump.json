@@ -14,7 +14,7 @@
     "whole_body": {
         "primitive": "arc_translate",
         "params": {
-            "apex_height": 1.5,
+            "apex_height": 5.0,
             "forward_distance": "{{speed * 2.0}}",
             "direction": [
                 0,
@@ -49,7 +49,7 @@
                     0,
                     0
                 ],
-                "amplitude": 0.15,
+                "amplitude": 0.8,
                 "frequency": "{{speed * 1.0}}",
                 "phase": 0
             },

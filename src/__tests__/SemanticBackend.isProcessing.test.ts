@@ -31,6 +31,9 @@ function createMockSpeechEngine() {
 }
 
 function createMockParticleSystem() {
+    const uniforms: Record<string, { value: unknown }> = {
+        uDelta: { value: 0.016 },
+    };
     return {
         setTarget: vi.fn(),
         setTargetTexture: vi.fn(),
@@ -38,10 +41,12 @@ function createMockParticleSystem() {
             hasTarget: vi.fn().mockReturnValue(false),
         },
         velocityVariable: {
-            material: { uniforms: { uDelta: { value: 0.016 } } }
+            material: { uniforms }
         },
         size: 128,
+        time: 0,
         currentTarget: 'ring',
+        getVelocityUniforms: vi.fn().mockReturnValue(uniforms),
     } as any;
 }
 

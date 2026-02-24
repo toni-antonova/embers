@@ -226,6 +226,10 @@ export class MotionPlanManager {
      * @param texture - DataTexture where R=partId (int float), G=attachmentWeight
      */
     setPartAttributes(texture: THREE.DataTexture): void {
+        // Dispose previous texture to prevent GPU memory leak
+        if (this.partAttrTexture && this.partAttrTexture !== texture) {
+            this.partAttrTexture.dispose();
+        }
         this.partAttrTexture = texture;
         this.uniforms.tPartAttr.value = texture;
     }

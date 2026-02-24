@@ -9,6 +9,7 @@
 
 import * as THREE from 'three';
 import type { ServerShapeResponse } from '../services/ServerClient';
+import type { PartInfo } from '../templates/template-types';
 
 export class ServerShapeAdapter {
     /**
@@ -71,9 +72,6 @@ export class ServerShapeAdapter {
      * Create a part ID texture — a DataTexture where each pixel's
      * R channel contains the part ID for that particle.
      *
-     * The particle system doesn't use this yet, but it's infrastructure
-     * for per-part animation templates later.
-     *
      * @param response - Decoded server response
      * @param textureSize - Texture dimension (e.g. 128)
      */
@@ -108,5 +106,136 @@ export class ServerShapeAdapter {
         );
         texture.needsUpdate = true;
         return texture;
+    }
+
+
+    // ── PART LIST + ATTACHMENT WEIGHTS (for motion plan system) ────────
+
+    /**
+     * Build a PartInfo[] from the server response.
+     *
+     * Each unique partId in the response becomes one PartInfo.
+     * The shader uses 1-based part IDs (0 = unassigned), so we offset
+     * the server's 0-based IDs by +1. parentId is set to null (flat
+     * hierarchy — sufficient for glob-based template matching).
+     *
+     * @param response - Decoded server response with partIds + partNames
+     * @returns PartInfo[] ready for template-parser.ts
+     */
+    static buildPartList(response: ServerShapeResponse): PartInfo[] {
+        const seen = new Set<number>();
+        const parts: PartInfo[] = [];
+
+        for (let i = 0; i < response.partIds.length; i++) {
+            const rawId = response.partIds[i];
+            if (seen.has(rawId)) continue;
+            seen.add(rawId);
+
+            parts.push({
+                id: rawId + 1, // shift to 1-based for shader (0 = unassigned)
+                name: rawId < response.partNames.length
+                    ? response.partNames[rawId]
+                    : `part_${rawId}`,
+                parentId: null,
+            });
+        }
+
+        return parts;
+    }
+
+    /**
+     * Compute per-particle attachment weights from the server response.
+     *
+     * For each part, we compute its centroid. Then for every particle
+     * we compute the normalized distance from its part's centroid:
+     *   weight = dist / maxDist
+     *
+     * Particles near the center of a part get weight ≈ 0 (joint-like,
+     * minimal displacement). Particles at the extremity get weight ≈ 1
+     * (full displacement). This creates organic, gradient-based motion
+     * rather than rigid per-part blocks.
+     *
+     * The returned array has `textureSize * textureSize` entries —
+     * expanded from the server's 2048 points the same way positions are.
+     *
+     * @param response - Decoded server response
+     * @param textureSize - Particle system texture dimension (e.g. 128)
+     * @returns Float32Array of attachment weights (one per particle)
+     */
+    static computeAttachmentWeights(
+        response: ServerShapeResponse,
+        textureSize: number,
+    ): Float32Array {
+        const serverCount = response.partIds.length;
+        const positions = response.positions;
+        const partIds = response.partIds;
+
+        // Step 1: compute per-part centroid
+        const centroidSums: Record<number, [number, number, number, number]> = {};
+        for (let i = 0; i < serverCount; i++) {
+            const pid = partIds[i];
+            if (!centroidSums[pid]) centroidSums[pid] = [0, 0, 0, 0];
+            const s = centroidSums[pid];
+            s[0] += positions[i * 3 + 0];
+            s[1] += positions[i * 3 + 1];
+            s[2] += positions[i * 3 + 2];
+            s[3] += 1;
+        }
+        const centroids: Record<number, [number, number, number]> = {};
+        for (const [pid, s] of Object.entries(centroidSums)) {
+            centroids[Number(pid)] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]];
+        }
+
+        // Step 2: compute per-particle distance from its part centroid
+        const serverWeights = new Float32Array(serverCount);
+        const maxDistPerPart: Record<number, number> = {};
+        for (let i = 0; i < serverCount; i++) {
+            const pid = partIds[i];
+            const c = centroids[pid];
+            const dx = positions[i * 3 + 0] - c[0];
+            const dy = positions[i * 3 + 1] - c[1];
+            const dz = positions[i * 3 + 2] - c[2];
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            serverWeights[i] = dist;
+            maxDistPerPart[pid] = Math.max(maxDistPerPart[pid] ?? 0, dist);
+        }
+
+        // Step 3: normalize to [0, 1]
+        for (let i = 0; i < serverCount; i++) {
+            const maxD = maxDistPerPart[partIds[i]];
+            serverWeights[i] = maxD > 0.001 ? serverWeights[i] / maxD : 1.0;
+        }
+
+        // Step 4: expand to full particle count (same wrapping as positions)
+        const totalPixels = textureSize * textureSize;
+        const weights = new Float32Array(totalPixels);
+        for (let i = 0; i < totalPixels; i++) {
+            weights[i] = serverWeights[i % serverCount];
+        }
+
+        return weights;
+    }
+
+    /**
+     * Build the expanded partIds array (one per particle).
+     *
+     * Shifts server's 0-based IDs to 1-based (matching buildPartList)
+     * and expands from 2048 to textureSize² using modular wrapping.
+     *
+     * @param response - Decoded server response
+     * @param textureSize - Particle system texture dimension
+     * @returns Uint8Array of 1-based part IDs (one per particle)
+     */
+    static expandPartIds(
+        response: ServerShapeResponse,
+        textureSize: number,
+    ): Uint8Array {
+        const serverCount = response.partIds.length;
+        const totalPixels = textureSize * textureSize;
+        const expanded = new Uint8Array(totalPixels);
+        for (let i = 0; i < totalPixels; i++) {
+            expanded[i] = response.partIds[i % serverCount] + 1; // 1-based
+        }
+        return expanded;
     }
 }

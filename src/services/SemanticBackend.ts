@@ -1,6 +1,14 @@
 /**
  * SemanticBackend — Speech → Classification → Morph pipeline orchestrator.
  * Uses frame-driven queued transcripts to avoid race conditions.
+ *
+ * A2/A3 MOTION PLAN INTEGRATION:
+ * When a server shape arrives with partIds, this module:
+ *   1. Builds a PartInfo[] from the server response
+ *   2. Creates part attribute textures (partId + attachment weights)
+ *   3. Uses Tier1Orchestrator to resolve verbs → templates
+ *   4. Calls parseTemplate() → MotionPlanManager.crossfadeTo()
+ *   5. Calls motionPlanManager.update() every frame for crossfade
  */
 
 import { SpeechEngine } from './SpeechEngine';
@@ -11,10 +19,51 @@ import type { KeywordMapping } from '../data/keywords';
 import { ParticleSystem } from '../engine/ParticleSystem';
 import { UniformBridge } from '../engine/UniformBridge';
 import { ServerShapeAdapter } from '../engine/ServerShapeAdapter';
-import type { ServerClient } from './ServerClient';
+import { MotionPlanManager } from '../engine/particle-system-extensions';
+import type { ServerClient, ServerShapeResponse } from './ServerClient';
 import type { SessionLogger } from './SessionLogger';
 import type { AudioEngine } from './AudioEngine';
 import type { TuningConfig } from './TuningConfig';
+import { Tier1Orchestrator } from '../lookup/tier1-orchestrator';
+import { TemplateLibrary } from '../templates/template-library';
+import { parseTemplate } from '../templates/template-parser';
+import type { PartInfo, TemplateJSON } from '../templates/template-types';
+import type { VerbHashData } from '../lookup/verb-hash-table';
+
+// Import all 20 template JSONs
+import actionEat from '../templates/templates/action_eat.json';
+import actionJump from '../templates/templates/action_jump.json';
+import actionNod from '../templates/templates/action_nod.json';
+import actionShake from '../templates/templates/action_shake.json';
+import actionSpeak from '../templates/templates/action_speak.json';
+import actionSpin from '../templates/templates/action_spin.json';
+import actionStretch from '../templates/templates/action_stretch.json';
+import actionWave from '../templates/templates/action_wave.json';
+import ambientFloat from '../templates/templates/ambient_float.json';
+import ambientIdle from '../templates/templates/ambient_idle.json';
+import ambientSway from '../templates/templates/ambient_sway.json';
+import emotionHappy from '../templates/templates/emotion_happy.json';
+import locomotionBiped from '../templates/templates/locomotion_biped.json';
+import locomotionFly from '../templates/templates/locomotion_fly.json';
+import locomotionHop from '../templates/templates/locomotion_hop.json';
+import locomotionQuadruped from '../templates/templates/locomotion_quadruped.json';
+import locomotionSwim from '../templates/templates/locomotion_swim.json';
+import transformDissolve from '../templates/templates/transform_dissolve.json';
+import transformExplode from '../templates/templates/transform_explode.json';
+import transformGrow from '../templates/templates/transform_grow.json';
+
+// Import verb hash table (pre-generated from generate-hash-table.ts)
+import verbHashData from '../../data/verb-hash-table.json';
+
+const ALL_TEMPLATES: TemplateJSON[] = [
+    actionEat, actionJump, actionNod, actionShake, actionSpeak,
+    actionSpin, actionStretch, actionWave, ambientFloat, ambientIdle,
+    ambientSway, emotionHappy, locomotionBiped, locomotionFly,
+    locomotionHop, locomotionQuadruped, locomotionSwim,
+    transformDissolve, transformExplode, transformGrow,
+] as unknown as TemplateJSON[];
+
+const MOTION_CROSSFADE_MS = 800;
 
 // Every semantic decision is logged for session replay / debugging
 export interface SemanticEvent {
@@ -85,6 +134,16 @@ export class SemanticBackend {
     private audioEngine: AudioEngine | null;
     private tuningConfig: TuningConfig | null;
 
+    // ── A2/A3 Motion Plan Integration ──────────────────────────────
+    // Lazy-initialized: MotionPlanManager injects uniforms into the
+    // velocity shader, so it must only be created AFTER
+    // gpuCompute.init() has compiled the shader. We defer creation
+    // to when the first server shape arrives.
+    private motionPlanManager: MotionPlanManager | null = null;
+    private tier1Orchestrator: Tier1Orchestrator;
+    private currentPartList: PartInfo[] | null = null;
+    private lastVerbTemplateId: string | null = null;
+
     private currentTarget: string = DEFAULT_SHAPE;
     private currentAbstraction: number = 0.5;
     private targetAbstraction: number = 0.5;
@@ -142,6 +201,18 @@ export class SemanticBackend {
         this.audioEngine = audioEngine || null;
         this.tuningConfig = tuningConfig || null;
 
+        // ── Initialize A2/A3 Motion Plan System ──────────────────
+        // NOTE: MotionPlanManager is lazy-initialized (see ensureMotionPlanManager)
+        // to avoid injecting uniforms before the velocity shader is compiled.
+
+        const templateLibrary = new TemplateLibrary();
+        templateLibrary.loadTemplates(ALL_TEMPLATES);
+
+        this.tier1Orchestrator = new Tier1Orchestrator(
+            verbHashData as VerbHashData,
+            templateLibrary
+        );
+
         this.unsubscribe = this.speechEngine.onTranscript(
             (event) => this.pendingTranscripts.push(event)
         );
@@ -149,11 +220,15 @@ export class SemanticBackend {
         const mode = this.tuningConfig?.complexMode ? 'complex' : 'simple';
         console.log(
             `[SemanticBackend] Wired: Speech → Classification → Morph (mode: ${mode})` +
-            (this.serverClient ? ' | Server shapes: ✅ enabled' : ' | Server shapes: ❌ disabled (no ServerClient)')
+            (this.serverClient ? ' | Server shapes: ✅ enabled' : ' | Server shapes: ❌ disabled (no ServerClient)') +
+            ` | Motion plans: ✅ ${templateLibrary.size} templates, ${this.tier1Orchestrator.hashTableSize} verbs (lazy init)`
         );
     }
 
     update(dt: number): void {
+        // Update motion plan crossfade animation (no-op if not yet initialized)
+        this.motionPlanManager?.update();
+
         const pending = this.pendingTranscripts;
         this.pendingTranscripts = [];
         for (const event of pending) {
@@ -282,6 +357,10 @@ export class SemanticBackend {
             this.unsubscribe();
             this.unsubscribe = null;
         }
+        this.motionPlanManager?.dispose();
+        this.tier1Orchestrator.dispose();
+        this.currentPartList = null;
+        this.lastVerbTemplateId = null;
         this.pendingTranscripts = [];
         this.pendingFullText = null;
         this.uniformBridge.abstractionOverride = null;
@@ -312,6 +391,9 @@ export class SemanticBackend {
         this.sessionLogger?.log('transcript', { text: event.text, isFinal: event.isFinal });
 
         if (!event.isFinal) return;
+
+        // ── Attempt verb → motion plan resolution ──────────────────
+        this.tryActivateMotionPlan(event.text);
 
         const isComplex = this.tuningConfig?.complexMode ?? false;
 
@@ -624,6 +706,9 @@ export class SemanticBackend {
                 this.particleSystem.setTargetTexture(texture, word);
                 this.currentTarget = word;
 
+                // ── A2/A3: extract part attributes + activate motion plan ──
+                this.onServerShapeReceived(response, prompt);
+
                 // Cancel hierarchy placeholder traversal — the real
                 // server shape has landed. Without this, hierarchy stage 2/3
                 // would overwrite the server shape ~1.5s later.
@@ -670,6 +755,10 @@ export class SemanticBackend {
                 this.anticipationElapsed = 0;
                 this.uniformBridge.springOverride = null;
                 this.uniformBridge.noiseOverride = null;
+
+                // Clear motion plan on failure — no parts to animate
+                this.currentPartList = null;
+                this.motionPlanManager?.clearMotionPlan();
 
                 if (fallbackTarget !== this.currentTarget) {
                     this.currentTarget = fallbackTarget;
@@ -733,5 +822,189 @@ export class SemanticBackend {
 
     get isIdleDecayActive(): boolean {
         return this.idleDecayActive;
+    }
+
+
+    // ── A2/A3 MOTION PLAN INTEGRATION ──────────────────────────────────
+
+    /**
+     * Called when a server shape response arrives.
+     * Extracts part attributes and tries to activate a motion plan
+     * based on the last resolved verb template.
+     */
+    private onServerShapeReceived(response: ServerShapeResponse, prompt: string): void {
+        // ── DEBUG: raw server part data ──
+        const uniqueIds = new Set(response.partIds);
+        console.log(
+            `[SemanticBackend] 🔬 Raw server part data:\n` +
+            `  partNames: [${response.partNames.join(', ')}]\n` +
+            `  unique partIds: [${[...uniqueIds].join(', ')}] (${response.partIds.length} total vertices)\n` +
+            `  templateType: ${response.templateType}\n` +
+            `  pipeline: ${response.pipeline}`,
+        );
+
+        // Build part info list from server response
+        this.currentPartList = ServerShapeAdapter.buildPartList(response);
+
+        // Create part attribute texture (partId + attachment weight per particle)
+        const expandedPartIds = ServerShapeAdapter.expandPartIds(
+            response,
+            this.particleSystem.size,
+        );
+        const attachmentWeights = ServerShapeAdapter.computeAttachmentWeights(
+            response,
+            this.particleSystem.size,
+        );
+        // Lazy-init MotionPlanManager on first server shape arrival
+        // (deferred to avoid injecting uniforms before shader compilation)
+        if (!this.motionPlanManager) {
+            this.motionPlanManager = new MotionPlanManager(
+                this.particleSystem.getVelocityUniforms(),
+                this.particleSystem.size,
+            );
+            console.log('[SemanticBackend] 📦 MotionPlanManager lazy-initialized');
+        }
+
+        this.motionPlanManager.createPartAttributeTexture(
+            expandedPartIds,
+            attachmentWeights,
+        );
+
+        console.log(
+            `[SemanticBackend] 🦴 Part attributes set: ${this.currentPartList.length} parts ` +
+            `(${this.currentPartList.map(p => p.name).join(', ')})`,
+        );
+
+        // If we already have a resolved verb template, activate it now
+        // that we have part data to animate
+        if (this.lastVerbTemplateId) {
+            this.activateMotionPlanForCurrentParts(prompt);
+        } else {
+            // Try to resolve a default ambient idle motion
+            this.activateDefaultMotionPlan();
+        }
+    }
+
+    /**
+     * Try to resolve a verb in the transcript text and store the result.
+     * If we have part attributes, activate the motion plan immediately.
+     */
+    private tryActivateMotionPlan(text: string): void {
+        const result = this.tier1Orchestrator.resolveSync(text);
+        if (!result || !result.template) return;
+
+        this.lastVerbTemplateId = result.templateId;
+
+        console.log(
+            `[SemanticBackend] 🎬 Tier1 verb match: "${result.parsed.verb}" → ` +
+            `${result.templateId} (${result.latencyMs.toFixed(1)}ms, source=${result.source})`,
+        );
+
+        // Log the motion plan event
+        this.sessionLogger?.log('motion', {
+            verb: result.parsed.verb,
+            templateId: result.templateId,
+            source: result.source,
+            latencyMs: result.latencyMs,
+            adverb: result.parsed.adverb || null,
+            overrides: result.overrides,
+        });
+
+        // Only activate if we have part data to animate
+        if (this.currentPartList && this.currentPartList.length > 0) {
+            const plan = parseTemplate(
+                result.template,
+                this.currentPartList,
+                {
+                    ...result.overrides,
+                    startTime: this.particleSystem.time,
+                },
+            );
+
+            // Diagnostic: show which per-part motions were matched
+            const matchedPartIds = Object.keys(plan.parts).map(Number).filter(id => id > 0);
+            console.log(
+                `[SemanticBackend] 🔍 Per-part matches: ${matchedPartIds.length}/${this.currentPartList.length} parts matched rules\n` +
+                `  Parts available: [${this.currentPartList.map(p => `${p.id}:${p.name}`).join(', ')}]\n` +
+                `  Parts with motion: [${matchedPartIds.join(', ')}]\n` +
+                `  Template rules: ${result.template.part_rules?.length ?? 0} rules`,
+            );
+
+            if (this.motionPlanManager?.isActive) {
+                this.motionPlanManager.crossfadeTo(plan, MOTION_CROSSFADE_MS);
+            } else {
+                this.motionPlanManager?.setMotionPlan(plan);
+            }
+
+            console.log(
+                `[SemanticBackend] ✨ Motion plan activated: ${result.templateId} ` +
+                `(${this.currentPartList.length} parts, speed=${plan.speedScale})`,
+            );
+        } else {
+            console.log(
+                `[SemanticBackend] 🎬 Verb matched but no part data yet — ` +
+                `will activate when server shape arrives`,
+            );
+        }
+    }
+
+    /**
+     * Activate a motion plan using the last resolved verb template
+     * and the current part list. Called when server shape arrives
+     * and we already have a stored verb template.
+     */
+    private activateMotionPlanForCurrentParts(prompt: string): void {
+        if (!this.lastVerbTemplateId || !this.currentPartList) return;
+
+        const result = this.tier1Orchestrator.resolveSync(prompt);
+        const templateId = result?.templateId ?? this.lastVerbTemplateId;
+        const template = result?.template ??
+            this.tier1Orchestrator.resolveSync(this.lastVerbTemplateId)?.template;
+
+        if (!template) return;
+
+        const plan = parseTemplate(
+            template,
+            this.currentPartList,
+            {
+                ...(result?.overrides ?? {}),
+                startTime: this.particleSystem.time,
+            },
+        );
+
+        if (this.motionPlanManager?.isActive) {
+            this.motionPlanManager.crossfadeTo(plan, MOTION_CROSSFADE_MS);
+        } else {
+            this.motionPlanManager?.setMotionPlan(plan);
+        }
+
+        console.log(
+            `[SemanticBackend] ✨ Motion plan activated (deferred): ${templateId} ` +
+            `(${this.currentPartList.length} parts)`,
+        );
+    }
+
+    /**
+     * Activate a default ambient idle motion plan when a server shape
+     * arrives but no verb has been spoken yet.
+     */
+    private activateDefaultMotionPlan(): void {
+        if (!this.currentPartList || this.currentPartList.length === 0) return;
+
+        // Try to resolve "idle" as the default template
+        const result = this.tier1Orchestrator.resolveSync('idle');
+        if (!result || !result.template) return;
+
+        const plan = parseTemplate(
+            result.template,
+            this.currentPartList,
+            { startTime: this.particleSystem.time },
+        );
+
+        this.motionPlanManager?.setMotionPlan(plan);
+        console.log(
+            `[SemanticBackend] 🌿 Default motion plan activated: ambient_idle ` +
+            `(${this.currentPartList.length} parts)`,
+        );
     }
 }

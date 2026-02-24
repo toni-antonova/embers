@@ -20,7 +20,7 @@
                 1,
                 0
             ],
-            "amplitude": 0.005,
+            "amplitude": 0.04,
             "frequency": 0.3,
             "phase": 0
         }
@@ -35,7 +35,7 @@
                     0,
                     1
                 ],
-                "amplitude": 0.3,
+                "amplitude": 1.4,
                 "frequency": "{{speed * 2.0}}",
                 "phase": 0
             },
@@ -50,7 +50,7 @@
                     1,
                     0
                 ],
-                "amplitude": 0.12,
+                "amplitude": 0.6,
                 "frequency": "{{speed * 3.0}}",
                 "phase": 0
             },

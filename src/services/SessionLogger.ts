@@ -24,6 +24,7 @@ export type EventType =
     | 'workspace'
     | 'interaction'
     | 'system'
+    | 'motion'
     | 'server_request'
     | 'server_response'
     | 'pipeline_phase';
