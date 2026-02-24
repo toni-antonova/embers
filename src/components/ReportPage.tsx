@@ -502,10 +502,10 @@ Fallback (Hunyuan3D + Grounded SAM):
                 <h3>Speech Recognition Fallback</h3>
 
                 <p>
-                    Web Speech API is the primary STT engine, but it has confirmed bugs
-                    on Safari and iOS through iOS 18 — so the system falls back to
-                    Deepgram Nova 3 via WebSocket on those platforms, with a text input
-                    box as a last resort.
+                    Speech recognition also needed a fallback for mobile. Web Speech API
+                    is the primary STT engine, but it has confirmed bugs on Safari and
+                    iOS through iOS 18 — so the system falls back to Deepgram Nova 3
+                    via WebSocket on those platforms, with a text input box as a last resort.
                 </p>
 
                 {/* MILESTONES */}
