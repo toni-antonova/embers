@@ -35,7 +35,7 @@ export class ServerShapeAdapter {
         const data = new Float32Array(totalPixels * 4); // RGBA per pixel
         const serverCount = response.positions.length / 3;
         const positions = response.positions;
-        const JITTER_RADIUS = 0.02;
+        const JITTER_RADIUS = 0.005;
 
         for (let i = 0; i < totalPixels; i++) {
             const srcIdx = i % serverCount;

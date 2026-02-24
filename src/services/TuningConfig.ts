@@ -53,12 +53,14 @@ export const MOBILE_OVERRIDES: Record<string, number> = {
 // need denser, bigger, tighter particle clustering to look solid.
 // These are applied on top of user-saved values and reverted on toggle off.
 export const COMPLEX_OVERRIDES: Record<string, number> = {
-    serverShapeScale: 2.2,      // Bigger server shapes (was 1.5)
+    serverShapeScale: 2.8,      // Bigger server shapes — fills the viewport
     springK: 5.0,               // Tighter spring → particles cluster firmly
-    noiseAmplitude: 0.10,       // Less curl scatter → shapes stay coherent
-    pointSize: 1.5,             // Fatter dots → fills gaps in sparse meshes
+    noiseAmplitude: 0.08,       // Minimal curl scatter → shapes stay coherent
+    pointSize: 1.8,             // Fatter dots → fills gaps in sparse meshes
+    pointBrightness: 1.4,       // Extra brightness for dense shapes
     drag: 4.0,                  // More damping → less floaty drift
-    breathingAmplitude: 0.02,   // Calmer idle → shapes don't wobble apart
+    breathingAmplitude: 0.015,  // Calmer idle → shapes don't wobble apart
+    formationScale: 1.8,        // Slightly larger formation footprint
 };
 
 // ── PARAMETER DEFINITION ─────────────────────────────────────────────
@@ -94,7 +96,7 @@ export const PARAM_DEFS: ParamDef[] = [
         // Brightness multiplier for the final particle color.
         // Higher = dots glow more intensely without changing size.
         key: 'pointBrightness', label: 'Point Brightness',
-        defaultValue: 1.0, min: 0.5, max: 3.0, step: 0.1,
+        defaultValue: 1.2, min: 0.5, max: 3.0, step: 0.1,
         group: '🔴 Particle Appearance'
     },
     {
@@ -199,7 +201,7 @@ export const PARAM_DEFS: ParamDef[] = [
     },
     {
         key: 'audioSmoothing.energy', label: 'Smoothing',
-        defaultValue: 0.55, min: 0.1, max: 0.99, step: 0.01,
+        defaultValue: 0.78, min: 0.1, max: 0.99, step: 0.01,
         group: '🎚 Audio Reactivity', feature: 'energy'
     },
     {
@@ -302,48 +304,12 @@ export const PARAM_DEFS: ParamDef[] = [
     },
 
     // ── 🎨 SENTIMENT COLOR ───────────────────────────────────────────
-    // Controls the sentiment-driven warm/cool color shift.
-    // Only active when Rainbow color mode + Sentiment toggle are on.
-    {
-        // Boldness of the color shift: 0 = muted (subtle wash), 1 = bold (strong uniform shift).
-        key: 'sentimentIntensity', label: 'Intensity',
-        defaultValue: 0.6, min: 0.0, max: 1.0, step: 0.05,
-        group: '🎨 Sentiment Color'
-    },
+    // Color is now handled by the Plutchik emotion wheel in render.frag.glsl.
+    // Only the smoothing parameter remains (drives temporal lerp in UniformBridge).
     {
         // Lerp speed for sentiment transitions. Lower = smoother/slower.
         key: 'sentimentSmoothing', label: 'Smoothing',
         defaultValue: 6.0, min: 0.5, max: 12.0, step: 0.5,
-        group: '🎨 Sentiment Color'
-    },
-    {
-        key: 'sentimentWarmR', label: 'Warm R',
-        defaultValue: 1.0, min: 0.0, max: 1.0, step: 0.05,
-        group: '🎨 Sentiment Color'
-    },
-    {
-        key: 'sentimentWarmG', label: 'Warm G',
-        defaultValue: 0.75, min: 0.0, max: 1.0, step: 0.05,
-        group: '🎨 Sentiment Color'
-    },
-    {
-        key: 'sentimentWarmB', label: 'Warm B',
-        defaultValue: 0.3, min: 0.0, max: 1.0, step: 0.05,
-        group: '🎨 Sentiment Color'
-    },
-    {
-        key: 'sentimentCoolR', label: 'Cool R',
-        defaultValue: 0.3, min: 0.0, max: 1.0, step: 0.05,
-        group: '🎨 Sentiment Color'
-    },
-    {
-        key: 'sentimentCoolG', label: 'Cool G',
-        defaultValue: 0.5, min: 0.0, max: 1.0, step: 0.05,
-        group: '🎨 Sentiment Color'
-    },
-    {
-        key: 'sentimentCoolB', label: 'Cool B',
-        defaultValue: 1.0, min: 0.0, max: 1.0, step: 0.05,
         group: '🎨 Sentiment Color'
     },
 
@@ -374,7 +340,7 @@ const STORAGE_KEY = 'dots-tuning-config';
 // ── CONFIG VERSIONING ────────────────────────────────────────────────
 // Bump this whenever defaults change. Old localStorage will be discarded
 // automatically so stale dev settings don't silently override production defaults.
-const CONFIG_VERSION = 11;
+const CONFIG_VERSION = 12;
 
 // ── MODE STORAGE KEY ─────────────────────────────────────────────────
 const MODE_STORAGE_KEY = 'dots-mode';
@@ -459,7 +425,13 @@ export class TuningConfig {
         this.loadFromStorage();
 
         // 4. Apply complex mode overrides if mode was persisted as 'complex'.
+        //    Build a snapshot of the current (simple) values BEFORE applying
+        //    overrides so toggle off → simple correctly reverts.
         if (this._complexMode) {
+            this._simpleSnapshot = new Map<string, number>();
+            for (const key of Object.keys(COMPLEX_OVERRIDES)) {
+                this._simpleSnapshot.set(key, this.get(key));
+            }
             for (const [key, value] of Object.entries(COMPLEX_OVERRIDES)) {
                 this.values.set(key, value);
             }
@@ -541,6 +513,24 @@ export class TuningConfig {
                 listener(def.key, value);
             }
         }
+
+        // If in complex mode, rebuild snapshot from fresh defaults
+        // and re-apply overrides so toggle off still works correctly.
+        if (this._complexMode) {
+            this._simpleSnapshot = new Map<string, number>();
+            for (const key of Object.keys(COMPLEX_OVERRIDES)) {
+                this._simpleSnapshot.set(key, this.get(key));
+            }
+            for (const [key, value] of Object.entries(COMPLEX_OVERRIDES)) {
+                this.values.set(key, value);
+                for (const listener of this.listeners) {
+                    listener(key, value);
+                }
+            }
+        } else {
+            this._simpleSnapshot = null;
+        }
+
         this.saveToStorage();
         console.log('[TuningConfig] All parameters reset to defaults');
     }

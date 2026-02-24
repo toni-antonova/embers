@@ -215,43 +215,75 @@ export class MorphTargets {
     }
 
     /**
-     * QUADRUPED — crude four-legged animal silhouette.
+     * QUADRUPED — horse-like four-legged animal silhouette.
      *
-     * Body: elongated ellipsoid (60% of particles) stretched along X.
-     * Legs: 4 short cylinders pointing downward (10% each).
+     * Body: elongated ellipsoid (45%) stretched along X.
+     * Head: small sphere (10%) at the front-top, angled upward.
+     * Neck: short connecting cylinder (5%) bridging body to head.
+     * Tail: tapered curving line (8%) extending from the rear.
+     * Legs: 4 short cylinders pointing downward (8% each = 32%).
      *
-     * Not anatomically accurate — it's a suggestive silhouette that
-     * reads as "animal" when formed from glowing particles.
+     * The silhouette is designed to read as "horse" when formed
+     * from glowing particles — the head points forward and up,
+     * and the tail flows backward with a gentle upward arc.
      */
     private generateQuadruped(data: Float32Array, count: number) {
-        const bodyCount = Math.floor(count * 0.6);
-        const legCount = Math.floor(count * 0.1);
+        const bodyCount = Math.floor(count * 0.45);
+        const headCount = Math.floor(count * 0.10);
+        const neckCount = Math.floor(count * 0.05);
+        const tailCount = Math.floor(count * 0.08);
+        const legCount = Math.floor(count * 0.08);
+        // Boundaries for part assignment
+        const bodyEnd = bodyCount;
+        const headEnd = bodyEnd + headCount;
+        const neckEnd = headEnd + neckCount;
+        const tailEnd = neckEnd + tailCount;
 
         for (let i = 0; i < count; i++) {
             const stride = i * 4;
             let x = 0, y = 0, z = 0;
 
-            if (i < bodyCount) {
+            if (i < bodyEnd) {
                 // ── BODY: elongated ellipsoid ──────────────────────────
-                // X is stretched 2.5x (body length), Y and Z are shorter (body width/height)
                 x = (Math.random() - 0.5) * 5.0;       // -2.5 to 2.5
-                y = (Math.random() - 0.5) * 1.5 + 0.5;  // slightly elevated
+                y = (Math.random() - 0.5) * 1.5 + 0.5;
                 z = (Math.random() - 0.5) * 1.5;
-                // Reject particles outside the ellipsoid surface
-                // (x/2.5)^2 + (y-0.5/0.75)^2 + (z/0.75)^2 ≤ 1
                 const ex = x / 2.5, ey = (y - 0.5) / 0.75, ez = z / 0.75;
                 const dist = ex * ex + ey * ey + ez * ez;
                 if (dist > 1.0) {
-                    // Project onto surface — gives denser shell look
                     const scale = 1.0 / Math.sqrt(dist);
                     x *= scale;
                     y = (y - 0.5) * scale + 0.5;
                     z *= scale;
                 }
+            } else if (i < headEnd) {
+                // ── HEAD: sphere at front, angled upward ──────────────
+                // Positioned at front of body (-X), elevated above neck
+                const r = 0.5;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                x = r * Math.sin(phi) * Math.cos(theta) - 3.2;  // forward of body
+                y = r * Math.sin(phi) * Math.sin(theta) + 1.8;  // elevated
+                z = r * Math.cos(phi);
+            } else if (i < neckEnd) {
+                // ── NECK: angled cylinder connecting body to head ─────
+                // Interpolate from shoulder (-2.0, 0.8) to head base (-3.0, 1.6)
+                const t = Math.random();
+                x = -2.0 - t * 1.0;                                // shoulder → head
+                y = 0.8 + t * 0.8;                                 // angling upward
+                z = (Math.random() - 0.5) * 0.35;                  // thin cylinder
+                x += (Math.random() - 0.5) * 0.25;                 // radial scatter
+                y += (Math.random() - 0.5) * 0.2;
+            } else if (i < tailEnd) {
+                // ── TAIL: tapered line curving from rear ──────────────
+                // Starts at back of body (+2.5, 0.5) and arcs upward + backward
+                const t = Math.random();  // 0=base, 1=tip
+                x = 2.5 + t * 1.8;                                 // extends rearward
+                y = 0.5 - t * t * 1.2;                             // quadratic downward arc
+                z = (Math.random() - 0.5) * 0.15 * (1.0 - t * 0.7); // tapers thinner
             } else {
                 // ── LEGS: 4 cylinders pointing down ───────────────────
-                const legIndex = Math.floor((i - bodyCount) / legCount);
-                // Leg positions: front-left, front-right, back-left, back-right
+                const legIndex = Math.floor((i - tailEnd) / legCount);
                 const legPositions = [
                     { lx: -1.5, lz: -0.5 },  // front-left
                     { lx: -1.5, lz: 0.5 },   // front-right
@@ -259,9 +291,8 @@ export class MorphTargets {
                     { lx: 1.5, lz: 0.5 },    // back-right
                 ];
                 const leg = legPositions[Math.min(legIndex, 3)];
-                // Each leg is a small cylinder: random along Y (going down), tight XZ
                 x = leg.lx + (Math.random() - 0.5) * 0.3;
-                y = -Math.random() * 1.8;  // y goes from 0 down to -1.8
+                y = -Math.random() * 1.8;
                 z = leg.lz + (Math.random() - 0.5) * 0.3;
             }
 

@@ -371,7 +371,6 @@ export class SemanticBackend {
         this.uniformBridge.sentimentOverride = null;
         this.uniformBridge.emotionalIntensityOverride = null;
         this.uniformBridge.springOverride = null;
-        this.uniformBridge.transitionPhase = 0;
         this.transitionPhase = TransitionPhase.Idle;
         this.transitionElapsed = 0;
         this.pendingMorphState = null;
@@ -491,7 +490,7 @@ export class SemanticBackend {
         // Extract sentiment only — no keyword/dictionary lookup
         const sentimentResult = this.classifier.classifySentimentOnly(trimmed);
 
-        // Store full text for server request at Dissolve→Reform boundary
+        // Store full text for immediate server request
         this.pendingFullText = trimmed;
 
         // Cancel idle decay if speech arrives
@@ -505,53 +504,50 @@ export class SemanticBackend {
         // the disabled extractProbableNoun path and prevents future re-enablement
         // from silently affecting complex mode routing.
         const words = trimmed.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/);
-        let placeholderMapping: ReturnType<typeof this.classifier.lookupKeyword> = null;
         let placeholderWord = '';
         for (const word of words) {
             const mapping = this.classifier.lookupKeyword(word);
             if (mapping) {
-                placeholderMapping = mapping;
                 placeholderWord = word;
-                break; // First match wins — use as visual placeholder
+                break;
             }
         }
 
-        if (placeholderMapping) {
-            // A known keyword exists — use its hierarchy as placeholder
-            this.pendingMorphState = {
-                morphTarget: placeholderMapping.target,
-                abstractionLevel: placeholderMapping.abstraction,
-                sentiment: sentimentResult.sentiment,
-                emotionalIntensity: sentimentResult.emotionalIntensity,
-                dominantWord: placeholderWord,
-                confidence: 1.0, // Forced — we're sending to server regardless
-            };
-            this.pendingMorphMapping = placeholderMapping;
-        } else {
-            // No known keyword — use sphere as ambient placeholder
-            this.pendingMorphState = {
-                morphTarget: 'sphere',
-                abstractionLevel: 0.5,
-                sentiment: sentimentResult.sentiment,
-                emotionalIntensity: sentimentResult.emotionalIntensity,
-                dominantWord: trimmed.split(/\s+/)[0] || '',
-                confidence: 1.0, // Forced — we're sending to server regardless
-            };
-            this.pendingMorphMapping = null;
-        }
+        // ── COMPLEX MODE: NO PROCEDURAL PLACEHOLDER ──────────────
+        // Instead of dissolving to a hierarchy shape (horse/sphere/etc)
+        // and then snapping to the server shape, we keep the particles
+        // in their current formation with a gentle "thinking" loosening.
+        // The server shape will arrive and smoothly replace it.
+        this.pendingMorphState = {
+            morphTarget: this.particleSystem.currentTarget, // keep current shape
+            abstractionLevel: 0.3,
+            sentiment: sentimentResult.sentiment,
+            emotionalIntensity: sentimentResult.emotionalIntensity,
+            dominantWord: placeholderWord || trimmed.split(/\s+/)[0] || '',
+            confidence: 1.0,
+        };
+        this.pendingMorphMapping = null;
 
-        // Compute audio-responsive phase durations
-        this.computeTransitionDurations();
-
-        // Start or restart Dissolve phase
-        this.transitionPhase = TransitionPhase.Dissolve;
+        // Skip the full dissolve→reform→settle transition.
+        // Instead, apply a gentle loosening: soften spring + bump noise
+        // so particles feel alive ("thinking") without jumping to a
+        // different shape.
+        this.transitionPhase = TransitionPhase.Idle;
         this.transitionElapsed = 0;
-        this.uniformBridge.transitionPhase = TransitionPhase.Dissolve;
 
-        // Apply dissolve overrides
-        this.uniformBridge.springOverride = DISSOLVE_SPRING;
-        if (!this.isLoosening) {
-            this.uniformBridge.noiseOverride = DISSOLVE_NOISE;
+        // Gentle loosening — softer spring + subtle noise increase
+        this.uniformBridge.springOverride = 2.0;  // Softer than normal (5.0) but not dissolve (0.3)
+        this.uniformBridge.noiseOverride = 0.15;  // Subtle shimmer, not full dissolve noise
+
+        // Fire server request immediately (no dissolve→reform cycle).
+        // The server shape will arrive and replace the current formation.
+        if (this.serverClient && this.pendingFullText) {
+            const dominantWord = this.pendingMorphState?.dominantWord || trimmed.split(/\s+/)[0];
+            console.log(
+                `[SemanticBackend] 🌐 COMPLEX → server for "${this.pendingFullText}" (immediate)`,
+            );
+            this.requestServerShape(dominantWord, this.pendingFullText, this.particleSystem.currentTarget);
+            this.pendingFullText = null;
         }
 
         this._lastState = this.pendingMorphState;
@@ -608,7 +604,6 @@ export class SemanticBackend {
         // Start or restart Dissolve phase
         this.transitionPhase = TransitionPhase.Dissolve;
         this.transitionElapsed = 0;
-        this.uniformBridge.transitionPhase = TransitionPhase.Dissolve;
 
         // Apply dissolve overrides
         this.uniformBridge.springOverride = DISSOLVE_SPRING;
@@ -666,7 +661,6 @@ export class SemanticBackend {
 
             this.transitionPhase = TransitionPhase.Reform;
             this.transitionElapsed = 0;
-            this.uniformBridge.transitionPhase = TransitionPhase.Reform;
             this.uniformBridge.springOverride = REFORM_SPRING_START;
             this.uniformBridge.noiseOverride = REFORM_NOISE;
 
@@ -692,7 +686,6 @@ export class SemanticBackend {
         if (this.transitionElapsed >= duration) {
             this.transitionPhase = TransitionPhase.Settle;
             this.transitionElapsed = 0;
-            this.uniformBridge.transitionPhase = TransitionPhase.Settle;
             this.uniformBridge.springOverride = SETTLE_SPRING_OVERSHOOT;
             this.uniformBridge.noiseOverride = SETTLE_NOISE;
 
@@ -717,7 +710,6 @@ export class SemanticBackend {
         if (this.transitionElapsed >= duration) {
             // Transition complete → back to Idle
             this.transitionPhase = TransitionPhase.Idle;
-            this.uniformBridge.transitionPhase = TransitionPhase.Idle;
             this.uniformBridge.springOverride = null;
             this.uniformBridge.noiseOverride = null;
 
@@ -842,6 +834,12 @@ export class SemanticBackend {
                     this.hierarchyActive = false;
                     console.log('[SemanticBackend] Hierarchy cancelled — server shape arrived');
                 }
+
+                // Restore physics from "thinking" loosening —
+                // clear spring/noise overrides so particles snap firmly
+                // to the new server shape using the config baseline.
+                this.uniformBridge.springOverride = null;
+                this.uniformBridge.noiseOverride = null;
 
                 console.log(
                     `[SemanticBackend] ✅ Server shape received: prompt="${prompt}" ` +

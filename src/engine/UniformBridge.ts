@@ -49,9 +49,8 @@ export class UniformBridge {
     emotionalIntensityOverride: number | null = null;
 
     // ── TRANSITION CHOREOGRAPHY (S12) ────────────────────────────
-    // SemanticBackend sets these during dissolve→reform→settle phases.
+    // SemanticBackend sets this during dissolve→reform→settle phases.
     springOverride: number | null = null;
-    transitionPhase: number = 0; // 0=idle, 1=dissolve, 2=reform, 3=settle
 
     // WorkspaceEngine reference exposes system's cognitive state metrics
     workspaceEngine: WorkspaceEngine | null = null;
@@ -236,10 +235,7 @@ export class UniformBridge {
         // ── DOMINANCE → REPULSION ────────────────────────────────
         uniforms.uRepulsionStrength.value = Math.max(0, uniforms.uRepulsionStrength.value + dominanceRepulsionOffset);
 
-        // ── TRANSITION PHASE UNIFORM ─────────────────────────────
-        if (uniforms.uTransitionPhase) {
-            uniforms.uTransitionPhase.value = this.transitionPhase;
-        }
+
 
         // ── DIAGNOSTIC LOGGING (TEMPORARY) ────────────────────────────
         // Tier 3: The actual values on the shader uniforms.
