@@ -47,10 +47,25 @@ export class ServerClient {
     private apiKey: string;
     private pendingRequest: AbortController | null = null;
 
+    /** Whether the last warmUp/generateShape call succeeded. */
+    private _connected: boolean = false;
+
     constructor(baseUrl: string, apiKey: string = '') {
         // Strip trailing slash
         this.baseUrl = baseUrl.replace(/\/+$/, '');
         this.apiKey = apiKey;
+
+        // Log what URL this bundle was built with (helps diagnose localhost vs Cloud Run)
+        const maskedUrl = this.baseUrl.replace(/\/\/(.+?)@/, '//*****@');
+        console.log(
+            `[ServerClient] Initialized → ${maskedUrl}` +
+            (this.apiKey ? ' (API key set)' : ' (⚠️ no API key — requests will be rejected by auth middleware)')
+        );
+    }
+
+    /** Whether the server has been reached at least once. */
+    get isConnected(): boolean {
+        return this._connected;
     }
 
     /**
@@ -101,6 +116,7 @@ export class ServerClient {
             }
 
             const raw: RawServerResponse = await response.json();
+            this._connected = true;
             return this.decodeResponse(raw);
         } catch (err: unknown) {
             if (err instanceof DOMException && err.name === 'AbortError') {
@@ -128,8 +144,15 @@ export class ServerClient {
             headers['X-API-Key'] = this.apiKey;
         }
 
-        fetch(`${this.baseUrl}/health`, { headers }).catch(() => {
-            // Silently ignore — warm-up is best-effort
+        fetch(`${this.baseUrl}/health`, { headers }).then((res) => {
+            if (res.ok) {
+                this._connected = true;
+                console.log('[ServerClient] ✅ Backend warm-up succeeded');
+            } else {
+                console.warn(`[ServerClient] ⚠️ Backend warm-up returned ${res.status}`);
+            }
+        }).catch(() => {
+            console.warn('[ServerClient] ⚠️ Backend warm-up failed (network error)');
         });
     }
 

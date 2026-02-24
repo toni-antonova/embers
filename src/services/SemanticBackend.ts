@@ -189,7 +189,10 @@ export class SemanticBackend {
             (event) => this.pendingTranscripts.push(event)
         );
 
-        console.log('[SemanticBackend] Wired: Speech → Classification → Morph');
+        console.log(
+            '[SemanticBackend] Wired: Speech → Classification → Morph' +
+            (this.serverClient ? ' | Server shapes: ✅ enabled' : ' | Server shapes: ❌ disabled (no ServerClient)')
+        );
     }
 
     // ── PUBLIC API ───────────────────────────────────────────────────

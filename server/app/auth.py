@@ -52,6 +52,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         self._api_key = api_key
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        # Skip auth for CORS preflight — OPTIONS requests never carry
+        # custom headers like X-API-Key. Let CORSMiddleware handle them.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip auth for exempt paths (health probes, root)
         if request.url.path in _EXEMPT_PATHS:
             return await call_next(request)

@@ -183,6 +183,8 @@ commands:
       VITE_LUMEN_SERVER_URL=$(gcloud run services describe lumen-pipeline \
         --project=lumen-pipeline --region=us-central1 \
         --format='value(status.url)') \
+      VITE_LUMEN_API_KEY=$(gcloud secrets versions access latest \
+        --secret=lumen-api-key --project=lumen-pipeline) \
       npm run build && \
       gcloud storage rsync dist/ "gs://dots-frontend-lumen-pipeline" -r \
         --delete-unmatched-destination-objects \
