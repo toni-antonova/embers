@@ -38,7 +38,7 @@ function isMobileDevice(): boolean {
 }
 
 /** True if the page loaded on a mobile device. Evaluated once at module init. */
-const IS_MOBILE = isMobileDevice();
+export const IS_MOBILE = isMobileDevice();
 
 // ── MOBILE DEFAULT OVERRIDES ─────────────────────────────────────────
 // Only the params that differ on mobile. Everything else uses PARAM_DEFS.
@@ -270,13 +270,13 @@ export const PARAM_DEFS: ParamDef[] = [
     {
         // Radius around the cursor where particles are repelled.
         key: 'repulsionRadius', label: 'Repulsion Radius',
-        defaultValue: 1.5, min: 0.5, max: 5.0, step: 0.25,
+        defaultValue: 2.0, min: 0.5, max: 5.0, step: 0.25,
         group: '🟡 Pointer Interaction'
     },
     {
         // Strength of the repulsion force.
         key: 'repulsionStrength', label: 'Repulsion Strength',
-        defaultValue: 8.0, min: 1.0, max: 20.0, step: 1.0,
+        defaultValue: 12.0, min: 1.0, max: 20.0, step: 1.0,
         group: '🟡 Pointer Interaction'
     },
 
@@ -353,7 +353,7 @@ const STORAGE_KEY = 'dots-tuning-config';
 // ── CONFIG VERSIONING ────────────────────────────────────────────────
 // Bump this whenever defaults change. Old localStorage will be discarded
 // automatically so stale dev settings don't silently override production defaults.
-const CONFIG_VERSION = 9;
+const CONFIG_VERSION = 10;
 
 // ── TUNING CONFIG CLASS ──────────────────────────────────────────────
 export class TuningConfig {

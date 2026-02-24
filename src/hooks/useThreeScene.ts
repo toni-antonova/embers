@@ -199,6 +199,7 @@ export function useThreeScene(
         };
 
         window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('touchstart', handleTouchMove, { passive: true });
         window.addEventListener('touchmove', handleTouchMove);
         window.addEventListener('mouseup', handlePointerLeave);
         window.addEventListener('touchend', handlePointerLeave);
@@ -320,6 +321,7 @@ export function useThreeScene(
 
             window.removeEventListener('resize', handleResize);
             window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('touchstart', handleTouchMove);
             window.removeEventListener('touchmove', handleTouchMove);
             window.removeEventListener('mouseup', handlePointerLeave);
             window.removeEventListener('touchend', handlePointerLeave);

@@ -5,7 +5,7 @@ import velocityFrag from '../shaders/velocity.frag.glsl?raw';
 import renderVert from '../shaders/render.vert.glsl?raw';
 import renderFrag from '../shaders/render.frag.glsl?raw';
 import { MorphTargets } from './MorphTargets';
-import { TuningConfig } from '../services/TuningConfig';
+import { TuningConfig, IS_MOBILE } from '../services/TuningConfig';
 import { buildMotionPlanShader } from './particle-system-extensions';
 
 export class ParticleSystem {
@@ -39,6 +39,14 @@ export class ParticleSystem {
 
         // Initialize GPUComputationRenderer
         this.gpuCompute = new GPUComputationRenderer(size, size, renderer);
+
+        // iOS Safari cannot render to float32 textures — use half-float instead.
+        // HalfFloatType (16-bit) provides sufficient precision for particle
+        // positions and velocities while being universally supported on mobile GPUs.
+        if (IS_MOBILE) {
+            this.gpuCompute.setDataType(THREE.HalfFloatType);
+            console.log('[ParticleSystem] 📱 Using HalfFloatType for mobile GPU compatibility');
+        }
 
         // Create initial textures
         const dtPosition = this.gpuCompute.createTexture();
