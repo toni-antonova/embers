@@ -81,7 +81,7 @@ class TestGenerateEndpoint:
     @pytest.mark.asyncio
     async def test_valid_request_returns_200(self, client: AsyncClient) -> None:
         """Happy path: POST /generate with mocked models → 200 with full payload."""
-        response = await client.post("/generate", params={"text": "horse"})
+        response = await client.post("/generate", json={"text": "horse"})
         assert response.status_code == 200
         data = response.json()
         assert "positions" in data
@@ -105,23 +105,23 @@ class TestCacheIntegration:
     @pytest.mark.asyncio
     async def test_second_request_hits_cache(self, client: AsyncClient) -> None:
         """Cache hit: second request for same concept returns cached=True."""
-        r1 = await client.post("/generate", params={"text": "cat"})
+        r1 = await client.post("/generate", json={"text": "cat"})
         assert r1.status_code == 200
         assert r1.json()["cached"] is False
 
-        r2 = await client.post("/generate", params={"text": "cat"})
+        r2 = await client.post("/generate", json={"text": "cat"})
         assert r2.status_code == 200
         assert r2.json()["cached"] is True
 
     @pytest.mark.asyncio
     async def test_cache_write_after_miss(self, client: AsyncClient) -> None:
         """Cache miss → generation → cache write: verify full flow."""
-        r1 = await client.post("/generate", params={"text": "owl"})
+        r1 = await client.post("/generate", json={"text": "owl"})
         assert r1.status_code == 200
         assert r1.json()["cached"] is False
 
         # Second request should be cached
-        r2 = await client.post("/generate", params={"text": "owl"})
+        r2 = await client.post("/generate", json={"text": "owl"})
         assert r2.status_code == 200
         assert r2.json()["cached"] is True
 
@@ -180,7 +180,7 @@ class TestMetricsEndpoint:
     @pytest.mark.asyncio
     async def test_metrics_track_requests(self, client: AsyncClient) -> None:
         """Metrics increment after a generate request."""
-        await client.post("/generate", params={"text": "dog"})
+        await client.post("/generate", json={"text": "dog"})
         data = (await client.get("/metrics")).json()
         assert data["requests_total"] >= 1
 
@@ -205,13 +205,13 @@ class TestValidationErrors:
     @pytest.mark.asyncio
     async def test_empty_text_returns_422(self, client: AsyncClient) -> None:
         """POST /generate with empty text → 422 validation error."""
-        response = await client.post("/generate", params={"text": ""})
+        response = await client.post("/generate", json={"text": ""})
         assert response.status_code == 422
 
     @pytest.mark.asyncio
     async def test_too_long_text_returns_422(self, client: AsyncClient) -> None:
         """POST /generate with text >200 chars → 422."""
-        response = await client.post("/generate", params={"text": "a" * 201})
+        response = await client.post("/generate", json={"text": "a" * 201})
         assert response.status_code == 422
 
     @pytest.mark.asyncio
@@ -222,23 +222,9 @@ class TestValidationErrors:
 
     @pytest.mark.asyncio
     async def test_numeric_only_text_rejected(self, client: AsyncClient) -> None:
-        """POST /generate with numeric-only text is rejected.
-
-        The route uses Depends() to construct GenerateRequest from query
-        params. Pydantic's field_validator raises ValueError for
-        numeric-only text, which propagates as a raw ValidationError
-        through ASGI transport (not a 422) because Depends() runs in a
-        worker thread. Either outcome (error response or raised
-        exception) confirms the validator fires.
-        """
-        from pydantic import ValidationError
-
-        try:
-            response = await client.post("/generate", params={"text": "12345"})
-            # If we get a response, it should be an error status
-            assert response.status_code >= 400
-        except ValidationError:
-            pass  # Expected: Pydantic validator fired via Depends()
+        """POST /generate with numeric-only text → 422 validation error."""
+        response = await client.post("/generate", json={"text": "12345"})
+        assert response.status_code == 422
 
 
 # ─────────────────────────────────────────────────────────────────────────────

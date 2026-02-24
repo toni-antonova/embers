@@ -178,6 +178,83 @@ class TestPartCrafterGenerate:
         real_count = sum(1 for m in result if len(m.vertices) > 1)
         assert real_count == 2
 
+    def test_prepare_image_receives_file_path(self):
+        """prepare_image should receive a string path, not a PIL Image.
+
+        This is a regression test for the bug where prepare_image (from
+        PartCrafter's vendored src.utils.image_utils) was passed a PIL Image
+        directly, but internally called os.stat() which expects a path.
+        The fix saves the image to a temp file and passes the path.
+        """
+        mock_pipe = _make_mock_partcrafter_pipeline()
+        model, _ = _create_model(mock_pipe)
+
+        # Get reference to the mocked prepare_image
+        mock_prepare = sys.modules["src.utils.image_utils"].prepare_image
+
+        test_image = Image.new("RGB", (512, 512), "red")
+        model.generate(test_image, num_parts=3)
+
+        # Verify prepare_image was called with a string path (not PIL Image)
+        mock_prepare.assert_called_once()
+        first_arg = mock_prepare.call_args[0][0]
+        assert isinstance(first_arg, str), (
+            f"prepare_image should receive a file path (str), got {type(first_arg).__name__}"
+        )
+        assert first_arg.endswith(".png"), f"Temp file should be a .png, got: {first_arg}"
+
+    def test_temp_file_cleaned_up_after_generate(self):
+        """Temp file created for prepare_image should be deleted after use."""
+        import os as _os
+
+        mock_pipe = _make_mock_partcrafter_pipeline()
+        model, _ = _create_model(mock_pipe)
+        mock_prepare = sys.modules["src.utils.image_utils"].prepare_image
+
+        # Track the temp path from the call
+        captured_paths = []
+        original_return = mock_prepare.return_value
+
+        def capture_path(path, **kwargs):
+            captured_paths.append(path)
+            return original_return
+
+        mock_prepare.side_effect = capture_path
+
+        test_image = Image.new("RGB", (512, 512), "green")
+        model.generate(test_image, num_parts=3)
+
+        assert len(captured_paths) == 1, "prepare_image should be called exactly once"
+        assert not _os.path.exists(captured_paths[0]), (
+            f"Temp file should be deleted after use: {captured_paths[0]}"
+        )
+
+    def test_temp_file_cleaned_up_on_prepare_image_error(self):
+        """Temp file should be cleaned up even if prepare_image raises."""
+        import os as _os
+
+        mock_pipe = _make_mock_partcrafter_pipeline()
+        model, _ = _create_model(mock_pipe)
+        mock_prepare = sys.modules["src.utils.image_utils"].prepare_image
+
+        captured_paths = []
+
+        def capture_and_raise(path, **kwargs):
+            captured_paths.append(path)
+            raise RuntimeError("simulated prepare_image failure")
+
+        mock_prepare.side_effect = capture_and_raise
+
+        test_image = Image.new("RGB", (512, 512), "purple")
+
+        with pytest.raises(RuntimeError, match="simulated"):
+            model.generate(test_image, num_parts=3)
+
+        assert len(captured_paths) == 1
+        assert not _os.path.exists(captured_paths[0]), (
+            f"Temp file should be deleted even on error: {captured_paths[0]}"
+        )
+
 
 # ── Point sampling integration ───────────────────────────────────────────────
 

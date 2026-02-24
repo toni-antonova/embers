@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
 
 import PIL.Image
@@ -147,11 +149,20 @@ class PartCrafterModel:
         t0 = time.perf_counter()
         import numpy as np
 
-        processed_image = prepare_image(
-            image,
-            bg_color=np.array([1.0, 1.0, 1.0]),
-            rmbg_net=self._rmbg,
-        )
+        # prepare_image expects a file path, not a PIL Image (it calls
+        # os.stat internally).  Save to a temp file and clean up after.
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            image.save(f, format="PNG")
+            temp_path = f.name
+
+        try:
+            processed_image = prepare_image(
+                temp_path,
+                bg_color=np.array([1.0, 1.0, 1.0]),
+                rmbg_net=self._rmbg,
+            )
+        finally:
+            os.unlink(temp_path)
         rmbg_ms = int((time.perf_counter() - t0) * 1000)
 
         # ── Step 2: PartCrafter mesh generation ─────────────────────────────

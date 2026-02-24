@@ -19,7 +19,7 @@ router = APIRouter()
 @limiter.limit("300/minute")
 async def generate(
     request: Request,
-    body: GenerateRequest = Depends(),
+    body: GenerateRequest,
     orchestrator: PipelineOrchestrator = Depends(get_pipeline_orchestrator),
 ) -> GenerateResponse:
     """Generate a part-labeled point cloud from a text concept.
