@@ -18,17 +18,27 @@ from httpx import ASGITransport, AsyncClient
 # Set env BEFORE importing app modules
 os.environ["SKIP_MODEL_LOAD"] = "true"
 os.environ["CACHE_BUCKET"] = ""
+os.environ["ENABLE_DEBUG_ROUTES"] = "true"
+os.environ["ALLOWED_ORIGINS"] = "*"
 
 
 @pytest.fixture
 async def client():
     """Create an httpx AsyncClient with manually-initialized app state."""
     from app.cache.shape_cache import ShapeCache
-    from app.config import Settings
+    from app.config import Settings, get_settings
     from app.main import create_app
     from app.models.registry import ModelRegistry
     from app.services.metrics import PipelineMetrics
     from app.services.pipeline import PipelineOrchestrator
+
+    get_settings.cache_clear()
+
+    # Re-assert env vars inside fixture (other fixtures may pop them)
+    os.environ["SKIP_MODEL_LOAD"] = "true"
+    os.environ["CACHE_BUCKET"] = ""
+    os.environ["ENABLE_DEBUG_ROUTES"] = "true"
+    os.environ["ALLOWED_ORIGINS"] = "*"
 
     app = create_app()
 

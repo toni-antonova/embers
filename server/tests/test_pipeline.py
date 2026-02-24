@@ -94,6 +94,12 @@ class TestPipelineOrchestrator:
         request = GenerateRequest(text="dog")
         await orchestrator.generate(request)
 
+        # Cache write is fire-and-forget (asyncio.create_task), so yield
+        # to the event loop to let the background task complete.
+        import asyncio
+
+        await asyncio.sleep(0)
+
         orchestrator_cache.set.assert_called_once()
 
     @pytest.mark.asyncio

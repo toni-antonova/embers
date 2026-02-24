@@ -43,6 +43,7 @@ async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded)
     return JSONResponse(
         status_code=429,
         content={"error": f"Rate limit exceeded: {exc.detail}"},
+        headers={"Retry-After": "60"},
     )
 
 
@@ -232,11 +233,16 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
 def _parse_origins(allowed_origins: str) -> list[str]:
     """Parse comma-separated origin string into a list.
 
-    Returns ``["*"]`` if the input is empty (development mode).
-    Strips whitespace from each origin.
+    Returns ``[]`` (deny all cross-origin) if the input is empty.
+    Set ALLOWED_ORIGINS env var for production and local dev.
+    Example: ``ALLOWED_ORIGINS=https://numen.app,http://localhost:5173``
     """
     if not allowed_origins.strip():
-        return ["*"]
+        logger.warning(
+            "cors_no_origins_configured",
+            hint="Set ALLOWED_ORIGINS env var. Cross-origin requests will be rejected.",
+        )
+        return []
     return [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
 
 

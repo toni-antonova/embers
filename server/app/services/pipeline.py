@@ -162,9 +162,15 @@ class PipelineOrchestrator:
             pipeline=pipeline_used,
         )
 
-        # 5. Cache the result
-        with tracer.start_as_current_span("cache_write"):
-            await self._cache.set(request.text, response)
+        # 5. Cache the result (fire-and-forget — must not block or fail the response)
+        async def _write_cache() -> None:
+            try:
+                with tracer.start_as_current_span("cache_write"):
+                    await self._cache.set(request.text, response)
+            except Exception:
+                logger.warning("cache_write_failed", text=request.text, exc_info=True)
+
+        asyncio.create_task(_write_cache())
 
         parent_span.set_attribute("pipeline_used", pipeline_used)
         parent_span.set_attribute("latency_ms", elapsed)

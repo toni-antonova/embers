@@ -79,6 +79,7 @@ def client(
         "LOG_JSON": "false",
         "LOG_LEVEL": "DEBUG",
         "ENABLE_DEBUG_ROUTES": "true",
+        "ALLOWED_ORIGINS": "*",  # Tests need permissive CORS (prod defaults to deny-all)
     }
     for k, v in env_overrides.items():
         os.environ[k] = v

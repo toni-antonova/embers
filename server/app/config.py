@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # ── Feature flags ────────────────────────────────────────────────────────
     skip_model_load: bool = False  # True for testing without GPU
-    enable_debug_routes: bool = True
+    enable_debug_routes: bool = False  # Set ENABLE_DEBUG_ROUTES=true for local dev
 
     # ── Limits ───────────────────────────────────────────────────────────────
     max_request_text_length: int = 200
