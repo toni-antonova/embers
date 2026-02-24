@@ -47,7 +47,7 @@ spec:
             - name: MODEL_WEIGHTS_BUCKET
               value: lumen-model-weights-lumen-pipeline
             - name: ALLOWED_ORIGINS
-              value: "https://storage.googleapis.com,http://localhost:5173"
+              value: "https://storage.googleapis.com,http://localhost:5173,https://embers-camp.web.app,https://embers.camp"
             - name: EAGER_LOAD_ALL
               value: "true"
             - name: API_KEY

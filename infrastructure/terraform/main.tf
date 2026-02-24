@@ -1,12 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
 # Lumen Server Pipeline — Terraform Configuration
-# ─────────────────────────────────────────────────────────────────────────────
-# Provisions GCP infrastructure for the Lumen ML pipeline:
-#   - Cloud Run (GPU: NVIDIA RTX Pro 6000) for model inference
-#   - Artifact Registry for Docker images
-#   - Cloud Storage for shape cache persistence
-#   - IAM for least-privilege service account bindings
-# ─────────────────────────────────────────────────────────────────────────────
+# Provisions GCP infrastructure: Cloud Run, Artifact Registry, Cloud Storage, IAM
 
 terraform {
   required_version = ">= 1.5.0"
