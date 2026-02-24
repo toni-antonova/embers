@@ -25,6 +25,19 @@ A continuation of the linear log of all meaningful code, architecture, and confi
 | 61 | Repo Audit — Critical Build Fixes + Housekeeping | 2026-02-23 |
 | 62 | WS1: Server Pipeline Hardening — S08a/S08b/S10a/S10b/S14a/S14b | 2026-02-23 |
 | 63 | A1b + S12: SER→UniformBridge + Transition Choreography | 2026-02-23 |
+| 64 | WS3 + WS5: Infrastructure CI/CD + Code Quality | 2026-02-23 |
+| 65 | Pre-Deploy Audit — Terraform, Tests, Lint Fixes | 2026-02-23 |
+| 66 | Cloud Build Optimization Chain | 2026-02-23 |
+| 67 | Frontend↔Backend Integration Bug Fixes | 2026-02-23 |
+| 68 | P0 Production Hardening — Cache, CORS, Debug Routes | 2026-02-23 |
+| 69 | Frontend GCS Deploy + Vite Build Fixes | 2026-02-23 |
+| 70 | Server Fix: PartCrafter File Path + Generate Route Body Parsing | 2026-02-23 |
+| 71 | SER Manager + Plutchik Emotion Wheel | 2026-02-23 |
+| 72 | GCE GPU VM Infrastructure — L40S Eager Loading | 2026-02-23 |
+| 73 | Deploy Flow Rework + Bug Fix Batch | 2026-02-23 |
+| 74 | Collapsible AnalysisPanel + Visual/STT Fixes | 2026-02-23 |
+| 75 | ⚠️ INFRASTRUCTURE: L4 (us-east4) → RTX Pro 6000 (us-central1) | 2026-02-23 |
+| 76 | Cloud Run Extraction from Terraform — GPU Quota Workaround | 2026-02-24 |
 
 ---
 
@@ -1019,6 +1032,534 @@ Two client animation tasks from the Agent 2 spec:
 |-------|--------|
 | `npx vitest run` | ✅ **522 tests pass** (27 files) |
 | `tsc --noEmit` | ✅ 0 errors |
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>64. WS3 + WS5: Infrastructure CI/CD + Code Quality</strong></summary>
+
+**Date:** 2026-02-23
+**Commit:** `c2c3cc9`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+Two work sessions combined into one commit — infrastructure CI/CD (WS3) and code quality improvements (WS5):
+
+**Infrastructure (WS3):**
+- **INF1:** Git hooks — pre-commit (lint + typecheck), pre-push (full test suite)
+- **INF2:** Cloud Build test gates — frontend + backend run in parallel before Docker build
+- **INF3:** Pre-built Docker base image (`Dockerfile.base`) — cuts app builds from 15-30min to 1-2min
+- **INF4:** Terraform remote state (GCS backend) + deletion protection on Cloud Run
+- **INF5:** Cloud Monitoring alert policies — error rate >5%, P95 latency >10s, container restarts
+- **INF6:** GCS static frontend hosting + `lets deploy-frontend` command
+
+**Code Quality (WS5):**
+- **CQ1:** Pin `torch-cluster` and `torchvision` to compatible version ranges
+- **CQ2:** Extract `Canvas.tsx` (527→125 lines) into `useSingletons` + `useThreeScene` hooks
+- **CQ3:** 35 new engine layer tests (override priority, shape geometry, dispose, edge cases)
+- **CQ4:** Shader pipeline documentation with ASCII diagrams
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `infrastructure/cloudbuild-base.yaml` | **NEW** — Base image build config |
+| `infrastructure/cloudbuild.yaml` | Added frontend+backend test gates |
+| `infrastructure/terraform/frontend.tf` | **NEW** — GCS static hosting + public read IAM |
+| `infrastructure/terraform/monitoring.tf` | **NEW** — 3 alert policies (error rate, latency, restart) |
+| `server/Dockerfile.base` | **NEW** — Pre-built base with all ML dependencies |
+| `src/hooks/useSingletons.ts` | **NEW** — Extracted singleton creation from Canvas |
+| `src/hooks/useThreeScene.ts` | **NEW** — Extracted Three.js scene setup from Canvas |
+| `src/shaders/README.md` | **NEW** — Shader pipeline documentation |
+| 4 test files | **NEW** — 35 tests across MorphTargets, MotionPlan, ServerShapeAdapter, UniformBridge |
+
+17 files changed, +1,700 lines
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>65. Pre-Deploy Audit — Terraform, Tests, Lint Fixes</strong></summary>
+
+**Date:** 2026-02-23
+**Commits:** `5a651ea` through `a1f2677` (14 commits)
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+A chain of rapid-fire fixes uncovered during the pre-deployment audit. Each fix revealed the next issue — similar to the original deployment bug chain (entry #45):
+
+| # | Commit | Fix |
+|---|--------|-----|
+| 1 | `5a651ea` | Null pending transition refs on dispose (memory hygiene) |
+| 2 | `653aeaf` | Cache preload skip + robust numeric validation test |
+| 3 | `6fb629b` | Add HF_TOKEN secret to Terraform + Cloud Run env |
+| 4 | `54851a7` | Harden test fixtures — env isolation, metrics, empty cache bucket |
+| 5 | `2ca79ea` | Make api_key and hf_token optional in Terraform |
+| 6 | `4d3886f` | Terraform creates secret shells only (no values in state) |
+| 7 | `6f51478` | Restore secret versions with hardcoded placeholders |
+| 8 | `5de2181` | Rename Terraform state bucket to avoid global name collision |
+| 9 | `6747a3d` | Cap max_instances to 3 (GPU quota limit) |
+| 10 | `5b1fc02` | Terraform misc fix |
+| 11 | `0758414` | Add missing pipeline_orchestrator to test conftest |
+| 12 | `8f85ea0` | Simplify image tags to :latest only |
+| 13 | `ca7beb3` | AttributeError in health endpoint + correct ruff target version |
+| 14 | `81a22f2` | Frontend timer leaks, base64 decode crash, STT swap flag |
+| 15 | `c96cb4c`, `a1f2677` | Resolve all mypy type errors and pre-commit lint/format |
+
+</details>
+
+<details>
+<summary><strong>Key Fixes</strong></summary>
+
+**Terraform security:** Secrets refactored so Terraform creates shell resources only — real values injected via `gcloud` CLI, never stored in `.tfvars` or state.
+
+**Frontend stability:** Timer leaks in `TuningPanel` and `UIOverlay` cleaned up on unmount. `ServerClient.decodeResponse` wraps `atob()` in try-catch to prevent crashes on malformed base64. `STTManager.stop()` clears `pendingMoonshineSwap` flag.
+
+**Type safety:** All mypy errors resolved across server codebase. Pre-commit and `lets validate` aligned.
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>66. Cloud Build Optimization Chain</strong></summary>
+
+**Date:** 2026-02-23
+**Commits:** `17278c1` through `d0a583d` (9 commits)
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+A series of Cloud Build fixes and optimizations that cut build upload size from ~1.8GB to <1MB and eliminated false failures:
+
+| Fix | Impact |
+|-----|--------|
+| Align `lets validate` and pre-commit checks | Both run ESLint, tsc, ruff, mypy identically |
+| `lets cmd` fixes | Various task runner repairs |
+| `.gcloudignore` data/ pattern fix | Was accidentally excluding `src/data/` frontend source files |
+| Move frontend CI to `lets validate` | Removed from Cloud Build — tests enforced locally via pre-commit/pre-push |
+| Use `sh` instead of `bash` for uv Alpine image | Distroless images have no `bash` |
+| Use `uv:python3.13-bookworm-slim` | Distroless `:latest` had no shell at all |
+| Remove test step from Cloud Build | Tests enforced locally — no need to run in build |
+| Whitelist-only `.gcloudignore` | Upload only `server/` to Cloud Build (~800KB vs ~1.8GB) |
+
+</details>
+
+<details>
+<summary><strong>Outcome</strong></summary>
+
+- Cloud Build upload: **1.8GB → ~800KB** ✅
+- Build failures from missing shell/bash: eliminated ✅
+- Frontend source files no longer excluded by overzealous `.gcloudignore` ✅
+- Tests run locally (pre-commit hooks), not in Cloud Build ✅
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>67. Frontend↔Backend Integration Bug Fixes</strong></summary>
+
+**Date:** 2026-02-23
+**Commit:** `e97b465`
+
+<details>
+<summary><strong>Issue</strong></summary>
+
+The frontend `ServerClient.ts` was receiving `undefined` for all response fields because the TypeScript interface used camelCase (`partIds`, `partNames`) while the Python backend serialized with snake_case (`part_ids`, `part_names`). Additionally, `ServerShapeAdapter` was normalizing part IDs by dividing by 255 (storing `0.0196` for part 5), but the shader reads them back as integers via `int(attr.r + 0.5)` — so part ID 5 was read back as 0, breaking all per-part motion plans.
+
+</details>
+
+<details>
+<summary><strong>Fix</strong></summary>
+
+- **ServerClient:** Match `RawServerResponse` fields to backend snake_case: `part_ids`, `part_names`, `template_type`, `bounding_box`, `generation_time_ms`
+- **ServerShapeAdapter:** Store part IDs as integer-valued floats (0–31) instead of normalizing by 255
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `src/services/ServerClient.ts` | Field name snake_case alignment |
+| `src/engine/ServerShapeAdapter.ts` | Part ID storage: normalized float → integer float |
+| 3 test files | Updated assertions for new field names and part ID format |
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>68. P0 Production Hardening — Cache, CORS, Debug Routes</strong></summary>
+
+**Date:** 2026-02-23
+**Commit:** `df8b085`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+Implemented the four highest-priority (P0) improvements from the post-deployment backlog:
+
+1. **Non-blocking cache writes** — `asyncio.create_task()` fire-and-forget pattern. GCS hiccups no longer return 500 when GPU generation succeeded.
+2. **Debug routes disabled by default** — `enable_debug_routes` defaults to `False`. Production no longer exposes `/debug/*` endpoints unless `ENABLE_DEBUG_ROUTES=true` is set explicitly.
+3. **CORS default deny** — `_parse_origins('')` returns `[]` instead of `['*']`. Requires `ALLOWED_ORIGINS` env var (set in Terraform).
+4. **`Retry-After` header** — slowapi 429 responses include `Retry-After: 60` header for client backoff.
+
+All 230 tests pass, 3 skipped.
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `server/app/config.py` | `enable_debug_routes` default → `False` |
+| `server/app/main.py` | Non-blocking cache write, `Retry-After` header |
+| `server/app/services/pipeline.py` | Fire-and-forget cache write via `asyncio.create_task()` |
+| `server/tests/conftest.py` | Set `ALLOWED_ORIGINS=*` in test env |
+| `server/tests/test_integration.py` | Updated for CORS + debug route changes |
+| `server/tests/test_pipeline.py` | Yield to event loop for fire-and-forget assertion |
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>69. Frontend GCS Deploy + Vite Build Fixes</strong></summary>
+
+**Date:** 2026-02-23
+**Commits:** `01382c2`, `a2bb989`, `a473d9c`, `43878e6`, `ce79dca`, `e08044f`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+First successful frontend deployment to Google Cloud Storage static hosting, after fixing three build issues:
+
+1. **Worker format** — Set `worker.format='es'` in `vite.config.ts` to fix IIFE code-splitting error with the SER web worker
+2. **Relative base path** — Set `base='./'` so asset paths are relative (fixes 404s on GCS — assets were trying to load from `/assets/` which doesn't exist on a bucket)
+3. **Recursive rsync** — Added `-r` flag to `gcloud storage rsync` in `lets deploy-frontend` (was only uploading top-level files, missing `assets/` subdirectory)
+
+Additional fixes in follow-up commits for build-base ordering, frontend issues, and deployment optimization.
+
+</details>
+
+<details>
+<summary><strong>Outcome</strong></summary>
+
+- Frontend deployed to `https://storage.googleapis.com/dots-frontend-lumen-pipeline/index.html` ✅
+- Vite builds clean for production with ES worker format ✅
+- All assets load correctly with relative paths ✅
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>70. Server Fix: PartCrafter File Path + Generate Route Body Parsing</strong></summary>
+
+**Date:** 2026-02-23
+**Commit:** `c9339d0`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+Two production bugs discovered during live API verification:
+
+1. **PartCrafter `prepare_image`** was receiving a PIL `Image` object instead of a file path. Fixed by saving the SDXL Turbo output to a temp file before passing to PartCrafter.
+2. **`/generate` route** used `Depends()` (query params) instead of JSON body for `GenerateRequest`. This contradicted the frontend `ServerClient` which sends a JSON body. Fixed to use standard `Body()` parsing.
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `server/app/models/partcrafter.py` | Save PIL Image to temp file before passing path |
+| `server/app/routes/generate.py` | `Depends()` → JSON body parameter |
+| `server/tests/test_integration.py` | `params=` → `json=` for POST requests |
+| `server/tests/test_partcrafter.py` | Added regression tests for temp file handling |
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>71. SER Manager + Plutchik Emotion Wheel</strong></summary>
+
+**Date:** 2026-02-23
+**Commits:** `6d9bb3e`, `0b7cb88`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+Two complementary features that bring emotion-driven visuals to the particle system:
+
+**SER Manager** (`6d9bb3e`):
+- `SERManager` class bridges `AudioEngine` mic stream → SER web worker
+- Integrated into `useThreeScene` with polling for AudioEngine readiness
+- Implemented split-phase update protocol: `writeConfigUniforms()` → `UniformBridge` → `computeAndRender()` — fixes a bug where config baselines silently overwrote emotion overrides before the GPU saw them
+- Default `colorMode` set to `'color'` and `sentimentEnabled` to `true`
+
+**Plutchik Emotion Wheel** (`0b7cb88`):
+- `src/data/sentiment.ts` — 156-line Plutchik-mapped emotion color system with 8 primary emotions + intensity gradients
+- Amplified sentiment-driven movement in velocity shader
+- `KeywordClassifier` enhanced with emotion-aware classification
+- Render shader updated with Plutchik color mixing (136 lines of GLSL)
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `src/audio/SERManager.ts` | **NEW** — SER ↔ AudioEngine bridge (204 lines) |
+| `src/audio/ser-worker.ts` | Improved error handling and model loading |
+| `src/data/sentiment.ts` | **NEW** — Plutchik emotion wheel mapping (156 lines) |
+| `src/shaders/render.frag.glsl` | Plutchik color mixing (136 lines) |
+| `src/shaders/velocity.frag.glsl` | Amplified sentiment movement |
+| `src/engine/ParticleSystem.ts` | New sentiment uniforms |
+| `src/engine/UniformBridge.ts` | Emotion override integration |
+| `src/hooks/useThreeScene.ts` | SER polling + split-phase protocol |
+
+16 files changed, +658 lines
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>72. GCE GPU VM Infrastructure — L40S Eager Loading</strong></summary>
+
+**Date:** 2026-02-23
+**Commits:** `2cede7d`, `9335067`, `e092f9c`, `2c3e938`, `13411d4`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+Added an isolated Compute Engine infrastructure under `infrastructure/gce/` as an alternative deployment target with a more powerful GPU. The GCE VM enables eager loading of all four models simultaneously (primary + fallback), which the L4's 24GB VRAM couldn't handle.
+
+**Terraform (separate state, cannot affect Cloud Run):**
+- `g2-standard-8` VM with 1× NVIDIA L40S GPU (48GB VRAM), 200GB SSD, Ubuntu 22.04
+- Separate service account (`lumen-gce-sa`) with same role bindings
+- VPC + firewall rules (8080 + SSH via IAP)
+- Data sources reference shared resources (secrets, buckets, Artifact Registry)
+
+**Scripts:**
+- `startup.sh` — NVIDIA driver install, Docker, pull image, run container
+- `deploy.sh` — One-command build + push + restart via SSH
+- `teardown.sh` — Stop container / VM
+
+**Server changes:**
+- `EAGER_LOAD_ALL` setting — when `true`, loads all models at startup regardless of VRAM budget
+- Enabled eager loading on Cloud Run L4 as well (models fit with VRAM offload)
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+12 new files under `infrastructure/gce/` (+1,036 lines), plus server config and deployment docs.
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>73. Deploy Flow Rework + Bug Fix Batch</strong></summary>
+
+**Date:** 2026-02-23
+**Commits:** `54988fc`, `c5b8aba`, `726a994`, `64cf559`, `c4c1be0`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+**Deploy flow (critical fix — `54988fc`):**
+`lets release` was bypassing Terraform entirely — `gcloud run deploy` doesn't know about env vars defined in `cloud_run.tf` (like `EAGER_LOAD_ALL`), so they were never applied. Fixed by adding `terraform apply` as step 1/4, and switching `lets deploy` to `gcloud run services update` (image-only, respects existing TF-managed config).
+
+**GCE deployment docs + NLP tests (`c5b8aba`):**
+- `DEPLOYMENT_GCE.md` with full provisioning guide
+- `gpu-quota-audit.sh` script
+- 4 new test suites: KeywordShadowing, Sentiment.advanced, SplitPhase, WordArousal
+- Canvas.tsx: sync initial `colorMode`/`sentimentEnabled` from React state into `UniformBridge` on mount
+
+**Bug fixes:**
+- `726a994` — WebGL context loss recovery handler in `useThreeScene`
+- `64cf559` — 7 bugs from code review: fire-and-forget GC risk, OTel TracerProvider shutdown, sequential→parallel cache preload, hardcoded Retry-After, `/metrics` auth exemption, Dockerfile CMD exec, React non-null assertion
+- `c4c1be0` — Cache coalescing `UnboundLocalError` + race condition, AudioEngine null guard, SessionLogger eviction loop
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+19 files changed, +1,076 lines. Key files: `lets.yaml` (release flow), `main.py` (7 bug fixes), `shape_cache.py` (coalescing fix), `useThreeScene.ts` (WebGL recovery), `Canvas.tsx` (state sync).
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>74. Collapsible AnalysisPanel + Visual/STT Fixes</strong></summary>
+
+**Date:** 2026-02-23
+**Commits:** `fe381ff`, `fd51e5d`, `8e5fe08`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+- **Collapsible AnalysisPanel** (`8e5fe08`) — Added fold/unfold functionality to the left-side panel, mirroring the right-side TuningPanel. Slide-in animation with toggle button.
+- **Visual + STT fixes** (`fe381ff`, `fd51e5d`) — Addressed rendering glitches and speech-to-text reliability issues discovered during manual testing.
+- **Git cleanup** (`7fd2a0c`) — Removed unnecessary files from tracking.
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>75. ⚠️ INFRASTRUCTURE: L4 (us-east4) → RTX Pro 6000 (us-central1)</strong></summary>
+
+**Date:** 2026-02-23
+**Commit:** `8e008bd`
+
+<details>
+<summary><strong>What Was Done</strong></summary>
+
+**Complete deployment target migration:**
+
+| | Before | After |
+|--|--------|-------|
+| **GPU** | 3× NVIDIA L4 (24GB each) | 1× NVIDIA RTX Pro 6000 (96GB) |
+| **Region** | `us-east4` | `us-central1` |
+| **Instances** | min=3, max=3 | min=1, max=1 |
+| **CPU / Memory** | 8 CPU / 32Gi | 20 CPU / 80Gi |
+| **Launch stage** | GA | BETA (RTX Pro 6000 is preview) |
+| **VRAM offload** | 18GB threshold | 80GB threshold (96GB GPU) |
+
+The RTX Pro 6000 (Blackwell architecture) has 4× the VRAM of the L4, allowing all models to be loaded simultaneously without offloading. The single 96GB GPU replaces three 24GB GPUs, simplifying scaling and reducing the number of cold-start model loads.
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+22 files changed across infrastructure, server, and tests. Every file referencing `us-east4`, `nvidia-l4`, or L4 VRAM specs was updated to `us-central1`, `nvidia-rtx-pro-6000`, and 96GB specs.
+
+</details>
+
+<details>
+<summary><strong>Outcome</strong></summary>
+
+- Region migration: `us-east4` → `us-central1` ✅
+- GPU upgrade: L4 (24GB) → RTX Pro 6000 (96GB) ✅
+- All 4 models can be eagerly loaded on single GPU ✅
+- Terraform, Cloud Build, deploy scripts, server config all aligned ✅
+
+</details>
+
+</details>
+
+---
+
+<details>
+<summary><strong>76. Cloud Run Extraction from Terraform — GPU Quota Workaround</strong></summary>
+
+**Date:** 2026-02-24
+
+<details>
+<summary><strong>Problem</strong></summary>
+
+The deployment pipeline had a **split-brain architecture** where the Cloud Run service was owned by two systems simultaneously:
+
+1. **Terraform** (`cloud_run.tf`) created and managed the service definition — GPU config, env vars, scaling, health probes, IAM
+2. **`gcloud run services update`** (in `lets release`) mutated the same service on each deploy to roll the new image
+
+This caused two compounding issues:
+
+**Issue 1: Terraform ↔ Deploy conflict.** Terraform's `ignore_changes = [template[0].containers[0].image]` hack prevented it from reverting the image, but any config change (env vars, probes, scaling) required running `terraform apply` first — which would redeploy the service with a stale image reference before the new image was even built. The deploy script (`deploy.sh`) and `lets release` duplicated each other, and the 4-step release flow (`terraform apply` → Cloud Build → `gcloud update` → health check) was fragile and order-dependent.
+
+**Issue 2: GPU quota exhaustion during rolling deployments.** Cloud Run's rolling update model spins up the new revision instance *before* draining the old one. With the NVIDIA RTX Pro 6000 Blackwell GPU, our quota is **1 GPU per region**. Rolling deployments require 2 instances to coexist briefly — the old instance holding the GPU and the new instance needing one. With a quota of 1, the new revision can never acquire a GPU, and the deployment hangs/fails. This is effectively a GCP limitation for single-GPU-quota users: the standard rolling deployment model is incompatible with GPU quota of 1.
+
+</details>
+
+<details>
+<summary><strong>Solution</strong></summary>
+
+**Architectural change:** Moved the Cloud Run service definition entirely out of Terraform into a declarative `service.yaml` deployed via `gcloud run services replace`. Terraform now manages only long-lived infrastructure (buckets, IAM, secrets, Artifact Registry, monitoring alerts).
+
+**Deploy pattern change:** Switched from rolling updates to **delete-and-recreate** to sidestep the GPU quota issue:
+1. `gcloud run services delete` — frees the GPU
+2. `gcloud run services replace service.yaml` — creates fresh service (GPU is now available)
+3. `gcloud run services add-iam-policy-binding` — re-applies public access
+4. Health check poll
+
+**Tradeoff:** Brief downtime during redeploy (~3-4 min while the new instance starts and loads models). For a single-GPU-quota setup, this is the pragmatic choice — a stuck deploy is worse than planned downtime.
+
+The `lets release` flow is now 4 steps: **build → delete → create → health check**. No Terraform dependency for routine deploys. `lets apply-terraform` is reserved for infra-only changes.
+
+</details>
+
+<details>
+<summary><strong>Files Changed</strong></summary>
+
+| File | Changes |
+|------|---------|
+| `infrastructure/service.yaml` | **NEW** — Declarative Cloud Run v2 YAML: GPU, scaling, env vars, secret refs, health probes |
+| `infrastructure/terraform/cloud_run.tf` | **DELETED** — Cloud Run service + IAM member removed from Terraform |
+| `infrastructure/deploy.sh` | **DELETED** — Redundant script that duplicated `lets release` |
+| `infrastructure/terraform/outputs.tf` | Removed `cloud_run_url` output |
+| `infrastructure/terraform/variables.tf` | Removed 5 now-unused variables (`container_image`, `min_instances`, `max_instances`, `gpu_type`, `allowed_origins`) |
+| `infrastructure/terraform/terraform.tfvars` | Removed corresponding variable values |
+| `server/lets.yaml` | Rewrote `deploy`, `release`, `deploy-frontend` to use delete+recreate pattern |
+
+Also ran `terraform state rm` on both Cloud Run resources to prevent `terraform destroy` from deleting the live service.
+
+</details>
+
+<details>
+<summary><strong>Outcome</strong></summary>
+
+- Terraform state cleaned — `terraform plan` shows 0 Cloud Run changes ✅
+- `service.yaml` is the single source of truth for Cloud Run config ✅
+- Deploy flow has no Terraform dependency ✅
+- Delete-and-recreate pattern avoids GPU quota overlap ✅
+- Deletion protection removed to enable the delete+recreate flow ✅
 
 </details>
 
