@@ -1,11 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Outputs — displayed after `terraform apply`
 # ─────────────────────────────────────────────────────────────────────────────
-
-output "cloud_run_url" {
-  description = "URL of the deployed Cloud Run service (POST /generate)"
-  value       = google_cloud_run_v2_service.lumen_pipeline.uri
-}
+# Note: Cloud Run URL is no longer a Terraform output. Retrieve it via:
+#   gcloud run services describe lumen-pipeline --region=us-central1 --format='value(status.url)'
+# ─────────────────────────────────────────────────────────────────────────────
 
 output "artifact_registry_url" {
   description = "Docker repository URL for pushing images"
