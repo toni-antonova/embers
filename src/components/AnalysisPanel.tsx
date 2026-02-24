@@ -259,12 +259,18 @@ export function AnalysisPanel({
                 onClick={() => setIsOpen(!isOpen)}
                 title="Analysis Panel"
                 aria-label="Toggle analysis panel"
-            >📊</button>
+            >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="8" width="3" height="7" rx="1" fill="currentColor" opacity="0.7" />
+                    <rect x="6.5" y="4" width="3" height="11" rx="1" fill="currentColor" opacity="0.85" />
+                    <rect x="12" y="1" width="3" height="14" rx="1" fill="currentColor" />
+                </svg>
+            </button>
 
             {/* SLIDE-IN PANEL */}
             <div ref={panelRef} className={`analysis-panel ${isOpen ? 'open' : ''}`}>
                 <div className="analysis-panel-header">
-                    <span>📊 Analysis</span>
+                    <span>Analysis</span>
                     <button
                         className="analysis-close-btn"
                         onClick={() => setIsOpen(false)}

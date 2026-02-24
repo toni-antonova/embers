@@ -51,86 +51,82 @@ canvas {
 }
 
 /* ── MODE TOGGLE (Simple / Complex) ──────────────────────────────────
- * Standalone pill-switch for switching between Simple (pre-built shapes)
- * and Complex (server-rendered shapes) modes. Positioned above the mic
- * button, glassmorphism matches existing UI elements.
+ * Minimal pill switch with sliding highlight behind the active label.
+ * Glassmorphism matches existing UI elements.
  */
 .mode-toggle {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
+  position: relative;
+  padding: 3px;
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   align-self: center;
   margin-bottom: 0.75rem;
   user-select: none;
   transition: border-color 0.3s ease;
+  overflow: hidden;
 }
 
 .mode-toggle:hover {
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .mode-toggle__label {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 10px;
-  letter-spacing: 0.03em;
-  transition: color 0.3s ease;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 16px;
+  transition: color 0.3s ease, background 0.3s ease;
   line-height: 1;
+  z-index: 1;
+  position: relative;
 }
 
-/* Simple mode active (default)  — left label bright, right dim */
+/* Simple mode active (default) — left label highlighted */
 .mode-toggle__label--left {
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .mode-toggle__label--right {
   color: rgba(255, 255, 255, 0.3);
+  background: transparent;
 }
 
-/* Complex mode active — right label bright, left dim */
+/* Complex mode active — right label highlighted with accent */
 .mode-toggle--complex .mode-toggle__label--left {
   color: rgba(255, 255, 255, 0.3);
+  background: transparent;
 }
 
 .mode-toggle--complex .mode-toggle__label--right {
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(130, 200, 255, 0.95);
+  background: rgba(130, 200, 255, 0.12);
 }
 
+/* Hide the old thumb — replaced by label backgrounds */
 .mode-toggle__thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    background 0.25s ease;
-  transform: translateX(-8px);
-}
-
-.mode-toggle--complex .mode-toggle__thumb {
-  transform: translateX(8px);
-  background: rgba(130, 200, 255, 0.85);
-  box-shadow: 0 0 8px rgba(130, 200, 255, 0.3);
+  display: none;
 }
 
 /* Mobile: slightly larger touch target */
 @media (max-width: 768px),
 (pointer: coarse) {
   .mode-toggle {
-    padding: 8px 16px;
-    gap: 10px;
+    padding: 4px;
   }
 
-  .mode-toggle__thumb {
-    width: 16px;
-    height: 16px;
+  .mode-toggle__label {
+    padding: 7px 14px;
+    font-size: 10px;
   }
 }
 
