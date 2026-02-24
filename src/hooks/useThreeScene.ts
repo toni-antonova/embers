@@ -99,6 +99,14 @@ export function useThreeScene(
         renderer.setClearColor(0x1a1a1a);
         renderer.autoClear = false;
 
+        // Listen for GPU context loss mid-session and trigger recovery
+        const handleContextLost = (e: Event) => {
+            e.preventDefault(); // Allow context restoration attempt
+            console.warn('WebGL context lost — bumping canvas key for recovery');
+            setCanvasKey(k => k + 1);
+        };
+        canvas.addEventListener('webglcontextlost', handleContextLost);
+
         // ── PARTICLE SYSTEM ───────────────────────────────────────────────────
         let particles: ParticleSystem;
         try {
@@ -313,6 +321,7 @@ export function useThreeScene(
             window.removeEventListener('mouseup', handlePointerLeave);
             window.removeEventListener('touchend', handlePointerLeave);
             window.removeEventListener('keydown', handleKeyDown);
+            canvas.removeEventListener('webglcontextlost', handleContextLost);
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             delete (window as any).__particles;
