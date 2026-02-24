@@ -33,7 +33,7 @@ class Hunyuan3DTurboModel:
         self._device = device
 
         # Import here to avoid loading at module level
-        from hunyuan3d import Hunyuan3DDiTFlowMatchingPipeline  # type: ignore[import-not-found]
+        from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline  # type: ignore[import-not-found]
 
         self._pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
             "tencent/Hunyuan3D-2",

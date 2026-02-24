@@ -84,7 +84,7 @@ RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cl
 # that crashes with "std::logic_error: basic_string::_M_construct null not
 # valid" on import. The pre-built wheel from PyG's index works correctly.
 RUN uv pip install torch-cluster==1.6.3 \
-    -f https://data.pyg.org/whl/torch-2.7.0+cu128.html \
+    -f https://data.pyg.org/whl/torch-2.8.0+cu128.html \
     --reinstall-package torch-cluster \
     && echo "--- torch-cluster verification ---" \
     && uv pip show torch-cluster \
@@ -95,6 +95,27 @@ ARG PARTCRAFTER_SHA=269bd4164fbe35b17a6e58f8d6934262822082eb
 RUN curl -L "https://github.com/wgsxm/PartCrafter/archive/${PARTCRAFTER_SHA}.tar.gz" | tar xz \
     && mv "PartCrafter-${PARTCRAFTER_SHA}" /home/appuser/partcrafter
 ENV PYTHONPATH="/home/appuser/partcrafter:${PYTHONPATH}"
+
+# ---- Fallback pipeline: Hunyuan3D + Grounded SAM2 ----
+# These GitHub-only packages enable the fallback pipeline:
+#   1. Hunyuan3D-2: image → monolithic mesh (~6GB VRAM)
+#   2. GroundingDINO: text → bounding boxes
+#   3. SAM2: bounding boxes → pixel masks
+# Install via pip from git (they have setup.py/pyproject.toml).
+# git is required for pip to clone the repos.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+USER appuser
+
+RUN uv pip install \
+    "hy3dgen @ git+https://github.com/Tencent/Hunyuan3D-2.git" \
+    "groundingdino-py @ git+https://github.com/IDEA-Research/GroundingDINO.git" \
+    "segment-anything-2 @ git+https://github.com/facebookresearch/sam2.git" \
+    && echo "--- fallback package verification ---" \
+    && .venv/bin/python -c "from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline; print('hy3dgen OK')" \
+    && .venv/bin/python -c "import groundingdino; print('groundingdino OK')" \
+    && .venv/bin/python -c "from sam2.build_sam import build_sam2; print('sam2 OK')"
 
 # ---- Stamp the build date for debugging ----
 RUN echo "base-image-built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/appuser/.base-image-stamp

@@ -55,8 +55,8 @@ class GroundedSAM2Model:
         from groundingdino.util.inference import (  # type: ignore[import-not-found]
             load_model as load_gdino,
         )
-        from segment_anything_2.build_sam import build_sam2  # type: ignore[import-not-found]
-        from segment_anything_2.sam2_image_predictor import (  # type: ignore[import-not-found]
+        from sam2.build_sam import build_sam2  # type: ignore[import-not-found]
+        from sam2.sam2_image_predictor import (  # type: ignore[import-not-found]
             SAM2ImagePredictor,
         )
 
