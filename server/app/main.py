@@ -202,6 +202,32 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
         logger.exception("background_model_load_failed")
         raise
 
+    # ── Eager-load fallback models (GCE with larger GPU) ──────────────
+    # Separate try/except so fallback failure doesn't take down the
+    # primary models. If this fails, primary pipeline still works —
+    # fallback will just lazy-load on first use (slower, but functional).
+    if settings.eager_load_all:
+        try:
+
+            def _load_fallback() -> None:
+                from app.models.grounded_sam import GroundedSAM2Model
+                from app.models.hunyuan3d import Hunyuan3DTurboModel
+
+                logger.info("eager_loading_fallback_models")
+                hunyuan = Hunyuan3DTurboModel(device="cuda")
+                registry.register("hunyuan3d_turbo", hunyuan)
+
+                gsam = GroundedSAM2Model(device="cuda")
+                registry.register("grounded_sam2", gsam)
+                logger.info("fallback_models_eager_loaded")
+
+            await loop.run_in_executor(None, _load_fallback)
+        except Exception:
+            logger.exception(
+                "fallback_model_eager_load_failed",
+                hint="Primary models are still available. Fallback will lazy-load on demand.",
+            )
+
     # ── Cache warming ────────────────────────────────────────────────────
     # Load all pre-generated shapes from Cloud Storage into memory LRU.
     # 50 entries × ~27KB ≈ 1.3MB — well within memory budget.

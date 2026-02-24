@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     max_points: int = 2048
     generation_rate_limit_per_minute: int = 20  # Tighter cap on GPU work (cache misses)
     vram_offload_threshold_gb: float = 18.0  # Offload fallback models if VRAM exceeds this
+    eager_load_all: bool = False  # GCE: set EAGER_LOAD_ALL=true to preload fallback models
 
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = "INFO"
