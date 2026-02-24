@@ -143,7 +143,7 @@ export function Canvas() {
                     style={{ display: 'block', width: '100%', height: '100%' }}
                 />
             )}
-            <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} tuningConfig={tuningConfig} />
+            <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} tuningConfig={tuningConfig} lastTranscript={lastTranscript} lastSemanticEvent={lastSemanticEvent} />
             <TuningPanel
                 config={tuningConfig}
                 audioEngine={audioEngine}

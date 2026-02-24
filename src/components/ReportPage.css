@@ -104,24 +104,14 @@ html:has(.report-page) body {
     z-index: 1;
 }
 
-.report-hero__kicker {
-    font-family: 'Inter', system-ui, sans-serif;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--rp-accent);
-    margin-bottom: 1rem;
-}
-
 .report-hero__title {
     font-family: 'Newsreader', Georgia, serif;
-    font-size: clamp(2rem, 5vw, 3.25rem);
-    font-weight: 600;
-    line-height: 1.15;
-    color: white;
+    font-size: clamp(1.4rem, 3.5vw, 2rem);
+    font-weight: 500;
+    line-height: 1.25;
+    color: rgba(255, 255, 255, 0.92);
     margin: 0 0 1rem;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
 }
 
 .report-hero__subtitle {

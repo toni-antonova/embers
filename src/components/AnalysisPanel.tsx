@@ -362,7 +362,7 @@ export function AnalysisPanel({
                             ) : (
                                 <span style={{ opacity: 0.3, fontStyle: 'italic' }}>
                                     {lastTranscript && !lastTranscript.isFinal
-                                        ? '⏳ listening…'
+                                        ? 'listening…'
                                         : '...'}
                                 </span>
                             )}
