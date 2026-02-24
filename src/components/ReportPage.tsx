@@ -89,31 +89,55 @@ export function ReportPage() {
 
                 <p>
                     <strong>Laban Movement Analysis.</strong> Shafir et al. (2016) validated
-                    specific movement qualities tied to emotions across 1,241 trials. Weight
-                    maps to amplitude, time maps to acceleration, space maps inversely to
-                    turbulence, flow maps inversely to drag. I translated these directly into
-                    shader uniforms, so joy is low drag + moderate spring + rhythmic bounce,
-                    and anger is high spring + high turbulence + minimal drag.
+                    specific movement qualities tied to emotions across 1,241 trials. Four
+                    LMA effort dimensions map directly to shader uniforms:
+                </p>
+
+                <ul>
+                    <li><strong>Weight</strong> (light to strong) maps to particle amplitude</li>
+                    <li><strong>Time</strong> (sustained to sudden) maps to acceleration</li>
+                    <li><strong>Space</strong> (indirect to direct) maps inversely to turbulence</li>
+                    <li><strong>Flow</strong> (bound to free) maps inversely to drag</li>
+                </ul>
+
+                <p>
+                    These aren't arbitrary aesthetic choices. Joy is low drag + moderate
+                    spring + rhythmic bounce. Anger is high spring + high turbulence +
+                    minimal drag. Each mapping traces back to experimentally validated
+                    movement signatures.
+                </p>
+
+                <h3>Color Emotion Research</h3>
+
+                <p>
+                    <strong>Valdez &amp; Mehrabian (1994)</strong> showed saturation predicts
+                    arousal (r=0.60) and brightness predicts valence (r=0.69).
+                    Jonauskaite et al. (2020, N=4,598 across 30 nations) confirmed these
+                    hold cross culturally (r=.88). Palmer et al.'s PNAS study found
+                    r=0.89 to 0.99 correlation between musical emotion and color choice.
                 </p>
 
                 <p>
-                    <strong>Color emotion research.</strong> Valdez &amp; Mehrabian (1994)
-                    showed saturation predicts arousal (r=0.60) and brightness predicts valence
-                    (r=0.69). Jonauskaite et al. (2020, N=4,598 across 30 nations) confirmed
-                    these hold cross culturally (r=.88). Every color parameter has a citation.
+                    This drove the GPU color system: tension (spectral centroid) controls
+                    the warm/cool baseline. Sentiment shifts the gold/blue overlay. Energy
+                    boosts brightness. Every color parameter has a citation.
                 </p>
 
+                <h3>Crossmodal Correspondences</h3>
+
                 <p>
-                    <strong>Crossmodal correspondences.</strong> Spence (2011), Marks (1974),
-                    Walker et al. (2010): pitch maps to brightness, loudness to size,
-                    spectral centroid to color warmth. These hold cross culturally. This validated
-                    the core design rule:
+                    Spence (2011), Marks (1974), Walker et al. (2010): pitch maps to
+                    brightness, loudness to size, spectral centroid to color warmth.
+                    These hold cross culturally. This validated the core design rule:
+                    <strong> one audio feature controls one visual dimension</strong>.
+                    No cross contamination. When you see particles swirling faster, you
+                    know it's because urgency increased, not because of some opaque
+                    feature interaction.
                 </p>
 
                 <h3>Emotion to Physics Translation</h3>
 
                 <p>
-                    The core design rule: one audio feature controls one visual dimension.
                     Each detected emotion adjusts the particle physics simultaneously,
                     grounded in the LMA framework:
                 </p>
@@ -161,6 +185,34 @@ export function ReportPage() {
                     You speak, and particles respond within the span of a breath. This forced
                     a two tier design: a fast local path for the common case, and a server
                     powered path for the long tail.
+                </p>
+
+                <h3>Architecture Decisions</h3>
+
+                <p>
+                    <strong>Why WebGL2, not WebGPU.</strong> WebGPU is the future, but coverage
+                    in February 2026 still has gaps on mobile Safari and older Android WebViews.
+                    Since this system needs to run on phones and computers equally, WebGL2 via
+                    Three.js GPUComputationRenderer was the pragmatic choice. The architecture
+                    is designed for a clean migration path: the GLSL fragment shaders map
+                    almost 1:1 to WGSL compute shaders.
+                </p>
+
+                <p>
+                    <strong>Why particles over mesh animation.</strong> Particles let you
+                    represent anything from abstract turbulence to concrete shapes using the
+                    same physics engine. There's no rigging, no skeletal animation, no
+                    topology constraints. A horse and an ocean use the same 16,384 points,
+                    the same five forces, the same shader pipeline. Morphing between them is
+                    just reassigning spring targets.
+                </p>
+
+                <p>
+                    <strong>Why PartCrafter over other 3D models.</strong> The decisive
+                    capability was part decomposition: getting labeled mesh parts (head, body,
+                    legs) in one forward pass, no fragile segmentation needed. Point-E was too
+                    slow (60 to 120s). TripoSR was fast but outputs monolithic meshes.
+                    PartCrafter (NeurIPS 2025) generates 2 to 16 pre-decomposed parts in ~0.5s.
                 </p>
 
                 <h3>The Two Tier Lookup</h3>
@@ -220,14 +272,51 @@ export function ReportPage() {
                     tail, handling words like "narwhal," "violin," or "submarine."
                 </p>
 
-                <h3>Choosing the 3D Model</h3>
+                {/* FULL SYSTEM DIAGRAM */}
+                <h3>Full System Diagram</h3>
 
-                <p>
-                    For the server pipeline, the decisive capability
-                    was <strong>part decomposition</strong>: getting labeled mesh parts
-                    (head, body, legs, tail) in one forward pass, no fragile segmentation
-                    needed.
-                </p>
+                <pre><code>{`┌──────────────────────────────────────────────────┐
+│                   User Input                      │
+│   🎤 Microphone Audio        👆 Mouse/Touch       │
+└────────┬─────────────────────────┬────────────────┘
+         │                         │
+   ┌─────▼─────┐            ┌─────▼─────┐
+   │  Audio     │            │  Pointer   │
+   │  Engine    │            │  Engine    │
+   │ (Meyda +   │            │(Raycaster) │
+   │  Pitchy)   │            └─────┬─────┘
+   └──┬────┬───┘                   │
+      │    │                       │
+      │  ┌─▼────────┐             │
+      │  │ Speech    │             │
+      │  │ Engine    │             │
+      │  │(Web Speech│             │
+      │  │+ Deepgram │             │
+      │  │+ text fb) │             │
+      │  └─────┬────┘             │
+      │        │                   │
+      │  ┌─────▼──────────┐       │
+      │  │  Semantic       │       │
+      │  │  Classifier     │       │
+      │  │ (Verb Hash +    │       │
+      │  │  MiniLM +       │       │
+      │  │  Server Path)   │       │
+      │  └─────┬──────────┘       │
+      │        │                   │
+      │  ┌─────▼──────────────────▼────┐
+      │  │       Uniform Bridge         │
+      │  │  (maps all inputs to shader  │
+      └──▶   uniforms every frame)      │
+         └──────────┬──────────────────┘
+                    │
+         ┌──────────▼──────────────────┐
+         │   GPGPU Particle System     │
+         │  (GPUComputationRenderer)   │
+         │  128×128 textures · WebGL2  │
+         └─────────────────────────────┘`}</code></pre>
+
+                {/* 3D MODEL COMPARISON */}
+                <h3>Choosing the 3D Model</h3>
 
                 <table>
                     <thead>
@@ -273,7 +362,7 @@ export function ReportPage() {
                         alt="Particles morphed into a quadruped shape from a spoken word"
                     />
                     <div className="report-figure__caption">
-                        Particles converging into a quadruped formation after speaking "horse".
+                        Particles converging into a quadruped formation after speaking "horse."
                         Spring forces pull 16,384 particles toward the labeled point cloud.
                     </div>
                 </div>
@@ -320,6 +409,31 @@ vec3 newVel = vel + totalForce * uDelta;`}</code></pre>
                     Why curl noise? It's divergence free (∇·(∇×F) = 0), so particles
                     flow in coherent eddies like fluid rather than scattering like dust. This
                     is what gives the system its "liquid smoke" quality.
+                </p>
+
+                <h3>How Movement Gets Animated</h3>
+
+                <p>
+                    Rather than animate a mesh skeleton, the system uses <strong>parametric
+                        velocity field primitives</strong> inspired by PromptVFX (2025). Each verb
+                    maps to a motion template that captures the <em>quality</em> of the action
+                    through physics parameters:
+                </p>
+
+                <ul>
+                    <li><strong>Oscillate:</strong> rhythmic back and forth (breathing, waving, pulsing)</li>
+                    <li><strong>Arc:</strong> parabolic trajectories (jumping, throwing, leaping)</li>
+                    <li><strong>Rotate:</strong> orbital motion around a center (spinning, circling)</li>
+                    <li><strong>Burst:</strong> explosive outward expansion (exploding, scattering)</li>
+                    <li><strong>Laminar:</strong> smooth directional flow (running, swimming, flying)</li>
+                </ul>
+
+                <p>
+                    These primitives compose. "A horse galloping" assigns laminar flow to the
+                    legs, oscillation to the body, and a forward bias to the whole form. The
+                    verb hash table (393 verbs) maps each verb to the right combination, and
+                    adverbs modify intensity: "slowly" reduces speed, "frantically" increases
+                    turbulence.
                 </p>
 
                 {/* Ring + scatter side-by-side */}
@@ -416,11 +530,21 @@ Fallback (Hunyuan3D + Grounded SAM):
     ~1.0s        ~0.1s           ~1.5s              ~0.3s         ~20ms
                                                         Total: ~3.5s`}</code></pre>
 
+                <h3>The Fallback Mechanism</h3>
+
                 <p>
-                    The fallback uses Hunyuan3D for mesh generation and Grounded SAM 2 for
-                    part segmentation, serving as a safety net for concepts where PartCrafter doesn't
-                    produce clean decomposition. If PartCrafter returns fewer than 4 parts,
-                    the system retries via the fallback automatically.
+                    The fallback is a first class path, not an afterthought. If PartCrafter
+                    returns fewer than 4 parts (insufficient decomposition for meaningful
+                    animation), the system automatically retries via the fallback. Hunyuan3D
+                    generates a monolithic mesh, then Grounded SAM 2 segments it into labeled
+                    parts using text prompts derived from the original concept.
+                </p>
+
+                <p>
+                    Both paths output the same format: a base64 encoded array of 2,048
+                    positions + part IDs + part names. The client doesn't know or care which
+                    pipeline produced the shape. This kept the integration clean and made
+                    testing straightforward.
                 </p>
 
                 <p>
@@ -456,34 +580,39 @@ Fallback (Hunyuan3D + Grounded SAM):
                     concurrently) and tensor state corruption. The fix wasn't a mutex; it was
                     setting <code>containerConcurrency: 1</code> in Cloud Run. One GPU, one
                     request at a time. More quota means more containers, not more concurrency.
-                    The fix scales correctly.
                 </p>
 
                 {/* STT */}
-                <h3>Speech Recognition</h3>
+                <h3>Speech Recognition Fallback</h3>
 
                 <p>
-                    STT uses a tiered fallback: Web Speech API on Chrome/Edge (free, works
-                    well), Deepgram Nova 3 via WebSocket for Safari and iOS (where Web Speech
-                    has confirmed bugs through iOS 18), and a text input box if both fail.
+                    STT uses a tiered fallback:
+                </p>
+
+                <ul>
+                    <li><strong>Web Speech API</strong> on Chrome/Edge (free, works well)</li>
+                    <li><strong>Deepgram Nova 3</strong> via WebSocket for Safari and iOS (where Web Speech has confirmed bugs through iOS 18)</li>
+                    <li><strong>Text input box</strong> if both fail</li>
+                </ul>
+
+                <p>
+                    The system detects the platform at startup and picks the best available
+                    engine. If the primary engine fails mid-session, it falls back silently
+                    without interrupting the experience. Speech emotion recognition runs
+                    separately via ONNX in the browser (WebGPU first, WASM fallback), so
+                    emotion detection works regardless of which STT engine is active.
                 </p>
 
                 {/* MILESTONES */}
                 <h2>Milestones</h2>
 
                 <ol>
-                    <li>GPU particle system with curl noise physics, bringing first particles on screen</li>
+                    <li>GPU particle system with curl noise physics. First particles on screen, idle ring breathing</li>
                     <li>Audio reactivity: psychoacoustic features driving shader uniforms in real time</li>
-                    <li>Speech to text working end to end. Speak and see transcript</li>
                     <li>Semantic morphing. Say "horse" and particles converge into a quadruped</li>
-                    <li>Emotion driven physics via Laban Movement Analysis. Joy, anger, sadness, fear each feel different</li>
-                    <li>MiniLM embedding engine in a Web Worker for semantic similarity without a server round trip</li>
-                    <li>Server pipeline live: SDXL Turbo + PartCrafter generating labeled 3D point clouds</li>
-                    <li>Hunyuan3D + Grounded SAM 2 fallback pipeline deployed</li>
-                    <li>Speech Emotion Recognition via ONNX in the browser (WebGPU first, WASM fallback)</li>
-                    <li>First successful Cloud Run deployment with GPU</li>
-                    <li>Infrastructure switch from L4 to RTX PRO 6000 Blackwell</li>
-                    <li>Production deployment on Firebase Hosting + Cloud Run</li>
+                    <li>Emotion driven physics via Laban Movement Analysis. Joy, anger, sadness, fear each feel distinct</li>
+                    <li>Server pipeline live: SDXL Turbo + PartCrafter + fallback generating labeled 3D point clouds</li>
+                    <li>Production deployment: Firebase Hosting + Cloud Run on RTX PRO 6000 Blackwell</li>
                 </ol>
 
                 {/* MILESTONE GALLERY */}
@@ -589,6 +718,7 @@ Fallback (Hunyuan3D + Grounded SAM):
                     <li>Shafir, T., et al. (2016). Emotion Regulation through Movement. <em>Frontiers in Psychology</em>, 6, 2030.</li>
                     <li>Valdez, P. &amp; Mehrabian, A. (1994). Effects of Color on Emotions. <em>J. Exp. Psych: General</em>, 123(4).</li>
                     <li>Jonauskaite, D., et al. (2020). Universal Patterns in Color Emotion Associations. <em>Psychological Science</em>, 31(10).</li>
+                    <li>Palmer, S.E., et al. (2013). Music color associations are mediated by emotion. <em>PNAS</em>, 110(22).</li>
                     <li>Spence, C. (2011). Crossmodal correspondences. <em>Attention, Perception, &amp; Psychophysics</em>, 73.</li>
                     <li>Bridson, R. (SIGGRAPH 2007). Curl noise for procedural fluid motion.</li>
                     <li>PartCrafter (NeurIPS 2025): Part Aware 3D Object Generation.</li>

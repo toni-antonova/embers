@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&display=swap');
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -1341,18 +1343,47 @@ canvas {
   justify-content: center;
   pointer-events: none;
   z-index: 0;
+  padding: 0 5vw;
 }
 
 .ghost-title__text {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(2rem, 5vw, 4.5rem);
   font-weight: 300;
-  font-style: italic;
-  letter-spacing: 0.15em;
+  font-style: normal;
+  letter-spacing: 0.10em;
   color: rgba(255, 255, 255, 0.35);
   text-transform: lowercase;
   animation: ghost-title-fade 8s ease-out forwards;
   user-select: none;
+}
+
+/* Live transcript mode — no fade-out animation, words manage own opacity */
+.ghost-title__text--live {
+  animation: none;
+  opacity: 1;
+  filter: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.2em;
+  max-width: 80vw;
+}
+
+.ghost-word {
+  color: rgba(255, 255, 255, 0.5);
+  transition: opacity 0.3s ease-out;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  font-weight: 300;
+  font-style: normal;
+  letter-spacing: 0.10em;
+  text-transform: lowercase;
+}
+
+.ghost-word--keyword {
+  color: rgba(255, 204, 102, 0.7);
+  font-weight: 400;
 }
 
 @keyframes ghost-title-fade {
@@ -1362,13 +1393,13 @@ canvas {
   }
 
   40% {
-    opacity: 0.25;
-    filter: blur(0.5px);
+    opacity: 0.3;
+    filter: blur(0.3px);
   }
 
   100% {
-    opacity: 0.06;
-    filter: blur(1.5px);
+    opacity: 0.15;
+    filter: blur(0.5px);
   }
 }
 

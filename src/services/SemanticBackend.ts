@@ -653,6 +653,15 @@ export class SemanticBackend {
         ];
     }
 
+    /**
+     * True when the server is processing a shape generation request.
+     * Drives the UI spinner in UIOverlay.
+     */
+    get isProcessing(): boolean {
+        return this.transitionPhase !== TransitionPhase.Idle ||
+            (this.pendingFullText !== null);
+    }
+
     get currentTransitionPhase(): TransitionPhase {
         return this.transitionPhase;
     }
