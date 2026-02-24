@@ -23,21 +23,37 @@ _CATEGORY_SUFFIXES: dict[str, str] = {
 def get_canonical_prompt(noun: str, template_type: str) -> str:
     """Generate an SDXL Turbo prompt optimized for 3D mesh generation.
 
-    The prompt wraps the user's noun in a standardized template that
+    The prompt wraps the user's input in a standardized template that
     produces consistent, well-composed images for downstream mesh
     generation (SDXL → PartCrafter / Hunyuan3D).
 
+    For single nouns: "3D render of a horse, side view, ..."
+    For full phrases: "a dragon blows fire, 3D render, side view, ..."
+    This prevents grammatically broken prompts when the input is a sentence.
+
     Args:
-        noun: The concept to generate (e.g., "horse").
+        noun: The concept to generate — a single word ("horse") or a
+              full phrase ("a dragon blows fire").
         template_type: The template category (e.g., "quadruped").
 
     Returns:
         A complete prompt string ready for SDXL Turbo.
     """
-    base = (
-        f"3D render of a {noun}, side view, white background, "
-        f"centered, full body visible, studio lighting"
-    )
+    stripped = noun.strip()
+
+    if " " in stripped:
+        # Full phrase — use directly with quality/lighting modifiers.
+        # "side view" kept for image consistency across both branches.
+        base = (
+            f"{stripped}, 3D render, side view, white background, "
+            f"centered, full body visible, studio lighting"
+        )
+    else:
+        # Single noun — structured template
+        base = (
+            f"3D render of a {stripped}, side view, white background, "
+            f"centered, full body visible, studio lighting"
+        )
 
     suffix = _CATEGORY_SUFFIXES.get(template_type, "")
     return f"{base}{suffix}"
