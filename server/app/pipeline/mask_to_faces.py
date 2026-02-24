@@ -1,9 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Mask-to-Face Mapping — project Grounded SAM masks onto mesh faces
-# ─────────────────────────────────────────────────────────────────────────────
-# Merges segmentation masks from multiple views into per-face labels.
-# Handles: overlapping masks, unlabeled faces, symmetric part cloning.
-# ─────────────────────────────────────────────────────────────────────────────
+# Project Grounded SAM masks onto mesh faces.
+# Merges masks from multiple views, resolves conflicts, fills unlabeled faces.
 
 from __future__ import annotations
 
@@ -19,29 +15,7 @@ def map_masks_to_faces(
     mesh_face_centroids: np.ndarray,
     part_names: list[str] | None = None,
 ) -> np.ndarray:
-    """Map pixel-level part masks from multiple views to mesh face labels.
-
-    Merges masks across views — a face is labeled if ANY view's mask
-    covers it. For conflicts (same face, different labels across views),
-    the smallest-area mask wins (most specific part).
-
-    Args:
-        views: List of (masks_dict, face_id_map) tuples, one per view.
-            masks_dict: Part name → binary mask (H, W).
-            face_id_map: (H, W) array, each pixel = face index (-1 = bg).
-        mesh_face_centroids: (num_faces, 3) face centroids for NN fallback.
-        part_names: Optional list of all expected part names (for symmetric
-            part heuristic).
-
-    Returns:
-        face_labels: (num_faces,) array, each entry is a part index (0, 1, 2...).
-
-    Edge case handling:
-        - Overlapping masks: smallest-area mask wins (more specific part).
-        - Multi-view conflicts: smallest-area mask wins across all views.
-        - Unlabeled faces: nearest-neighbor fill via KDTree.
-        - No masks match: all faces assigned to part 0.
-    """
+    """Map pixel-level masks to mesh face labels. Smallest-area mask wins."""
     num_faces = len(mesh_face_centroids)
     face_labels = np.full(num_faces, -1, dtype=np.int32)
 
@@ -86,19 +60,15 @@ def map_masks_to_faces(
                 face_labels[fidx] = part_idx
                 face_mask_area[fidx] = area
 
-    # ── Symmetric part heuristic ─────────────────────────────────────────
-    # If paired parts exist (e.g. front_left_leg / front_right_leg) and
-    # one has zero labeled faces, clone labels from the visible one using
-    # X-axis reflection.
+    # Symmetric part heuristic: clones labels from visible side via X-axis reflection
     if part_names:
         _apply_symmetric_heuristic(
             face_labels, mesh_face_centroids, part_to_idx, part_names, num_faces
         )
 
-    # ── Fill unlabeled faces via nearest-neighbor ────────────────────────
+    # Fill unlabeled faces via nearest-neighbor KDTree
     unlabeled = face_labels == -1
     labeled = ~unlabeled
-
     if unlabeled.any() and labeled.any():
         labeled_centroids = mesh_face_centroids[labeled]
         labeled_ids = face_labels[labeled]
@@ -119,8 +89,6 @@ def map_masks_to_faces(
 
     return face_labels
 
-
-# ── Symmetric pairs ──────────────────────────────────────────────────────────
 
 _SYMMETRIC_SUFFIXES = [
     ("_left_", "_right_"),
@@ -150,11 +118,7 @@ def _apply_symmetric_heuristic(
     part_names: list[str],
     num_faces: int,
 ) -> None:
-    """Clone labels from visible symmetric parts to occluded ones.
-
-    If one side has labeled faces and the other has none, mirror the
-    labels using X-axis reflection of face centroids.
-    """
+    """Clone labels from visible symmetric parts via X-axis reflection."""
     checked: set[str] = set()
 
     for name in part_names:
@@ -174,7 +138,6 @@ def _apply_symmetric_heuristic(
         count_a = int((face_labels == idx_a).sum())
         count_b = int((face_labels == idx_b).sum())
 
-        # Only clone if one side is completely unlabeled
         if count_a > 0 and count_b == 0:
             _clone_via_reflection(face_labels, centroids, idx_a, idx_b, num_faces)
             logger.debug("symmetric_clone", source=name, target=pair)
@@ -190,16 +153,14 @@ def _clone_via_reflection(
     target_idx: int,
     num_faces: int,
 ) -> None:
-    """Clone face labels from source to target using X-axis mesh reflection."""
+    """Clone labels via X-axis reflection of face centroids."""
     source_faces = np.where(face_labels == source_idx)[0]
     if len(source_faces) == 0:
         return
 
-    # Reflect source centroids across X=0 plane
     source_centroids = centroids[source_faces].copy()
-    source_centroids[:, 0] *= -1  # Mirror X axis
+    source_centroids[:, 0] *= -1
 
-    # Find unlabeled faces near the reflected positions
     unlabeled_mask = face_labels == -1
     if not unlabeled_mask.any():
         return
@@ -208,11 +169,8 @@ def _clone_via_reflection(
     unlabeled_centroids = centroids[unlabeled_indices]
 
     tree = KDTree(unlabeled_centroids)
-
-    # For each reflected source centroid, find nearest unlabeled face
     distances, nearest = tree.query(source_centroids)
 
-    # Only assign if distance is reasonable (< 0.3 units)
     for dist, nn_idx in zip(distances, nearest):
         if dist < 0.3:
             face_labels[unlabeled_indices[nn_idx]] = target_idx

@@ -1,13 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Pipeline Orchestrator — core generation business logic
-# ─────────────────────────────────────────────────────────────────────────────
-# Endpoints delegate here. This owns:
-#   - Cache check
-#   - Template resolution
-#   - Image generation → mesh generation → point sampling
-#   - Primary / fallback decision logic
-#   - Timeout + GPU OOM recovery
-# ─────────────────────────────────────────────────────────────────────────────
+# Core generation orchestrator: cache → template → models → points.
+# Primary (SDXL+PartCrafter) falls back to Hunyuan3D+Grounded SAM on failure.
 
 
 import asyncio
@@ -44,14 +36,7 @@ tracer = trace.get_tracer(__name__)
 
 
 class PipelineOrchestrator:
-    """Orchestrates: cache check → image gen → mesh gen → point sampling.
-
-    All GPU-bound work runs in a thread executor via run_in_executor
-    to avoid blocking the async event loop.
-
-    Subsequent prompts (03, 04, 10) will fill in the real model calls.
-    For now, _generate_sync returns mock data.
-    """
+    """Orchestrates generation pipeline: cache → image → mesh → points."""
 
     def __init__(
         self,
@@ -77,7 +62,6 @@ class PipelineOrchestrator:
         """Inner generate with OTel tracing."""
         start = time.perf_counter()
 
-        # 1. Cache check
         with tracer.start_as_current_span("cache_lookup"):
             cached = await self._cache.get(request.text)
         if cached is not None:
@@ -90,19 +74,11 @@ class PipelineOrchestrator:
             return cached
         parent_span.set_attribute("cached", False)
 
-        # 2. Generation rate limit check
-        # WHY THIS IS SEPARATE FROM THE OUTER SLOWAPI LIMIT:
-        # The outer limit (300/min) protects against DoS on the HTTP layer.
-        # This inner limit protects GPU cost. A cache hit costs ~0ms of GPU
-        # time; a cache miss costs 2–5s of RTX Pro 6000 compute.
-        # Separating them lets chatty real-time speech clients hammer the
-        # cache for free while capping the expensive generation path.
+        # Inner rate limit protects GPU cost (separate from outer HTTP DoS limit)
         if self._metrics:
             gen_limit = self._settings.generation_rate_limit_per_minute
             recent = self._metrics.recent_generations_per_minute()
             if recent >= gen_limit:
-                # Compute Retry-After: how many seconds until the oldest
-                # generation in the window expires from the 60s window.
                 retry_after = self._metrics.oldest_generation_retry_after()
                 logger.warning(
                     "generation_rate_limited",
@@ -112,8 +88,6 @@ class PipelineOrchestrator:
                     retry_after=retry_after,
                 )
                 raise GenerationRateLimitError(gen_limit, retry_after)
-
-        # 3. Template lookup
         template = get_template(request.text)
         logger.info(
             "generating",
@@ -122,7 +96,7 @@ class PipelineOrchestrator:
             parts=template.num_parts,
         )
 
-        # 3. Generate with timeout + GPU error recovery
+        # Generate with timeout + GPU error recovery
         try:
             positions, part_ids, part_names, pipeline_used = await asyncio.wait_for(
                 self._run_in_executor(request.text, template),
@@ -147,7 +121,6 @@ class PipelineOrchestrator:
                 raise GPUOutOfMemoryError() from e
             raise GenerationFailedError(request.text, str(e)) from e
 
-        # 4. Build response
         elapsed = int((time.perf_counter() - start) * 1000)
         bbox = compute_bbox(positions)
 
@@ -162,7 +135,6 @@ class PipelineOrchestrator:
             pipeline=pipeline_used,
         )
 
-        # 5. Cache the result (fire-and-forget — must not block or fail the response)
         async def _write_cache() -> None:
             try:
                 with tracer.start_as_current_span("cache_write"):
@@ -196,18 +168,13 @@ class PipelineOrchestrator:
     def _generate_sync(
         self, text: str, template: TemplateInfo
     ) -> tuple[np.ndarray, np.ndarray, list[str], str]:
-        """Synchronous GPU pipeline — runs in thread pool via run_in_executor.
-
-        Primary path: SDXL Turbo → PartCrafter → point sampling.
-        Falls back to mock data if models aren't loaded (e.g. in tests).
-        """
+        """Synchronous GPU pipeline. Primary: SDXL+PartCrafter. Fallback: Hunyuan3D+Grounded SAM."""
         total_points = self._settings.max_points
 
         # Canonical prompt
         prompt = get_canonical_prompt(text, template.template_type)
         logger.info("canonical_prompt", prompt=prompt)
 
-        # ── Step 1: Image generation (SDXL Turbo) ───────────────────────────
         pipeline_used = "mock"
         reference_image = None
 
@@ -224,17 +191,14 @@ class PipelineOrchestrator:
             )
             pipeline_used = "sdxl_turbo+mock"
 
-        # ── Step 2: Part mesh generation (PartCrafter) ──────────────────────
         if reference_image is not None and self._registry.has("partcrafter"):
             partcrafter = self._registry.get("partcrafter")
             t0 = time.perf_counter()
             part_meshes = partcrafter.generate(reference_image, num_parts=template.num_parts)
             mesh_ms = round((time.perf_counter() - t0) * 1000, 1)
 
-            # Count real meshes (non-dummy) — dummies have only 1 vertex
             real_count = sum(1 for m in part_meshes if len(m.vertices) > 1)
 
-            # Validate part count against template expectation
             if real_count < max(template.num_parts * 0.5, 1):
                 logger.warning(
                     "partcrafter_insufficient_parts",
@@ -244,20 +208,16 @@ class PipelineOrchestrator:
                     total=len(part_meshes),
                 )
 
-            # Filter out dummy meshes (1-vertex) for point sampling
             valid_meshes = [m for m in part_meshes if len(m.vertices) > 1]
             if not valid_meshes:
-                # All meshes failed — fall back to mock
                 logger.error("partcrafter_all_meshes_failed", text=text)
             else:
-                # ── Step 3: Point sampling ──────────────────────────────────
                 t1 = time.perf_counter()
                 positions, part_ids = sample_from_part_meshes(
                     valid_meshes, total_points=total_points
                 )
                 sample_ms = round((time.perf_counter() - t1) * 1000, 1)
 
-                # Truncate part names to match actual mesh count
                 part_names = template.part_names[: len(valid_meshes)]
                 pipeline_used = "partcrafter"
 
@@ -273,9 +233,7 @@ class PipelineOrchestrator:
 
                 return positions, part_ids, part_names, pipeline_used
 
-        # ── Fallback: Hunyuan3D + Grounded SAM ─────────────────────────────
-        # Triggers when PartCrafter fails or returns insufficient parts.
-        # Lazy-loads fallback models via registry.get_or_load().
+        # Fallback: Hunyuan3D + Grounded SAM (lazy-loaded)
         if reference_image is not None:
             try:
                 fallback_t0 = time.perf_counter()
@@ -292,11 +250,9 @@ class PipelineOrchestrator:
                     lambda: GroundedSAM2Model(device="cuda"),
                 )
 
-                # Step A: Generate monolithic mesh
                 mesh = hunyuan.generate(reference_image)
                 step_a_ms = round((time.perf_counter() - fallback_t0) * 1000, 1)
 
-                # Check cumulative fallback timeout (default 120s)
                 fallback_timeout = getattr(self._settings, "fallback_timeout_seconds", 120)
                 if (time.perf_counter() - fallback_t0) > fallback_timeout:
                     logger.warning(
@@ -306,12 +262,10 @@ class PipelineOrchestrator:
                     )
                     raise TimeoutError("Fallback pipeline exceeded timeout")
 
-                # Step B: Multi-view render + face-ID pass
                 step_b_t0 = time.perf_counter()
                 view_results = render_multiview_with_id_pass(mesh)
                 step_b_ms = round((time.perf_counter() - step_b_t0) * 1000, 1)
 
-                # Step C: Segment with Grounded SAM
                 step_c_t0 = time.perf_counter()
                 views_for_mapping = []
                 for color_img, face_id_map in view_results:
@@ -319,7 +273,6 @@ class PipelineOrchestrator:
                     views_for_mapping.append((masks, face_id_map))
                 step_c_ms = round((time.perf_counter() - step_c_t0) * 1000, 1)
 
-                # Step D: Map masks to mesh faces
                 step_d_t0 = time.perf_counter()
                 face_centroids = mesh.triangles_center
                 face_labels = map_masks_to_faces(
@@ -329,7 +282,6 @@ class PipelineOrchestrator:
                 )
                 step_d_ms = round((time.perf_counter() - step_d_t0) * 1000, 1)
 
-                # Step E: Sample points
                 positions, part_ids = sample_from_labeled_mesh(
                     mesh, face_labels, total_points=total_points
                 )
@@ -348,9 +300,7 @@ class PipelineOrchestrator:
                     faces=len(mesh.faces),
                 )
 
-                # ── VRAM offload ─────────────────────────────────────────
                 # Offload fallback models if VRAM > 80GB to prevent OOM
-                # on subsequent requests. (RTX Pro 6000 has 96GB VRAM)
                 try:
                     import torch
 
@@ -384,8 +334,7 @@ class PipelineOrchestrator:
                     error=str(e),
                 )
 
-        # ── Final safety net: Mock point cloud ───────────────────────────────
-        # If both PartCrafter AND Hunyuan fail, return a procedural sphere.
+        # Final fallback: procedural sphere if all pipelines fail
         logger.warning("all_pipelines_failed_using_mock", text=text)
         rng = np.random.default_rng(hash(text) % (2**32))
         theta = rng.uniform(0, 2 * np.pi, total_points)

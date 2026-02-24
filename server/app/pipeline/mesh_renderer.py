@@ -1,14 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Mesh Renderer — multi-view color + face-ID pass for segmentation
-# ─────────────────────────────────────────────────────────────────────────────
-# Renders the Hunyuan3D output mesh from multiple canonical views.
-# Each view produces:
-#   - color_image: PIL Image fed to Grounded SAM 2
-#   - face_id_map: (H, W) int array mapping pixels to mesh face indices
-#
-# Uses pyrender with OSMesa backend (PYOPENGL_PLATFORM=osmesa) for reliable
-# headless rendering. Only needs GPU for ML inference, not for rendering.
-# ─────────────────────────────────────────────────────────────────────────────
+# Multi-view mesh rendering with face-ID pass for segmentation.
+# Each view: color image (for Grounded SAM 2) + face_id_map (pixel→face index).
 
 from __future__ import annotations
 
@@ -22,9 +13,7 @@ import trimesh
 
 logger = structlog.get_logger(__name__)
 
-# ── Camera positions for canonical views ─────────────────────────────────────
-# Multiple views avoid single-view occlusion (e.g. far legs hidden behind near
-# legs on a quadruped). Each view is defined as (eye_x, eye_y, eye_z).
+# Camera positions for canonical views (avoids occlusion issues)
 _VIEW_CONFIGS = {
     "side": {"eye": (2.5, 0.5, 0.0), "up": (0, 1, 0)},
     "front": {"eye": (0.0, 0.5, 2.5), "up": (0, 1, 0)},
@@ -74,20 +63,7 @@ def render_multiview_with_id_pass(
     resolution: int = 512,
     views: list[str] | None = None,
 ) -> list[tuple[PIL.Image.Image, np.ndarray]]:
-    """Render mesh from multiple canonical views + face-ID passes.
-
-    Each view produces a color image for segmentation and a face-ID map
-    that links pixels to mesh faces. Multi-view avoids occlusion issues.
-
-    Args:
-        mesh: Triangle mesh to render.
-        resolution: Output image size (square).
-        views: List of view names. Defaults to ["side", "front", "three_quarter"].
-
-    Returns:
-        List of (color_image, face_id_map) tuples, one per view.
-        face_id_map: (resolution, resolution) int array. -1 = background.
-    """
+    """Render mesh from multiple views. Returns [(color_img, face_id_map), ...]."""
     import time
 
     import pyrender  # type: ignore[import-untyped]
@@ -107,13 +83,7 @@ def render_multiview_with_id_pass(
 
     for view_name in views:
         config = _VIEW_CONFIGS.get(view_name, _VIEW_CONFIGS["side"])
-
-        # ── Color pass ───────────────────────────────────────────────────
         color_image = _render_color_pass(centered_mesh, config, resolution, pyrender)
-
-        # ── Face-ID pass ─────────────────────────────────────────────────
-        # Each face gets a unique color. No anti-aliasing, no alpha blending,
-        # GL_NEAREST filtering to prevent color interpolation at edges.
         face_id_map = _render_id_pass(centered_mesh, config, resolution, pyrender)
 
         results.append((color_image, face_id_map))
@@ -166,33 +136,22 @@ def _render_id_pass(
     resolution: int,
     pyrender: Any,
 ) -> np.ndarray[Any, Any]:
-    """Render a face-ID pass — each face has a unique color.
-
-    ID pass configuration:
-    - GL_NEAREST filtering (no color interpolation)
-    - No MSAA / anti-aliasing
-    - No alpha blending
-    - Flat shading (no lighting applied)
-    """
+    """Render face-ID map: each face → unique RGB color (no interpolation)."""
     num_faces = len(mesh.faces)
 
-    # Assign each face a unique color
     face_colors = np.zeros((num_faces, 4), dtype=np.uint8)
     for i in range(num_faces):
         r, g, b = _encode_face_id(i)
         face_colors[i] = [r, g, b, 255]
 
-    # Create a copy with per-face vertex colors
-    # Expand to per-vertex by duplicating vertices for each face
     id_mesh = mesh.copy()
     id_mesh.visual = trimesh.visual.ColorVisuals(mesh=id_mesh, face_colors=face_colors)
 
     scene = pyrender.Scene(
         bg_color=[0, 0, 0, 0],
-        ambient_light=[1.0, 1.0, 1.0],  # Full ambient = no shading variation
+        ambient_light=[1.0, 1.0, 1.0],
     )
 
-    # Flat material — no lighting effects
     material = pyrender.MetallicRoughnessMaterial(
         metallicFactor=0.0,
         roughnessFactor=1.0,
@@ -205,7 +164,6 @@ def _render_id_pass(
     camera_pose = _look_at(config["eye"], up=config["up"])
     scene.add(camera, pose=camera_pose)
 
-    # Render with no anti-aliasing
     renderer = pyrender.OffscreenRenderer(resolution, resolution)
     color, _ = renderer.render(
         scene,
@@ -213,20 +171,14 @@ def _render_id_pass(
     )
     renderer.delete()
 
-    # Decode pixel colors back to face indices
     face_id_map = np.full((resolution, resolution), -1, dtype=np.int32)
-
     r = color[:, :, 0].astype(np.int32)
     g = color[:, :, 1].astype(np.int32)
     b = color[:, :, 2].astype(np.int32)
-
     decoded = (r << 16) | (g << 8) | b
 
-    # Background pixels (black) map to face 0 — mark as -1
     non_background = decoded > 0
     face_id_map[non_background] = decoded[non_background]
-
-    # Clamp to valid face indices
     face_id_map[face_id_map >= num_faces] = -1
 
     return face_id_map

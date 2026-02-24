@@ -1,17 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# API Key Authentication Middleware
-# ─────────────────────────────────────────────────────────────────────────────
-# Validates X-API-Key header on all non-exempt requests.
-#
-# Design decisions:
-#   - Uses secrets.compare_digest for constant-time comparison (prevents
-#     timing side-channel attacks on the API key).
-#   - Exempt paths are stored as a frozenset for O(1) lookup.
-#   - Disabled when api_key is empty (local dev / test environments).
-#   - Uses BaseHTTPMiddleware for consistency with RequestContextMiddleware.
-#   - Returns JSON error in the same shape as LumenError handlers
-#     ({"error": ...}) for client consistency.
-# ─────────────────────────────────────────────────────────────────────────────
+# API Key authentication middleware with constant-time comparison to prevent timing attacks.
+# Uses frozenset for O(1) exempt path lookup. Disabled when api_key is empty.
 
 
 import secrets
@@ -24,9 +12,7 @@ from starlette.responses import JSONResponse, Response
 
 logger = structlog.get_logger(__name__)
 
-# Paths exempt from API key authentication.
-# Health probes must be unauthenticated for Cloud Run liveness/readiness.
-# Root "/" returns 404 by default but should not require auth (crawlers, etc).
+# Exempt paths: health probes (Cloud Run liveness/readiness), metrics, root
 _EXEMPT_PATHS: frozenset[str] = frozenset(
     {
         "/",
@@ -38,36 +24,22 @@ _EXEMPT_PATHS: frozenset[str] = frozenset(
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
-    """Reject requests that lack a valid ``X-API-Key`` header.
-
-    Cloud Run health probes (``/health``, ``/health/ready``) are exempt
-    so the container can pass liveness/readiness checks without a key.
-
-    The middleware is **disabled** when the configured API key is empty,
-    allowing local development and test suites to run without secrets.
-    """
+    """Validate X-API-Key header (exempt: health probes, metrics, root)."""
 
     def __init__(self, app: Any, *, api_key: str) -> None:
         super().__init__(app)
         self._api_key = api_key
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # Skip auth for CORS preflight — OPTIONS requests never carry
-        # custom headers like X-API-Key. Let CORSMiddleware handle them.
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        # Skip auth for exempt paths (health probes, root)
         if request.url.path in _EXEMPT_PATHS:
             return await call_next(request)
 
-        # Extract key from header
         provided_key = request.headers.get("x-api-key", "")
 
-        # Constant-time comparison prevents timing attacks.
-        # An attacker who can measure response time precisely could
-        # otherwise brute-force the key character-by-character with
-        # a naive == comparison.
+        # Constant-time comparison prevents timing side-channel attacks
         if not provided_key or not secrets.compare_digest(provided_key, self._api_key):
             logger.warning(
                 "auth_rejected",

@@ -1,9 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# FastAPI Application Factory + Lifespan
-# ─────────────────────────────────────────────────────────────────────────────
+# FastAPI application factory with lifespan management.
 # Entrypoint: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8080
-# The --factory flag tells uvicorn to call create_app() for the app instance.
-# ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
 from collections.abc import AsyncIterator
@@ -35,14 +31,7 @@ logger = structlog.get_logger(__name__)
 
 
 def _parse_retry_after(rate_limit: str) -> str:
-    """Extract the window duration from a slowapi rate limit string.
-
-    Examples:
-        "60/minute" → "60"   (60 seconds)
-        "10/second" → "1"    (1 second)
-        "5/hour"    → "3600" (1 hour)
-    Falls back to "60" if the format is unrecognized.
-    """
+    """Extract window duration from slowapi rate limit string."""
     windows = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}
     try:
         _, window = rate_limit.strip().split("/")
@@ -73,12 +62,7 @@ if TYPE_CHECKING:
 
 
 def _configure_otel(exporter_type: str) -> "TracerProvider | None":
-    """Configure OpenTelemetry tracing.
-
-    Supports "console" for dev and "gcp" for Cloud Trace.
-    No-op if the exporter type is unknown. Returns the provider
-    so the caller can shut it down during lifespan cleanup.
-    """
+    """Configure OpenTelemetry tracing (console or gcp)."""
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
@@ -109,40 +93,21 @@ def _configure_otel(exporter_type: str) -> "TracerProvider | None":
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage startup and shutdown lifecycle.
-
-    Replaces the deprecated @app.on_event("startup") / "shutdown" pattern.
-    All stateful objects (models, cache, metrics) are created here and
-    stored in app.state for injection via Depends().
-
-    Models load in a background task so uvicorn binds the port
-    immediately.  The /health/ready probe returns 503 until models
-    finish loading; /generate returns ModelNotLoadedError (503) until
-    the registry is populated.
-    """
+    """Manage startup/shutdown. Models load in background; port binds immediately."""
     import asyncio
     import os
 
     settings = get_settings()
 
-    # ── Configure OpenTelemetry ──────────────────────────────────────────────
     otel_provider = None
     otel_exporter = os.environ.get("OTEL_EXPORTER", "")
     if otel_exporter:
         otel_provider = _configure_otel(otel_exporter)
 
-    # Initialize model registry (no models loaded yet)
     registry = ModelRegistry(settings)
-
-    # Initialize cache
     cache = ShapeCache(bucket_name=settings.cache_bucket)
     await cache.connect()
-
-    # Initialize metrics
     metrics = PipelineMetrics()
-
-    # Store in app.state — accessed via dependency functions in dependencies.py
-    # Create the pipeline orchestrator (lifecycle-managed, not per-request)
     orchestrator = PipelineOrchestrator(registry, cache, settings, metrics=metrics)
 
     app.state.model_registry = registry
@@ -151,21 +116,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.metrics = metrics
     app.state.pipeline_orchestrator = orchestrator
 
-    # Load models in background after app is already serving.
-    # Cache warming runs after models finish loading.
-    # IMPORTANT: Store the task reference on app.state to prevent garbage
-    # collection. Without this, Python can GC the Task before it completes,
-    # silently cancelling model loading.
+    # Load models in background (task ref stored to prevent GC cancellation)
     if not settings.skip_model_load:
         task = asyncio.create_task(_load_models_and_warm_cache(registry, cache))
         task.add_done_callback(_on_model_load_done)
         app.state._model_load_task = task
 
-    yield  # App is running, serving requests
+    yield
 
-    # ── Shutdown ─────────────────────────────────────────────────────────────
-    # Flush pending OTel spans before process exit. Without this, the
-    # BatchSpanProcessor drops its final batch on Cloud Run scale-to-zero.
+    # Flush OTel spans before shutdown (critical for Cloud Run scale-to-zero)
     if otel_provider is not None:
         otel_provider.shutdown()
 
@@ -173,12 +132,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _on_model_load_done(task: asyncio.Task[None]) -> None:
-    """Callback for the background model-load task.
-
-    Without this, exceptions from create_task() are silently swallowed —
-    Python only prints "Task exception was never retrieved" to stderr.
-    This ensures model load failures are logged prominently.
-    """
+    """Log background model-load task failures (suppresses silent exceptions)."""
     if task.cancelled():
         logger.error("model_load_task_cancelled")
     elif exc := task.exception():
@@ -190,15 +144,7 @@ def _on_model_load_done(task: asyncio.Task[None]) -> None:
 
 
 async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache) -> None:
-    """Sync model weights from GCS, load ML models, then warm the cache.
-
-    Runs in the background so uvicorn binds the port immediately.
-    Model init is CPU/GPU-bound, so we run it in a thread to avoid
-    blocking the event loop (which would stall health probe responses).
-
-    Sync order: GCS weights → load models → warm shape cache.
-    If GCS sync fails, model loading falls back to HuggingFace Hub.
-    """
+    """Load models and warm cache: GCS sync → load → cache warmup."""
     import asyncio
 
     from app.model_sync import sync_model_weights
@@ -206,10 +152,6 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
     loop = asyncio.get_running_loop()
     settings = get_settings()
 
-    # ── Step 0: Sync model weights from GCS (if configured) ───────────
-    # Runs in a thread because it's I/O-bound (network downloads).
-    # Must complete before model loading so from_pretrained() finds
-    # cached weights on disk instead of downloading from HuggingFace.
     if settings.model_weights_bucket:
         try:
             await loop.run_in_executor(
@@ -235,7 +177,6 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
             partcrafter = PartCrafterModel(device="cuda")
             registry.register("partcrafter", partcrafter)
 
-            # ── VRAM budget check ───────────────────────────────────────────
             try:
                 import torch
 
@@ -257,10 +198,7 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
         logger.exception("background_model_load_failed")
         raise
 
-    # ── Eager-load fallback models (GCE with larger GPU) ──────────────
-    # Separate try/except so fallback failure doesn't take down the
-    # primary models. If this fails, primary pipeline still works —
-    # fallback will just lazy-load on first use (slower, but functional).
+    # Eager-load fallback models (optional, separate error handling)
     if settings.eager_load_all:
         try:
 
@@ -283,20 +221,13 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
                 hint="Primary models are still available. Fallback will lazy-load on demand.",
             )
 
-    # ── Cache warming ────────────────────────────────────────────────────
-    # Load all pre-generated shapes from Cloud Storage into memory LRU.
-    # 50 entries × ~27KB ≈ 1.3MB — well within memory budget.
     try:
         loaded = await cache.load_all_cached()
         logger.info("cache_warmed", shapes_loaded=loaded)
     except Exception:
         logger.exception("cache_warming_failed")
 
-    # ── Preload top concepts (parallel) ──────────────────────────────────
-    # Ensure the 8 highest-value concepts are in memory even if
-    # load_all_cached missed them (e.g. cache was empty on first deploy).
-    # Uses asyncio.gather for parallel GCS round-trips instead of
-    # sequential awaits (~8× faster on first deploy).
+    # Preload top concepts in parallel (faster than sequential on cold start)
     top_concepts = ["horse", "dog", "cat", "bird", "dragon", "elephant", "fish", "car"]
 
     async def _preload_one(concept: str) -> bool:
@@ -315,12 +246,7 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
 
 
 def _parse_origins(allowed_origins: str) -> list[str]:
-    """Parse comma-separated origin string into a list.
-
-    Returns ``[]`` (deny all cross-origin) if the input is empty.
-    Set ALLOWED_ORIGINS env var for production and local dev.
-    Example: ``ALLOWED_ORIGINS=https://numen.app,http://localhost:5173``
-    """
+    """Parse comma-separated CORS origins. Empty string → deny all."""
     if not allowed_origins.strip():
         logger.warning(
             "cors_no_origins_configured",
@@ -331,12 +257,7 @@ def _parse_origins(allowed_origins: str) -> list[str]:
 
 
 def create_app() -> FastAPI:
-    """Application factory. Invoked by: uvicorn app.main:create_app --factory
-
-    The --factory flag tells uvicorn to call this function to get the app,
-    rather than importing a module-level variable. This avoids side effects
-    at import time and makes testing cleaner.
-    """
+    """Application factory. Invoked by: uvicorn app.main:create_app --factory"""
     settings = get_settings()
     configure_logging(log_level=settings.log_level, json_output=settings.log_json)
 
@@ -347,24 +268,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── Attach rate limiter to app state (required by slowapi) ───────────────
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-    # ── Middleware stack ─────────────────────────────────────────────────────
-    # Starlette applies middleware in reverse order of add_middleware calls.
-    # The execution order for an incoming request is:
-    #   CORS → APIKey → RequestContext → route handler
-    #
-    # This ensures:
-    #   1. CORS handles OPTIONS preflight before auth (no API key on preflight)
-    #   2. APIKey rejects unauthenticated requests before they reach business logic
-    #   3. RequestContext logs timing and attaches request ID to all responses
-
-    # Innermost — runs last, logs timing + request ID
+    # Middleware order (Starlette applies in reverse): CORS → APIKey → RequestContext
     app.add_middleware(RequestContextMiddleware)
 
-    # Middle — API key gate (disabled when api_key is empty)
     api_key_value = settings.api_key.get_secret_value()
     if api_key_value:
         app.add_middleware(APIKeyMiddleware, api_key=api_key_value)
@@ -372,7 +281,6 @@ def create_app() -> FastAPI:
     else:
         logger.warning("api_key_auth_disabled", reason="API_KEY env var not set")
 
-    # Outermost — CORS headers + preflight handling
     origins = _parse_origins(settings.allowed_origins)
     app.add_middleware(
         CORSMiddleware,
@@ -381,10 +289,8 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type", "X-API-Key"],
     )
 
-    # ── Exception handlers ───────────────────────────────────────────────────
     register_exception_handlers(app)
 
-    # ── Routes ───────────────────────────────────────────────────────────────
     app.include_router(health.router, tags=["health"])
     app.include_router(generate.router, tags=["generate"])
     app.include_router(cache_routes.router, tags=["cache"])
