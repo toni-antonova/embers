@@ -133,6 +133,31 @@ class TestAuthEnabled:
         body = response.json()
         assert "error" in body
 
+    def test_options_bypasses_auth(self):
+        """OPTIONS (CORS preflight) must never require an API key.
+
+        Browsers send OPTIONS without custom headers. If the middleware
+        rejects the preflight, the browser blocks the real request entirely.
+        This is a regression test for the CORS 400 bug.
+        """
+        response = self.client.options(
+            "/generate",
+            headers={
+                "Origin": "https://storage.googleapis.com",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "Content-Type,X-API-Key",
+            },
+        )
+        # Must NOT be 401 — the CORS middleware should handle this
+        assert response.status_code != 401
+        # Should be 200 (Starlette CORSMiddleware returns 200 for valid preflight)
+        assert response.status_code == 200
+
+    def test_options_on_non_exempt_path_bypasses_auth(self):
+        """OPTIONS on a path that normally requires auth still bypasses auth."""
+        response = self.client.options("/debug/health")
+        assert response.status_code != 401
+
 
 # ── Auth Disabled ────────────────────────────────────────────────────────────
 

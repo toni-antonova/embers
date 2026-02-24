@@ -234,14 +234,20 @@ class TestValidationErrors:
 
 class TestCORS:
     @pytest.mark.asyncio
-    async def test_cors_headers_present(self, client: AsyncClient) -> None:
-        """OPTIONS request → verify correct CORS headers."""
+    async def test_cors_preflight_returns_200(self, client: AsyncClient) -> None:
+        """OPTIONS /generate preflight → 200 with correct CORS headers.
+
+        Regression test: the APIKeyMiddleware used to intercept OPTIONS
+        requests and return 400 because preflights don't carry X-API-Key.
+        """
         response = await client.options(
             "/generate",
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "Content-Type,X-API-Key",
             },
         )
-        # CORS should return either 200 or 204
-        assert response.status_code in (200, 204, 405)
+        assert response.status_code == 200
+        assert "access-control-allow-origin" in response.headers
+
