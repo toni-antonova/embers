@@ -5,6 +5,7 @@
 
 import { WebSocketSTTClient } from '../audio/WebSocketSTTClient';
 import type { TranscriptEvent } from '../audio/types';
+import type { AudioEngine } from './AudioEngine';
 
 // Re-export so existing consumers (Canvas, AnalysisPanel, GhostTranscript, etc.)
 // can keep importing from this module without changing their import paths.
@@ -80,11 +81,14 @@ export class SpeechEngine {
     private usingWebSocket = false;
     private webSpeechProbe: WebSpeechProbeResult = 'untested';
     private readonly deepgramApiKey: string;
+    private readonly isIOS: boolean;
+    private audioEngineRef: AudioEngine | null = null;
 
     constructor() {
         this.isSupported = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
         const ua = navigator.userAgent;
         this.isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+        this.isIOS = /iPhone|iPad|iPod/.test(ua);
         this.deepgramApiKey = (typeof import.meta !== 'undefined' &&
             import.meta.env?.VITE_DEEPGRAM_API_KEY) || '';
 
@@ -100,6 +104,15 @@ export class SpeechEngine {
     }
 
     // ── PUBLIC API ───────────────────────────────────────────────────
+
+    /**
+     * Provide a reference to AudioEngine so that the WebSocket fallback
+     * can reuse its AudioContext and MediaStream instead of creating
+     * duplicates (critical on iOS where extra contexts crash the tab).
+     */
+    setAudioEngine(audioEngine: AudioEngine): void {
+        this.audioEngineRef = audioEngine;
+    }
 
     get isRunning(): boolean {
         return this._isRunning;
@@ -219,7 +232,7 @@ export class SpeechEngine {
 
         const recognition: SpeechRecognitionInstance = new SpeechRecognitionCtor();
 
-        recognition.continuous = true;
+        recognition.continuous = !this.isIOS;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
 
@@ -453,7 +466,12 @@ export class SpeechEngine {
 
         // Create WebSocket client if not already created
         if (!this.wsClient) {
-            this.wsClient = new WebSocketSTTClient(this.deepgramApiKey);
+            // On iOS, reuse AudioEngine's AudioContext and MediaStream
+            // to avoid creating a second context (iOS strictly limits these).
+            const sharedCtx = this.audioEngineRef?.audioContext ?? undefined;
+            // AudioEngine stores its MediaStream source; extract the stream from it.
+            const sharedStream = this.audioEngineRef?.source?.mediaStream ?? undefined;
+            this.wsClient = new WebSocketSTTClient(this.deepgramApiKey, sharedCtx, sharedStream);
 
             // Wire up transcript events → our listeners
             this._wsTranscriptUnsub = this.wsClient.onTranscript((event) => {

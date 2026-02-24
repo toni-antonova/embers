@@ -617,6 +617,229 @@ html:has(.report-page) body {
     margin-bottom: 0.3rem;
 }
 
+/* ── SYSTEM DIAGRAM (Full pipeline flowchart) ──────────────────────── */
+.sys-diagram {
+    background: var(--rp-surface);
+    border: 1px solid var(--rp-border);
+    border-radius: 12px;
+    padding: 2rem;
+    margin: 2rem 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+
+.sys-node {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--rp-border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    text-align: center;
+    width: 100%;
+    max-width: 420px;
+    position: relative;
+}
+
+.sys-node__label {
+    font-size: 14px;
+    font-weight: 600;
+    color: white;
+    margin-bottom: 4px;
+}
+
+.sys-node__detail {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--rp-text-muted);
+    margin-bottom: 2px;
+}
+
+.sys-node__meta {
+    font-size: 11px;
+    color: var(--rp-text-dim);
+    line-height: 1.6;
+}
+
+.sys-node__row {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    font-size: 13px;
+    color: var(--rp-text-muted);
+    margin-top: 4px;
+}
+
+.sys-node__badge {
+    position: absolute;
+    top: -9px;
+    left: 14px;
+    background: var(--rp-surface);
+    padding: 1px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 4px;
+}
+
+/* Node color variants */
+.sys-node--input {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    max-width: 100%;
+}
+
+.sys-node--process {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.sys-node--accent {
+    background: rgba(139, 92, 246, 0.05);
+    border-color: rgba(139, 92, 246, 0.15);
+}
+
+.sys-node--green {
+    background: rgba(74, 222, 128, 0.04);
+    border-color: rgba(74, 222, 128, 0.14);
+    padding-top: 1.25rem;
+}
+
+.sys-node--green .sys-node__badge {
+    color: var(--rp-green);
+    border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+.sys-node--blue {
+    background: rgba(96, 165, 250, 0.04);
+    border-color: rgba(96, 165, 250, 0.14);
+    padding-top: 1.25rem;
+}
+
+.sys-node--blue .sys-node__badge {
+    color: var(--rp-blue);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+}
+
+.sys-node--bridge {
+    background: rgba(245, 197, 66, 0.04);
+    border-color: rgba(245, 197, 66, 0.14);
+    max-width: 100%;
+}
+
+.sys-node--gpu {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(96, 165, 250, 0.06));
+    border-color: rgba(139, 92, 246, 0.18);
+    max-width: 100%;
+}
+
+/* Fork layout (audio branch + pointer branch side by side) */
+.sys-diagram__fork {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1.5rem;
+    width: 100%;
+    align-items: start;
+}
+
+.sys-branch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+
+.sys-branch--pointer {
+    padding-top: 0;
+    min-width: 140px;
+}
+
+/* Pair (side-by-side nodes within a branch) */
+.sys-node__pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.sys-node__pair .sys-node {
+    max-width: none;
+}
+
+/* Inner rows within a node */
+.sys-node__inner-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.sys-node--sub {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--rp-border);
+    border-radius: 6px;
+    padding: 0.5rem;
+}
+
+.sys-node--sub-primary {
+    border-color: rgba(74, 222, 128, 0.15);
+}
+
+.sys-node--sub-fallback {
+    border-color: rgba(245, 197, 66, 0.15);
+}
+
+/* Arrows */
+.sys-arrow {
+    text-align: center;
+    padding: 0.4rem 0;
+    color: var(--rp-text-dim);
+    font-size: 1rem;
+}
+
+.sys-arrow--conditional {
+    font-size: 12px;
+    color: var(--rp-text-muted);
+    font-style: italic;
+}
+
+.sys-arrow--inner {
+    padding: 0.25rem 0;
+    font-size: 0.85rem;
+}
+
+.sys-arrow--merge {
+    font-size: 12px;
+    color: var(--rp-text-muted);
+    font-style: italic;
+    padding: 0.6rem 0;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .sys-diagram__fork {
+        grid-template-columns: 1fr;
+    }
+
+    .sys-branch--pointer {
+        min-width: auto;
+    }
+
+    .sys-node__pair {
+        grid-template-columns: 1fr;
+    }
+
+    .sys-node__inner-row {
+        grid-template-columns: 1fr;
+    }
+
+    .sys-node__row {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+}
+
 /* ── FOOTER ─────────────────────────────────────────────────────────── */
 .report-footer {
     text-align: center;

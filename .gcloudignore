@@ -23,3 +23,9 @@ server/**/*.md
 !server/**/README.md
 server/**/*.xlsx
 server/**/*.xls
+
+# ── Explicit project-local exclusions (also covered by top-level *) ──
+ABOUT.md
+VOICE_PROMPT.md
+setup-embers.sh
+.firebase/

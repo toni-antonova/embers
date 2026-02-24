@@ -97,7 +97,12 @@ export function useThreeScene(
         }
 
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        // Cap pixel ratio on mobile to reduce GPU memory pressure.
+        // iPhone 14/15/16 report DPR=3, producing ~4.7M-pixel framebuffers
+        // that push past iOS Safari's ~300 MB WebGL ceiling when combined
+        // with 16K-particle GPU compute. DPR=2 is visually identical on phone screens.
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 2 : window.devicePixelRatio));
         renderer.setClearColor(0x1a1a1a);
         renderer.autoClear = false;
 

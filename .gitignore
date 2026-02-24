@@ -68,6 +68,14 @@ analysis/
 PRINCIPAL_ENGINEER_REVIEW.md
 gpu-quota-audit.txt
 pre-deploy-bug-report.md
+ABOUT.md
+VOICE_PROMPT.md
 *.xlsx
 *.xls
 *.docx
+
+# Local scripts
+setup-embers.sh
+
+# Firebase cache
+.firebase/

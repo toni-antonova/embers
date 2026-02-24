@@ -103,8 +103,15 @@ export class WebSocketSTTClient {
     // ── Running flag ─────────────────────────────────────────────────
     private _isRunning = false;
 
-    constructor(apiKey: string) {
+    // ── Shared AudioContext (avoids creating a second one on iOS) ────
+    private sharedAudioContext: AudioContext | null = null;
+    private sharedMediaStream: MediaStream | null = null;
+    private ownsAudioContext = false;
+
+    constructor(apiKey: string, sharedAudioContext?: AudioContext, sharedMediaStream?: MediaStream) {
         this.apiKey = apiKey;
+        this.sharedAudioContext = sharedAudioContext ?? null;
+        this.sharedMediaStream = sharedMediaStream ?? null;
     }
 
     // ── PUBLIC API ───────────────────────────────────────────────────
@@ -131,20 +138,34 @@ export class WebSocketSTTClient {
 
         try {
             // ── Mic access ───────────────────────────────────────────
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
-            });
+            if (this.sharedMediaStream) {
+                // Reuse the MediaStream already held by AudioEngine.
+                this.mediaStream = this.sharedMediaStream;
+            } else {
+                this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                });
+            }
 
             // ── AudioContext + Worklet ───────────────────────────────
             // IMPORTANT: We inline the worklet code as a Blob URL because
             // AudioWorklets require same-origin scripts. When serving from
             // GCS/CDN, external worklet files fail with CORS errors.
             // Blob URLs are always same-origin, bypassing this restriction.
-            this.audioContext = new AudioContext();
+            if (this.sharedAudioContext) {
+                // Reuse AudioEngine's context — iOS Safari strictly limits
+                // concurrent AudioContexts and will crash/suspend extras.
+                this.audioContext = this.sharedAudioContext;
+                this.ownsAudioContext = false;
+                console.log('[WebSocketSTT] Reusing shared AudioContext');
+            } else {
+                this.audioContext = new AudioContext();
+                this.ownsAudioContext = true;
+            }
 
             const workletCode = `
 const TARGET_SAMPLE_RATE = 16000;
@@ -269,17 +290,17 @@ registerProcessor('stt-capture-processor', STTCaptureProcessor);
             this.sourceNode = null;
         }
 
-        // Release mic
-        if (this.mediaStream) {
+        // Release mic (only if we own it, not if shared from AudioEngine)
+        if (this.mediaStream && !this.sharedMediaStream) {
             this.mediaStream.getTracks().forEach(t => t.stop());
-            this.mediaStream = null;
         }
+        this.mediaStream = null;
 
-        // Close AudioContext
-        if (this.audioContext) {
+        // Close AudioContext (only if we created it)
+        if (this.audioContext && this.ownsAudioContext) {
             this.audioContext.close();
-            this.audioContext = null;
         }
+        this.audioContext = null;
 
         this.setStatus('closed');
         console.log('[WebSocketSTT] Stopped');

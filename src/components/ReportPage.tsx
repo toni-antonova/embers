@@ -58,11 +58,11 @@ export function ReportPage() {
                     semantic classification.
                 </p>
 
-                {/* THE CORE INSIGHT */}
-                <h2>The Core Insight</h2>
+                {/* THE CORE MOTIVATION */}
+                <h2>The Core Motivation</h2>
 
                 <p>
-                    The critical realization that shaped the whole project: <strong>speech
+                    The driving idea behind the whole project: <strong>speech
                         primes the viewer's perception</strong>.
                 </p>
 
@@ -75,7 +75,7 @@ export function ReportPage() {
 
                 <p>
                     So the practical approach is a <strong>three tier verb handling
-                        system</strong>: match the verb to a motion template that captures the
+                        system</strong> - match the verb to a motion template that captures the
                     quality of the action, and let the viewer's perception do the rest.
                     This idea drove every major decision, from how I map emotions to physics,
                     to why I chose particle systems over mesh animation, to the entire
@@ -84,6 +84,15 @@ export function ReportPage() {
 
                 {/* THE RESEARCH */}
                 <h2>The Research</h2>
+
+                <p>
+                    Three bodies of research ground the visual mappings: <strong>Laban
+                        Movement Analysis</strong> connects emotions to movement qualities,
+                    <strong>color-emotion studies</strong> connect affect to hue and
+                    brightness, and <strong>crossmodal correspondence</strong> research
+                    validates that pitch, loudness, and timbre map to specific visual
+                    dimensions. Each one gave a concrete rule for the shader system.
+                </p>
 
                 <h3>How Emotions Become Particle Physics</h3>
 
@@ -128,7 +137,7 @@ export function ReportPage() {
                 <p>
                     Spence (2011), Marks (1974), Walker et al. (2010): pitch maps to
                     brightness, loudness to size, spectral centroid to color warmth.
-                    These hold cross culturally. This validated the core design rule:
+                    These hold cross culturally. This validated the core design rule -
                     <strong> one audio feature controls one visual dimension</strong>.
                     No cross contamination. When you see particles swirling faster, you
                     know it's because urgency increased, not because of some opaque
@@ -138,8 +147,11 @@ export function ReportPage() {
                 <h3>Emotion to Physics Translation</h3>
 
                 <p>
-                    Each detected emotion adjusts the particle physics simultaneously,
-                    grounded in the LMA framework:
+                    Combining all three research areas, each detected emotion maps to a
+                    distinct physics profile. The SER model classifies the speaker's
+                    emotion, the LMA framework translates it into movement qualities,
+                    and the shader applies the corresponding forces. Here's what each
+                    emotion looks like in practice:
                 </p>
 
                 <div className="emotion-grid">
@@ -198,6 +210,24 @@ export function ReportPage() {
                     almost 1:1 to WGSL compute shaders.
                 </p>
 
+                <table>
+                    <thead>
+                        <tr><th>Component</th><th>Technology</th><th>Notes</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Particle rendering &amp; simulation</td><td>WebGL2 (Three.js GPUComputationRenderer)</td><td>GLSL fragment shaders</td></tr>
+                        <tr><td>SER model inference</td><td>WebGPU → WASM fallback (ONNX Runtime)</td><td>Not rendering, just ML inference</td></tr>
+                    </tbody>
+                </table>
+
+                <p>
+                    The statement holds for the core rendering and simulation pipeline. WebGL2
+                    via Three.js powers the entire visual system, the pragmatic cross device
+                    choice. The only place WebGPU appears is as an optional accelerator for
+                    ONNX inference in the speech emotion recognition worker, with a graceful
+                    WASM fallback, exactly proving the point about coverage gaps.
+                </p>
+
                 <p>
                     <strong>Why particles over mesh animation.</strong> Particles let you
                     represent anything from abstract turbulence to concrete shapes using the
@@ -253,9 +283,22 @@ export function ReportPage() {
                                 <div className="arch-block__detail">Text to Image · ~1s</div>
                             </div>
                             <div className="arch-block">
-                                <div className="arch-block__name">PartCrafter</div>
-                                <div className="arch-block__detail">Image to Parts · ~0.5s</div>
+                                <div className="arch-block__name">PartCrafter (Primary)</div>
+                                <div className="arch-block__detail">Image to Parts · ~0.5s · 2 to 16 labeled parts</div>
                             </div>
+                        </div>
+                        <div className="arch-arrow">↓ If &lt;4 parts returned</div>
+                        <div className="arch-blocks">
+                            <div className="arch-block">
+                                <div className="arch-block__name">Hunyuan3D 2 Turbo (Fallback)</div>
+                                <div className="arch-block__detail">Image to Mesh · ~1.5s</div>
+                            </div>
+                            <div className="arch-block">
+                                <div className="arch-block__name">Grounded SAM 2</div>
+                                <div className="arch-block__detail">Mesh Segmentation · ~0.3s</div>
+                            </div>
+                        </div>
+                        <div className="arch-blocks">
                             <div className="arch-block">
                                 <div className="arch-block__name">Cache Layer</div>
                                 <div className="arch-block__detail">LRU + GCS · 74% hit rate</div>
@@ -265,6 +308,19 @@ export function ReportPage() {
                 </div>
 
                 <p>
+                    The server tier has two internal paths, primary and fallback, that are
+                    invisible to the client. PartCrafter is the primary path because it
+                    outputs pre-decomposed parts in a single forward pass, no post-processing
+                    segmentation needed. If it returns fewer than 4 parts (insufficient
+                    decomposition for meaningful animation), the server automatically retries
+                    via Hunyuan3D 2 Turbo + Grounded SAM 2. Hunyuan3D was chosen for its
+                    high resolution mesh quality. Grounded SAM 2 was chosen because it can
+                    segment the monolithic mesh into labeled parts using text prompts derived
+                    from the original concept. Both paths output the same format, so the
+                    client never knows which pipeline produced the shape.
+                </p>
+
+                <p>
                     The key insight: the server pipeline is an expansion layer, not a
                     necessity. Tier 1 resolves 85% of inputs in under 50ms. You say
                     "horse," the embedding engine matches it to "quadruped," and particles
@@ -272,48 +328,124 @@ export function ReportPage() {
                     tail, handling words like "narwhal," "violin," or "submarine."
                 </p>
 
+                <p>
+                    The system gets smarter over time. Every server generated shape is
+                    cached at two levels: an in memory LRU for instant repeat lookups
+                    (2.4ms), and persistent Cloud Storage for cross session hits. As more
+                    users interact, the cache fills with real world vocabulary, shifting
+                    more and more requests from the 2 to 3s server path into sub-50ms
+                    cache hits. The long tail shrinks with use.
+                </p>
+
                 {/* FULL SYSTEM DIAGRAM */}
                 <h3>Full System Diagram</h3>
 
-                <pre><code>{`┌──────────────────────────────────────────────────┐
-│                   User Input                      │
-│   🎤 Microphone Audio        👆 Mouse/Touch       │
-└────────┬─────────────────────────┬────────────────┘
-         │                         │
-   ┌─────▼─────┐            ┌─────▼─────┐
-   │  Audio     │            │  Pointer   │
-   │  Engine    │            │  Engine    │
-   │ (Meyda +   │            │(Raycaster) │
-   │  Pitchy)   │            └─────┬─────┘
-   └──┬────┬───┘                   │
-      │    │                       │
-      │  ┌─▼────────┐             │
-      │  │ Speech    │             │
-      │  │ Engine    │             │
-      │  │(Web Speech│             │
-      │  │+ Deepgram │             │
-      │  │+ text fb) │             │
-      │  └─────┬────┘             │
-      │        │                   │
-      │  ┌─────▼──────────┐       │
-      │  │  Semantic       │       │
-      │  │  Classifier     │       │
-      │  │ (Verb Hash +    │       │
-      │  │  MiniLM +       │       │
-      │  │  Server Path)   │       │
-      │  └─────┬──────────┘       │
-      │        │                   │
-      │  ┌─────▼──────────────────▼────┐
-      │  │       Uniform Bridge         │
-      │  │  (maps all inputs to shader  │
-      └──▶   uniforms every frame)      │
-         └──────────┬──────────────────┘
-                    │
-         ┌──────────▼──────────────────┐
-         │   GPGPU Particle System     │
-         │  (GPUComputationRenderer)   │
-         │  128×128 textures · WebGL2  │
-         └─────────────────────────────┘`}</code></pre>
+                <div className="sys-diagram">
+                    {/* User Input */}
+                    <div className="sys-node sys-node--input">
+                        <div className="sys-node__label">User Input</div>
+                        <div className="sys-node__row">
+                            <span>🎤 Microphone Audio</span>
+                            <span>👆 Mouse / Touch</span>
+                        </div>
+                    </div>
+
+                    <div className="sys-diagram__fork">
+                        <div className="sys-branch">
+                            <div className="sys-arrow">↓</div>
+
+                            {/* Audio Engine */}
+                            <div className="sys-node sys-node--process">
+                                <div className="sys-node__label">Audio Engine</div>
+                                <div className="sys-node__detail">Meyda + Pitchy</div>
+                                <div className="sys-node__meta">RMS · Centroid · ZCR · MFCC · F0</div>
+                            </div>
+
+                            <div className="sys-arrow">↓</div>
+
+                            {/* SER + Speech side by side */}
+                            <div className="sys-node__pair">
+                                <div className="sys-node sys-node--accent">
+                                    <div className="sys-node__label">SER Worker</div>
+                                    <div className="sys-node__detail">ONNX Runtime</div>
+                                    <div className="sys-node__meta">WebGPU → WASM fallback</div>
+                                    <div className="sys-node__meta">joy · anger · sad · fear → LMA</div>
+                                </div>
+                                <div className="sys-node sys-node--process">
+                                    <div className="sys-node__label">Speech Engine</div>
+                                    <div className="sys-node__meta">① Web Speech API</div>
+                                    <div className="sys-node__meta">② Deepgram Nova 3</div>
+                                    <div className="sys-node__meta">③ Text input box</div>
+                                </div>
+                            </div>
+
+                            <div className="sys-arrow">↓</div>
+
+                            {/* Semantic Classifier */}
+                            <div className="sys-node sys-node--green">
+                                <div className="sys-node__badge">Tier 1 · Client</div>
+                                <div className="sys-node__label">Semantic Classifier</div>
+                                <div className="sys-node__meta">Verb Hash · 393 verbs</div>
+                                <div className="sys-node__meta">MiniLM · Web Worker</div>
+                                <div className="sys-node__meta">Keyword · ~160 words</div>
+                            </div>
+
+                            <div className="sys-arrow sys-arrow--conditional">↓ no match</div>
+
+                            {/* Server Pipeline */}
+                            <div className="sys-node sys-node--blue">
+                                <div className="sys-node__badge">Tier 2 · Server</div>
+                                <div className="sys-node__label">Server Pipeline</div>
+                                <div className="sys-node__inner-row">
+                                    <div className="sys-node--sub">
+                                        <div className="sys-node__detail">Cache</div>
+                                        <div className="sys-node__meta">LRU 2.4ms · GCS persist</div>
+                                    </div>
+                                    <div className="sys-node--sub">
+                                        <div className="sys-node__detail">SDXL Turbo</div>
+                                        <div className="sys-node__meta">Text → Image ~1s</div>
+                                    </div>
+                                </div>
+                                <div className="sys-arrow sys-arrow--inner">↓</div>
+                                <div className="sys-node__inner-row">
+                                    <div className="sys-node--sub sys-node--sub-primary">
+                                        <div className="sys-node__detail">PartCrafter</div>
+                                        <div className="sys-node__meta">~0.5s · 2–16 parts</div>
+                                    </div>
+                                    <div className="sys-node--sub sys-node--sub-fallback">
+                                        <div className="sys-node__detail">Hunyuan3D + SAM 2</div>
+                                        <div className="sys-node__meta">~1.8s · fallback</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="sys-branch sys-branch--pointer">
+                            <div className="sys-arrow">↓</div>
+                            <div className="sys-node sys-node--process">
+                                <div className="sys-node__label">Pointer Engine</div>
+                                <div className="sys-node__detail">Raycaster</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="sys-arrow sys-arrow--merge">↓ all inputs converge</div>
+
+                    {/* Uniform Bridge */}
+                    <div className="sys-node sys-node--bridge">
+                        <div className="sys-node__label">Uniform Bridge</div>
+                        <div className="sys-node__meta">Maps all inputs → shader uniforms every frame</div>
+                    </div>
+
+                    <div className="sys-arrow">↓</div>
+
+                    {/* GPU Particle System */}
+                    <div className="sys-node sys-node--gpu">
+                        <div className="sys-node__label">GPGPU Particle System</div>
+                        <div className="sys-node__detail">GPUComputationRenderer</div>
+                        <div className="sys-node__meta">128×128 textures · 16,384 particles · 5 forces · WebGL2 · GLSL</div>
+                    </div>
+                </div>
 
                 {/* 3D MODEL COMPARISON */}
                 <h3>Choosing the 3D Model</h3>
@@ -567,11 +699,15 @@ Fallback (Hunyuan3D + Grounded SAM):
                 </p>
 
                 <p>
-                    The solution was the <strong>NVIDIA RTX PRO 6000 Blackwell</strong>. A new
-                    GPU available on Cloud Run as of February 2026. 96GB of VRAM, enough to
-                    hold all four models with headroom. The container boots, syncs weights from
-                    Cloud Storage, loads each model onto the GPU, and won't accept traffic
+                    The current solution is the <strong>NVIDIA RTX PRO 6000 Blackwell</strong>,
+                    a new GPU available on Cloud Run as of February 2026. 96GB of VRAM, enough
+                    to hold all four models with headroom. The container boots, syncs weights
+                    from Cloud Storage, loads each model onto the GPU, and won't accept traffic
                     until <code>/health/ready</code> confirms everything is live.
+                    This is a <strong>temporary architecture</strong>. The immediate next step
+                    is moving to a cheaper GPU tier by pre-baking model weights into the base
+                    image and loading only the primary model at startup, with fallbacks loaded
+                    on demand.
                 </p>
 
                 <p>
@@ -580,6 +716,34 @@ Fallback (Hunyuan3D + Grounded SAM):
                     concurrently) and tensor state corruption. The fix wasn't a mutex; it was
                     setting <code>containerConcurrency: 1</code> in Cloud Run. One GPU, one
                     request at a time. More quota means more containers, not more concurrency.
+                </p>
+
+                <h3>The Deployment Pipeline</h3>
+
+                <p>
+                    With GPU containers, every iteration is expensive. Docker builds take
+                    30+ minutes. Model weight downloads add another 10 to 15 minutes on
+                    cold starts. A single typo in a dependency can cost an hour.
+                </p>
+
+                <p>
+                    To manage this, I structured a <strong>two stage build</strong> via
+                    Cloud Build. The first stage (<code>Dockerfile.base</code>) installs
+                    system dependencies, CUDA libraries, PyTorch, and all heavy Python
+                    packages into a cached base image. This rarely changes. The second
+                    stage (<code>Dockerfile</code>) layers the application code on top,
+                    which takes under two minutes. Model weights are synced from Cloud
+                    Storage at container startup rather than baked into the image, keeping
+                    the image size manageable and the push/pull fast.
+                </p>
+
+                <p>
+                    The result is a CI/CD-like flow without a full CI system:
+                    <code>cloudbuild.yaml</code> defines the build,
+                    <code>gcloud builds submit</code> pushes it, and Cloud Run rolls
+                    the new revision with zero downtime. When something breaks in
+                    production, I can roll back to the previous revision in under a
+                    minute.
                 </p>
 
                 {/* STT */}
@@ -615,52 +779,7 @@ Fallback (Hunyuan3D + Grounded SAM):
                     <li>Production deployment: Firebase Hosting + Cloud Run on RTX PRO 6000 Blackwell</li>
                 </ol>
 
-                {/* MILESTONE GALLERY */}
-                <h2>Milestone Gallery</h2>
 
-                <div className="report-figure-row">
-                    <div>
-                        <img
-                            src="/report-assets/milestone_wave.png"
-                            alt="Particles in wave formation"
-                        />
-                        <div className="report-figure__caption">Wave formation</div>
-                    </div>
-                    <div>
-                        <img
-                            src="/report-assets/milestone_tuning_panel.png"
-                            alt="Tuning panel with real time parameter sliders"
-                        />
-                        <div className="report-figure__caption">Real time physics tuning</div>
-                    </div>
-                </div>
-
-                <div className="report-figure">
-                    <img
-                        src="/report-assets/milestone_audio_recording.webp"
-                        alt="Audio pipeline milestone recording showing speech to text and audio reactivity"
-                    />
-                    <div className="report-figure__caption">
-                        Audio pipeline: STT + audio reactivity working end to end.
-                    </div>
-                </div>
-
-                <div className="report-figure-row">
-                    <div>
-                        <img
-                            src="/report-assets/04_audio_reactivity_after.png"
-                            alt="Audio reactivity with feature bars"
-                        />
-                        <div className="report-figure__caption">Audio features responding to speech</div>
-                    </div>
-                    <div>
-                        <img
-                            src="/report-assets/06_pipeline_restored.png"
-                            alt="Full pipeline restored"
-                        />
-                        <div className="report-figure__caption">Full pipeline restored after debugging</div>
-                    </div>
-                </div>
 
                 {/* TECH STACK */}
                 <h2>Stack</h2>
@@ -673,17 +792,30 @@ Fallback (Hunyuan3D + Grounded SAM):
                         <tr><td>3D / Particles</td><td>Three.js + GPUComputationRenderer</td><td>16K particles fully GPU computed via WebGL2. No CPU per particle work.</td></tr>
                         <tr><td>Audio</td><td>Meyda + Pitchy</td><td>Psychoacoustic features, not just FFT bins. Plus pitch tracking.</td></tr>
                         <tr><td>NLP</td><td>compromise.js + MiniLM (Transformers.js)</td><td>Sub ms POS tagging + semantic similarity in a Web Worker.</td></tr>
-                        <tr><td>STT</td><td>Web Speech API + Deepgram Nova 3</td><td>Browser native primary. WebSocket fallback for Safari.</td></tr>
-                        <tr><td>Emotion</td><td>SER via ONNX (WebGPU/WASM)</td><td>Speech emotion recognition in the browser.</td></tr>
-                        <tr><td>3D Generation</td><td>SDXL Turbo + PartCrafter</td><td>Text to labeled 3D parts in ~1.5s.</td></tr>
+                        <tr><td>STT</td><td>Web Speech API → Deepgram Nova 3 → Text input</td><td>Three tier fallback. Browser native primary, WebSocket for Safari, text box last resort.</td></tr>
+                        <tr><td>Emotion</td><td>SER via ONNX (WebGPU → WASM)</td><td>Speech emotion recognition in the browser with graceful fallback.</td></tr>
+                        <tr><td>Sentiment</td><td>AFINN-165</td><td>Lightweight lexicon based valence scoring. Upgrade path planned.</td></tr>
+                        <tr><td>3D Primary</td><td>SDXL Turbo + PartCrafter</td><td>Text to labeled 3D parts in ~1.5s. Pre-decomposed, no segmentation needed.</td></tr>
+                        <tr><td>3D Fallback</td><td>Hunyuan3D 2 Turbo + Grounded SAM 2</td><td>High resolution mesh + text prompted segmentation. Fires when PartCrafter returns &lt;4 parts.</td></tr>
+                        <tr><td>Caching</td><td>LRU (in memory) + Cloud Storage</td><td>74% hit rate. Memory hits in 2.4ms. Long tail shrinks with use.</td></tr>
                         <tr><td>Backend</td><td>FastAPI + Python 3.13</td><td>Protocol based interfaces, Pydantic v2 validation.</td></tr>
-                        <tr><td>Infra</td><td>Cloud Run + Terraform + Firebase</td><td>RTX PRO 6000 Blackwell GPU. Firebase serves frontend and proxies API.</td></tr>
+                        <tr><td>Infra</td><td>Cloud Run + Terraform + Firebase</td><td>RTX PRO 6000 Blackwell GPU. Two stage Docker build. Cloud Build CI.</td></tr>
                         <tr><td>Frontend</td><td>React 19 + TypeScript + Vite</td><td>Strict types. Fast iteration.</td></tr>
                     </tbody>
                 </table>
 
                 {/* FUTURE */}
                 <h2>What's Next</h2>
+
+                <div className="report-callout report-callout--tbd">
+                    <div className="report-callout__label">📊 Cheaper Deployment</div>
+                    <p style={{ margin: 0 }}>
+                        Move from the RTX PRO 6000 to a cheaper GPU tier. Pre-bake model
+                        weights into the base Docker image, load only the primary model
+                        (PartCrafter) at startup, and lazy-load fallbacks on demand.
+                        Target: L4 or T4 class GPU at a fraction of the current cost.
+                    </p>
+                </div>
 
                 <div className="report-callout report-callout--tbd">
                     <div className="report-callout__label">📊 WebGPU Migration</div>

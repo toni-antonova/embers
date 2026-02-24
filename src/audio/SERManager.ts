@@ -32,8 +32,10 @@ const CHUNK_DURATION_S = 2.0;   // Send audio every 2 seconds
 const BUFFER_SIZE = 4096;       // ScriptProcessorNode buffer size
 
 export class SERManager {
+    private static readonly IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
     private worker: Worker | null = null;
     private scriptNode: ScriptProcessorNode | null = null;
+    private silentGain: GainNode | null = null;
     private audioBuffer: Float32Array[] = [];
     private samplesCollected = 0;
     private sampleRate = 44100;
@@ -58,6 +60,16 @@ export class SERManager {
      */
     start(): void {
         if (this.isAlive) return;
+
+        // iOS cannot handle ScriptProcessorNode + ONNX WASM inference —
+        // the ~50-100 MB WASM model combined with WebGL + dual AudioContexts
+        // exceeds iOS Safari's memory ceiling and crashes the tab.
+        // Text-based sentiment still drives particle emotion on mobile.
+        if (SERManager.IS_IOS) {
+            console.log('[SER Manager] Skipping on iOS — text sentiment only');
+            return;
+        }
+
         this.isAlive = true;
 
         const ctx = this.audioEngine.audioContext;
@@ -114,9 +126,15 @@ export class SERManager {
             }
         };
 
-        // Connect: source → scriptNode → destination (required to keep it alive)
+        // Connect: source → scriptNode → silentGain → destination.
+        // The ScriptProcessorNode must be connected to destination to stay alive,
+        // but routing raw mic audio directly to speakers causes feedback.
+        // A zero-gain node keeps the chain alive without producing audible output.
+        this.silentGain = ctx.createGain();
+        this.silentGain.gain.value = 0;
         source.connect(this.scriptNode);
-        this.scriptNode.connect(ctx.destination);
+        this.scriptNode.connect(this.silentGain);
+        this.silentGain.connect(ctx.destination);
     }
 
     /**
@@ -129,6 +147,10 @@ export class SERManager {
         if (this.scriptNode) {
             this.scriptNode.disconnect();
             this.scriptNode = null;
+        }
+        if (this.silentGain) {
+            this.silentGain.disconnect();
+            this.silentGain = null;
         }
 
         if (this.worker) {

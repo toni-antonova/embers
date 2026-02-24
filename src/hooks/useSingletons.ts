@@ -47,6 +47,10 @@ export function useSingletons(): Singletons {
     // Wire config into AudioEngine so it can read smoothing alphas.
     audioEngine.current.setConfig(tuningConfig.current);
 
+    // Give SpeechEngine a reference to AudioEngine so the WebSocket
+    // fallback can share its AudioContext (critical on iOS Safari).
+    speechEngine.current.setAudioEngine(audioEngine.current);
+
     const classifier = useRef<KeywordClassifier | null>(null);
     if (!classifier.current) {
         classifier.current = new KeywordClassifier();
