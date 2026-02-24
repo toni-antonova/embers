@@ -1,15 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
 # Secret Manager — API Key & HuggingFace Token
-# ─────────────────────────────────────────────────────────────────────────────
-# Terraform creates the secrets with placeholder values on first apply.
-# Replace with real values later via GCP Console or gcloud:
-#
-#   openssl rand -hex 32 | gcloud secrets versions add lumen-api-key --data-file=-
-#   gcloud secrets versions add lumen-hf-token --data-file=- <<< "hf_your_token"
-#
-# The lifecycle blocks ensure `terraform apply` never overwrites your
-# real values once set — it only touches them on initial creation.
-# ─────────────────────────────────────────────────────────────────────────────
+# Creates secrets with placeholders; replace via gcloud or GCP Console post-apply
 
 resource "google_secret_manager_secret" "api_key" {
   secret_id = "lumen-api-key"

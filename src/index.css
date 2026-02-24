@@ -67,6 +67,8 @@ canvas {
   align-items: flex-end;
   gap: 6px;
   pointer-events: none;
+  /* Vertically center with the 40px gear button */
+  padding-top: 4px;
 }
 
 /* ── MODE TOGGLE (Simple / Complex) ──────────────────────────────────
@@ -149,6 +151,7 @@ canvas {
   .top-right-controls {
     right: calc(1rem + 48px + 0.5rem);
     /* larger mobile gear btn */
+    padding-top: 7px;
   }
 }
 
@@ -1326,71 +1329,46 @@ canvas {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   GHOST TRANSCRIPT — Fading word history in the tuning sidebar
+   GHOST TITLE — Decorative cinematic text behind the canvas
    ══════════════════════════════════════════════════════════════════════ */
 
-/* Scrollable container — words wrap and stack vertically,
-   with auto-scroll to the bottom for latest words */
-.ghost-transcript {
-  padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
-  min-height: 40px;
-  max-height: 120px;
-  overflow-y: auto;
-  overflow-x: hidden;
+.ghost-title {
+  position: absolute;
+  top: 8vh;
+  left: 0;
+  right: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px 6px;
-  align-content: flex-end;
-  /* Hide scrollbar — content scrolls but bar is invisible */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.ghost-transcript::-webkit-scrollbar {
-  display: none;
-}
-
-/* Individual word — inline pill with smooth opacity transition */
-.ghost-word {
-  display: inline-block;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.75);
-  letter-spacing: 0.01em;
-  transition: opacity 0.4s ease-out;
-  animation: ghost-word-in 0.25s ease-out;
-}
-
-/* Keyword highlight — golden glow for words that triggered a morph */
-.ghost-word.keyword {
-  color: rgba(255, 215, 100, 0.95);
-  text-shadow: 0 0 8px rgba(255, 200, 60, 0.4), 0 0 16px rgba(255, 180, 40, 0.15);
-  font-weight: 600;
-}
-
-/* Placeholder text when no words have been spoken yet */
-.ghost-transcript-hint {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.2);
+.ghost-title__text {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  font-weight: 300;
   font-style: italic;
-  align-self: center;
-  width: 100%;
-  text-align: center;
+  letter-spacing: 0.15em;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: lowercase;
+  animation: ghost-title-fade 8s ease-out forwards;
+  user-select: none;
 }
 
-/* Entry animation — words slide up slightly and fade in */
-@keyframes ghost-word-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
+@keyframes ghost-title-fade {
+  0% {
+    opacity: 0.5;
+    filter: blur(0px);
   }
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  40% {
+    opacity: 0.25;
+    filter: blur(0.5px);
+  }
+
+  100% {
+    opacity: 0.06;
+    filter: blur(1.5px);
   }
 }
 

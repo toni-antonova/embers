@@ -223,11 +223,11 @@ describe('MorphTargets — Quadruped Geometry', () => {
         expect(elevatedHead.length).toBeGreaterThan(0);
     });
 
-    it('has particles extending rearward beyond the body (tail)', () => {
+    it('has no particles extending far rearward beyond the body (no tail)', () => {
         const pts = positions('quadruped');
-        // Tail extends from x=2.5 to x≈4.3
-        const tailParticles = pts.filter(([x]) => x > 2.5);
-        expect(tailParticles.length).toBeGreaterThan(0);
+        // Tail was removed — no particles should extend far past x=3.0
+        const farRear = pts.filter(([x]) => x > 3.0);
+        expect(farRear.length).toBe(0);
     });
 
     it('is longer than wide (elongated horse silhouette)', () => {

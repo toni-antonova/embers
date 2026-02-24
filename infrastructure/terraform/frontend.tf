@@ -1,12 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
 # Cloud Storage — Frontend Static Hosting
-# ─────────────────────────────────────────────────────────────────────────────
-# Hosts the Vite production build (dist/) as a static website.
-# Deploy with: lets deploy-frontend (or gcloud storage rsync)
-#
-# For custom domain + HTTPS, add a Cloud Load Balancer in front.
-# That's a future enhancement — for now, the GCS URL works.
-# ─────────────────────────────────────────────────────────────────────────────
+# Hosts Vite production build as a static website. Deploy with: lets deploy-frontend
 
 resource "google_storage_bucket" "frontend" {
   name     = "dots-frontend-${var.project_id}"

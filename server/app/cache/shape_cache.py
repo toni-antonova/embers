@@ -1,16 +1,6 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Shape Cache — async two-tier caching (memory LRU + Cloud Storage)
-# ─────────────────────────────────────────────────────────────────────────────
-# Uses cachetools.LRUCache for proper LRU semantics.
-# Cloud Storage calls are synchronous (google-cloud-storage SDK), so all
-# storage I/O is wrapped in run_in_executor to avoid blocking the event loop.
-#
-# Thread safety:
-#   - self._lock guards the LRU dict (not thread-safe by default).
-#   - self._in_flight prevents thundering herd: concurrent requests for the
-#     same uncached key coalesce — only one triggers generation/storage read,
-#     others await the result.
-# ─────────────────────────────────────────────────────────────────────────────
+# Async two-tier cache: memory LRU (cachetools) + Cloud Storage persistence.
+# Storage I/O wrapped in executor to avoid blocking event loop.
+# self._in_flight prevents thundering herd via request coalescing.
 
 from __future__ import annotations
 
@@ -49,13 +39,7 @@ _ARTICLES = frozenset({"a", "an", "the"})
 
 
 class ShapeCache:
-    """Two-tier cache: in-memory LRU (cachetools) + Cloud Storage.
-
-    Tier 1: In-memory LRU via cachetools.LRUCache.
-    Tier 2: Cloud Storage bucket for persistence across container restarts.
-
-    All Cloud Storage I/O runs in a thread executor.
-    """
+    """Two-tier cache: in-memory LRU + Cloud Storage persistence."""
 
     def __init__(self, bucket_name: str = "", memory_capacity: int = 200) -> None:
         self._bucket_name = bucket_name
@@ -64,7 +48,6 @@ class ShapeCache:
         self._client: Any = None
         self._bucket: Any = None
 
-        # ── Stats ────────────────────────────────────────────────────────
         self._memory_hits = 0
         self._storage_hits = 0
         self._misses = 0
@@ -73,21 +56,13 @@ class ShapeCache:
         self._storage_retrieval_total_ms = 0.0
         self._storage_retrieval_count = 0
 
-        # ── Thundering herd prevention ───────────────────────────────────
-        # Maps normalized key → asyncio.Event. When a cache miss triggers
-        # a storage read, the key is registered here. Concurrent callers
-        # await the event instead of issuing duplicate reads.
+        # Request coalescing: prevents thundering herd on storage reads
         self._in_flight: dict[str, asyncio.Event] = {}
         self._in_flight_lock = asyncio.Lock()
 
-        # ── Collision tracking ───────────────────────────────────────────
-        # Maps hash → original normalized text, used to detect when two
-        # different inputs normalize to the same cache key.
-        # Capped to prevent unbounded memory growth on long-running instances.
+        # Collision tracking: maps hash → normalized text (capped at 10k)
         self._key_origins: dict[str, str] = {}
         self._key_origins_max = 10_000
-
-    # ── Connection ───────────────────────────────────────────────────────
 
     async def connect(self) -> None:
         """Initialize Cloud Storage client. Async wrapper around sync SDK."""
@@ -118,20 +93,10 @@ class ShapeCache:
         """Whether the cache backend is operational (memory always counts)."""
         return self._bucket is not None or not self._bucket_name
 
-    # ── Key normalization ────────────────────────────────────────────────
-    # Lowercase, strip punctuation, remove articles, lemmatize nouns.
-    # Lemmatization collapses plural→singular ("dragons"→"dragon") so
-    # singular and plural forms share a cache entry.
-    # Adjectives are preserved: "red dragon" ≠ "blue dragon".
 
     @staticmethod
     def normalize_key(text: str) -> str:
-        """Normalize input text to a canonical cache key.
-
-        Strips punctuation, lowercases, removes articles, and lemmatizes
-        each word (noun form) so "horses" → "horse", etc.
-        Does NOT strip adjectives — 'red dragon' stays 'red dragon'.
-        """
+        """Normalize text: lowercase, strip punctuation, remove articles, lemmatize nouns."""
         text = text.lower().strip()
         text = re.sub(r"[^\w\s]", "", text)
         words = [w for w in text.split() if w not in _ARTICLES]
@@ -161,15 +126,10 @@ class ShapeCache:
     # ── Get ──────────────────────────────────────────────────────────────
 
     async def get(self, text: str) -> GenerateResponse | None:
-        """Look up a cached shape. Checks memory first, then Cloud Storage.
-
-        If another coroutine is already fetching this key from storage,
-        this call awaits that result instead of issuing a duplicate read.
-        """
+        """Look up cached shape. Coalesces concurrent storage reads."""
         normalized = self.normalize_key(text)
         key = self._hash_key(normalized)
 
-        # Tier 1: Memory (guarded by lock)
         t0 = time.perf_counter()
         with self._lock:
             if key in self._memory:
@@ -179,37 +139,26 @@ class ShapeCache:
                 self._memory_retrieval_count += 1
                 logger.debug("cache_hit", tier="memory", text=text, key=key)
                 return self._memory[key]  # type: ignore[no-any-return]
-
-        # Tier 2: Cloud Storage (with coalescing, guarded by async lock)
         if self._bucket:
             new_event: asyncio.Event | None = None
             event: asyncio.Event | None = None
 
             async with self._in_flight_lock:
                 if key in self._in_flight:
-                    # Another coroutine is already fetching — grab a
-                    # local reference so we can safely await outside
-                    # the lock even if the fetcher cleans up _in_flight.
                     event = self._in_flight[key]
                 else:
-                    # We're the first — register in-flight
                     new_event = asyncio.Event()
                     self._in_flight[key] = new_event
 
             if event is not None:
-                # Another coroutine is fetching — wait for it
                 logger.debug("cache_coalescing", text=text, key=key)
                 await event.wait()
-                # After the event fires, the result should be in memory
                 with self._lock:
                     if key in self._memory:
                         self._memory_hits += 1
                         return self._memory[key]  # type: ignore[no-any-return]
-                # Still not there — the original fetch must have failed
                 self._misses += 1
                 return None
-
-            # We're the first — fetch from storage
             try:
                 t0_storage = time.perf_counter()
                 loop = asyncio.get_running_loop()
@@ -250,20 +199,15 @@ class ShapeCache:
             logger.warning("cache_read_failed", key=key, error=str(e))
         return None
 
-    # ── Set ──────────────────────────────────────────────────────────────
-
     async def set(self, text: str, response: GenerateResponse) -> None:
-        """Cache a shape in both memory and Cloud Storage."""
+        """Cache shape in memory and Cloud Storage."""
         normalized = self.normalize_key(text)
         key = self._hash_key(normalized)
 
         self._track_collision(key, normalized)
 
-        # Tier 1: Memory (guarded by lock)
         with self._lock:
             self._memory[key] = response
-
-        # Tier 2: Cloud Storage (fire and forget in executor)
         if self._bucket:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._set_in_storage, key, response)
@@ -279,13 +223,8 @@ class ShapeCache:
         except Exception as e:
             logger.warning("cache_write_failed", key=key, error=str(e))
 
-    # ── Bulk loading ─────────────────────────────────────────────────────
-
     async def preload_to_memory(self, concept: str) -> bool:
-        """Fetch a single concept from Cloud Storage into memory LRU.
-
-        Returns True if the concept was found and loaded.
-        """
+        """Load single concept from Cloud Storage into memory."""
         normalized = self.normalize_key(concept)
         key = self._hash_key(normalized)
 
@@ -305,11 +244,7 @@ class ShapeCache:
         return False
 
     async def load_all_cached(self) -> int:
-        """Load all shapes from Cloud Storage into memory LRU.
-
-        Returns the number of shapes loaded. Used at startup to warm the
-        cache — 50 entries × ~27KB ≈ 1.3MB, well within memory budget.
-        """
+        """Load all shapes from Cloud Storage into memory at startup."""
         if not self._bucket:
             return 0
 
@@ -342,11 +277,7 @@ class ShapeCache:
         return loaded
 
     async def count_stored_shapes(self) -> int:
-        """Count shapes in Cloud Storage.
-
-        Note: lists all blobs with prefix 'shapes/'. Fine at ≤500 entries.
-        TODO: Replace with a counter blob if cache grows beyond ~500.
-        """
+        """Count shapes in Cloud Storage. TODO: Use counter blob at scale > 500."""
         if not self._bucket:
             return 0
 
@@ -361,8 +292,6 @@ class ShapeCache:
         except Exception as e:
             logger.warning("cache_count_failed", error=str(e))
             return 0
-
-    # ── Stats ────────────────────────────────────────────────────────────
 
     async def stats(self) -> dict[str, Any]:
         """Return cache hit/miss statistics."""
@@ -392,10 +321,8 @@ class ShapeCache:
             "avg_storage_retrieval_ms": avg_stor_ms,
         }
 
-    # ── Management ───────────────────────────────────────────────────────
-
     def clear_memory(self) -> None:
-        """Clear the in-memory cache. Does not affect Cloud Storage."""
+        """Clear in-memory cache (does not affect Cloud Storage)."""
         with self._lock:
             self._memory.clear()
         logger.info("cache_cleared")

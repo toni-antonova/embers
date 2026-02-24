@@ -16,14 +16,15 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-planning/
-.agent/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
 
 # Python
 __pycache__/
@@ -50,27 +51,23 @@ htmlcov/
 .env.*
 !.env.example
 
-# Terraform (all directories)
+# Terraform
 **/.terraform/
-*.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfplan
 crash.log
 **/terraform.tfvars
 
-# Temp audit/debug files
-gpu-quota-audit.txt
-pre-deploy-bug-report.md
-
-# Local-only docs
-.agent/workflows/
+# Local-only directories
+.agent/
 planning/
 analysis/
+
+# Local-only docs and spreadsheets
 PRINCIPAL_ENGINEER_REVIEW.md
+gpu-quota-audit.txt
+pre-deploy-bug-report.md
 *.xlsx
 *.xls
-*.md
-!README.md
-!*/README.md
-!*/**/README.md
+*.docx

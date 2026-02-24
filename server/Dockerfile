@@ -19,21 +19,11 @@ ARG BASE_IMAGE=us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/l
 FROM ${BASE_IMAGE}
 
 # ---- Refresh dependencies if pyproject.toml/uv.lock changed ----
-# If the base image already has the same deps, this is a no-op (<1s).
-# If deps changed, only the delta is installed (~30-60s vs 15-30min).
+# --inexact: do NOT remove packages absent from uv.lock. This preserves
+# fallback packages (hy3dgen, groundingdino, SAM-2) and torch-cluster
+# that the base image installed via pip outside the lockfile.
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cluster
-
-# ---- Fix torch-cluster: must come AFTER the last uv sync ----
-# uv sync uninstalls torch-cluster as "extraneous" (--no-install-package
-# only prevents installing, not uninstalling). Re-install the working
-# pre-built PyG wheel after sync.
-RUN uv pip install torch-cluster==1.6.3 \
-    -f https://data.pyg.org/whl/torch-2.8.0+cu128.html \
-    --reinstall-package torch-cluster \
-    && echo "--- torch-cluster verification ---" \
-    && uv pip show torch-cluster \
-    && .venv/bin/python -c "import torch_cluster; print('torch_cluster OK:', torch_cluster.__file__)"
+RUN uv sync --frozen --no-dev --no-install-project --inexact
 
 # ---- Copy application code (the only thing that changes per deploy) ----
 COPY --chown=appuser app/ app/

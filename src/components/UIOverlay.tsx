@@ -30,6 +30,7 @@ import type { STTStatus } from '../services/SpeechEngine';
 import type { TuningConfig } from '../services/TuningConfig';
 
 // ── COMPONENT PROPS ──────────────────────────────────────────────────
+
 interface UIOverlayProps {
     audioEngine: AudioEngine;
     speechEngine: SpeechEngine;
@@ -56,6 +57,8 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerPro
     // STT status state — driven by SpeechEngine's onStatusChange callback
     const [sttStatus, setSttStatus] = useState<STTStatus>('off');
     const [sttError, setSttError] = useState('');
+
+
 
     // ── MODE TOGGLE ──────────────────────────────────────────────────
     // Toggles between Simple (pre-built shapes) and Complex (server-rendered).
@@ -158,6 +161,8 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerPro
                         </span>
                     </div>
                 )}
+
+
             </div>
 
             {/* ── MIC BUTTON ──────────────────────────────────────── */}

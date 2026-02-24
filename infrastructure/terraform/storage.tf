@@ -43,16 +43,8 @@ resource "google_storage_bucket" "shape_cache" {
   depends_on = [google_project_service.required_apis]
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Cloud Storage — Model Weights Bucket
-# ─────────────────────────────────────────────────────────────────────────────
-# Stores pre-downloaded HuggingFace model weights (SDXL Turbo, PartCrafter,
-# RMBG) so Cloud Run containers sync from same-region GCS (~8-15s) instead
-# of downloading from HuggingFace Hub (~90-180s) on every cold start.
-#
-# Populate once:  uv run python scripts/upload_model_weights.py \
-#                   --bucket lumen-model-weights-<project-id>
-# ─────────────────────────────────────────────────────────────────────────────
+# Stores pre-downloaded HuggingFace weights for fast container startup
 
 resource "google_storage_bucket" "model_weights" {
   name     = "lumen-model-weights-${var.project_id}"

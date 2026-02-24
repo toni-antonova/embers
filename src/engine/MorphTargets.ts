@@ -217,27 +217,23 @@ export class MorphTargets {
     /**
      * QUADRUPED — horse-like four-legged animal silhouette.
      *
-     * Body: elongated ellipsoid (45%) stretched along X.
+     * Body: elongated ellipsoid (53%) stretched along X.
      * Head: small sphere (10%) at the front-top, angled upward.
      * Neck: short connecting cylinder (5%) bridging body to head.
-     * Tail: tapered curving line (8%) extending from the rear.
      * Legs: 4 short cylinders pointing downward (8% each = 32%).
      *
      * The silhouette is designed to read as "horse" when formed
-     * from glowing particles — the head points forward and up,
-     * and the tail flows backward with a gentle upward arc.
+     * from glowing particles — the head points forward and up.
      */
     private generateQuadruped(data: Float32Array, count: number) {
-        const bodyCount = Math.floor(count * 0.45);
+        const bodyCount = Math.floor(count * 0.53);
         const headCount = Math.floor(count * 0.10);
         const neckCount = Math.floor(count * 0.05);
-        const tailCount = Math.floor(count * 0.08);
         const legCount = Math.floor(count * 0.08);
         // Boundaries for part assignment
         const bodyEnd = bodyCount;
         const headEnd = bodyEnd + headCount;
         const neckEnd = headEnd + neckCount;
-        const tailEnd = neckEnd + tailCount;
 
         for (let i = 0; i < count; i++) {
             const stride = i * 4;
@@ -274,16 +270,9 @@ export class MorphTargets {
                 z = (Math.random() - 0.5) * 0.35;                  // thin cylinder
                 x += (Math.random() - 0.5) * 0.25;                 // radial scatter
                 y += (Math.random() - 0.5) * 0.2;
-            } else if (i < tailEnd) {
-                // ── TAIL: tapered line curving from rear ──────────────
-                // Starts at back of body (+2.5, 0.5) and arcs upward + backward
-                const t = Math.random();  // 0=base, 1=tip
-                x = 2.5 + t * 1.8;                                 // extends rearward
-                y = 0.5 - t * t * 1.2;                             // quadratic downward arc
-                z = (Math.random() - 0.5) * 0.15 * (1.0 - t * 0.7); // tapers thinner
             } else {
                 // ── LEGS: 4 cylinders pointing down ───────────────────
-                const legIndex = Math.floor((i - tailEnd) / legCount);
+                const legIndex = Math.floor((i - neckEnd) / legCount);
                 const legPositions = [
                     { lx: -1.5, lz: -0.5 },  // front-left
                     { lx: -1.5, lz: 0.5 },   // front-right
