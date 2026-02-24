@@ -30,6 +30,9 @@ import { TuningConfig, PARAM_DEFS, COMPLEX_OVERRIDES } from '../services/TuningC
 // don't leak into the next (test isolation principle).
 beforeEach(() => {
     localStorage.clear();
+    // TuningConfig defaults to complex mode for first-time visitors.
+    // Tests assume simple-mode defaults, so explicitly set simple.
+    localStorage.setItem('dots-mode', 'simple');
 });
 
 // ══════════════════════════════════════════════════════════════════════

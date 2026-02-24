@@ -354,6 +354,27 @@ canvas {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* ── SERVER PROCESSING SPINNER ───────────────────────────────────────
+ * Tiny swirling arc shown next to the STT dot while the server is
+ * generating a shape and particles are settling into formation.
+ * Gray/white, matches the existing monochrome aesthetic.
+ */
+.server-spinner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: server-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes server-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
  * TIMEOUT FALLBACK NOTE
  * ═══════════════════════════════════════════════════════════════════════ */

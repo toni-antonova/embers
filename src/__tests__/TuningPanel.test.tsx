@@ -28,6 +28,9 @@ let mockAudioEngine: ReturnType<typeof createMockAudioEngine>;
 
 beforeEach(() => {
     localStorage.clear();
+    // TuningConfig defaults to complex mode for first-time visitors.
+    // Tests assume simple-mode defaults, so explicitly set simple.
+    localStorage.setItem('dots-mode', 'simple');
     config = new TuningConfig();
     mockAudioEngine = createMockAudioEngine();
 });

@@ -57,7 +57,7 @@ function createMockSpeechEngine() {
 // simple getter/setter to avoid localStorage dependency.
 function createMockTuningConfig() {
     return {
-        complexMode: false,
+        complexMode: true,
         get: vi.fn().mockReturnValue(1.0),
         set: vi.fn(),
     } as any;
@@ -134,15 +134,15 @@ describe('UIOverlay — Mic Button', () => {
 // SUITE 3: MODE TOGGLE (Simple / Complex)
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Mode Toggle', () => {
-    it('renders in Simple mode initially (complexMode=false)', () => {
+    it('renders in Complex mode initially (complexMode=true)', () => {
         render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
 
         const toggle = screen.getByRole('switch');
-        expect(toggle).toHaveAttribute('aria-checked', 'false');
-        expect(toggle).toHaveAttribute('aria-label', 'Switch to Complex mode');
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+        expect(toggle).toHaveAttribute('aria-label', 'Switch to Simple mode');
     });
 
-    it('toggles to Complex mode on click', async () => {
+    it('toggles to Simple mode on click', async () => {
         render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
 
         await act(async () => {
@@ -150,8 +150,8 @@ describe('UIOverlay — Mode Toggle', () => {
         });
 
         const toggle = screen.getByRole('switch');
-        expect(toggle).toHaveAttribute('aria-checked', 'true');
-        expect(toggle).toHaveAttribute('aria-label', 'Switch to Simple mode');
+        expect(toggle).toHaveAttribute('aria-checked', 'false');
+        expect(toggle).toHaveAttribute('aria-label', 'Switch to Complex mode');
     });
 
     it('updates tuningConfig.complexMode on toggle', async () => {
@@ -161,11 +161,11 @@ describe('UIOverlay — Mode Toggle', () => {
             fireEvent.click(screen.getByRole('switch'));
         });
 
-        // tuningConfig should have been mutated
-        expect(mockTuningConfig.complexMode).toBe(true);
+        // Started as true, toggled to false
+        expect(mockTuningConfig.complexMode).toBe(false);
     });
 
-    it('toggles back to Simple on second click', async () => {
+    it('toggles back to Complex on second click', async () => {
         render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
 
         await act(async () => {
@@ -176,8 +176,8 @@ describe('UIOverlay — Mode Toggle', () => {
         });
 
         const toggle = screen.getByRole('switch');
-        expect(toggle).toHaveAttribute('aria-checked', 'false');
-        expect(mockTuningConfig.complexMode).toBe(false);
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+        expect(mockTuningConfig.complexMode).toBe(true);
     });
 
     it('supports keyboard activation (Enter key)', async () => {
@@ -187,7 +187,48 @@ describe('UIOverlay — Mode Toggle', () => {
             fireEvent.keyDown(screen.getByRole('switch'), { key: 'Enter' });
         });
 
-        expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+        // Starts true, toggled to false
+        expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
     });
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 4: SERVER PROCESSING SPINNER
+// ══════════════════════════════════════════════════════════════════════
+describe('UIOverlay — Server Spinner', () => {
+    it('does not render spinner when isServerProcessing is false', async () => {
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} isServerProcessing={false} />);
+
+        // Start listening so STT status is visible
+        await act(async () => {
+            fireEvent.click(screen.getByLabelText('Start listening'));
+        });
+
+        expect(document.querySelector('.server-spinner')).not.toBeInTheDocument();
+    });
+
+    it('renders spinner when isServerProcessing is true and complexMode', async () => {
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} isServerProcessing={true} />);
+
+        // Start listening so STT status renders
+        await act(async () => {
+            fireEvent.click(screen.getByLabelText('Start listening'));
+        });
+
+        expect(document.querySelector('.server-spinner')).toBeInTheDocument();
+    });
+
+    it('does not render spinner in Simple mode even when isServerProcessing', async () => {
+        const simpleMockConfig = { ...createMockTuningConfig(), complexMode: false };
+        render(
+            <UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={simpleMockConfig} isServerProcessing={true} />
+        );
+
+        // Start listening so STT status renders
+        await act(async () => {
+            fireEvent.click(screen.getByLabelText('Start listening'));
+        });
+
+        expect(document.querySelector('.server-spinner')).not.toBeInTheDocument();
+    });
+});
