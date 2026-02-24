@@ -59,6 +59,22 @@ const SETTLE_NOISE = 0.15;
 
 const IDLE_DECAY_DURATION = 30.0;
 
+// Anticipation drift — gentle swirl while waiting for server shape.
+// Particles drift very slowly toward the morph target so they look alive
+// and "consolidating" rather than frozen. The ramp is intentionally so
+// slow (20s cubic ease-in) that they never reach the target before the
+// real server shape arrives (typically 2–10s).
+//
+// NOTE: uNoiseAmplitude is multiplied by 0.25 inside the shader to get
+// the actual curl noise base, so ANTICIPATION_NOISE needs to be ~1.0
+// to produce a visible ~0.25 effective swirl.
+const ANTICIPATION_SPRING_START = 0.3;    // Weak but present pull
+const ANTICIPATION_SPRING_END = 0.6;      // Still slower than normal (1.5)
+const ANTICIPATION_NOISE = 1.0;           // ×0.25 in shader → 0.25 effective curl
+const ANTICIPATION_NOISE_END = 0.6;       // Settles as spring grows
+const ANTICIPATION_ABSTRACTION = 0.15;    // Slightly loosen formation for drift room
+const ANTICIPATION_RAMP_DURATION = 20.0;  // 20s ramp — never completes in practice
+
 export class SemanticBackend {
     private speechEngine: SpeechEngine;
     private classifier: KeywordClassifier;
@@ -102,6 +118,10 @@ export class SemanticBackend {
     private idleDecayActive: boolean = false;
     private idleDecayElapsed: number = 0;
     private idleDecayStartAbstraction: number = 0.5;
+
+    // Anticipation drift state — activated during server shape processing
+    private anticipationActive: boolean = false;
+    private anticipationElapsed: number = 0;
 
     constructor(
         speechEngine: SpeechEngine,
@@ -182,6 +202,23 @@ export class SemanticBackend {
             }
         }
 
+        // ── ANTICIPATION DRIFT (server processing swirl) ──────────────
+        if (this.anticipationActive) {
+            this.anticipationElapsed += dt;
+            const progress = Math.min(1.0, this.anticipationElapsed / ANTICIPATION_RAMP_DURATION);
+            // Cubic ease-in: starts imperceptibly slow, gradually accelerates
+            const eased = progress * progress * progress;
+            const spring = ANTICIPATION_SPRING_START + (ANTICIPATION_SPRING_END - ANTICIPATION_SPRING_START) * eased;
+            const noise = ANTICIPATION_NOISE + (ANTICIPATION_NOISE_END - ANTICIPATION_NOISE) * eased;
+            this.uniformBridge.springOverride = spring;
+            this.uniformBridge.noiseOverride = noise;
+            // Slightly loosen formation so particles have room to swirl
+            this.uniformBridge.abstractionOverride = Math.max(
+                this.currentAbstraction,
+                this.currentAbstraction + ANTICIPATION_ABSTRACTION * (1.0 - eased),
+            );
+        }
+
         this.tickTransition(dt);
 
         if (this.hierarchyActive && this.hierarchyMapping) {
@@ -257,6 +294,8 @@ export class SemanticBackend {
         this.pendingMorphState = null;
         this.pendingMorphMapping = null;
         this.idleDecayActive = false;
+        this.anticipationActive = false;
+        this.anticipationElapsed = 0;
         console.log('[SemanticBackend] Disposed');
     }
 
@@ -359,6 +398,11 @@ export class SemanticBackend {
             );
             this.requestServerShape(dominantWord, this.pendingFullText, this.particleSystem.currentTarget);
             this.pendingFullText = null;
+
+            // Activate anticipation drift — gentle swirl while server processes
+            this.anticipationActive = true;
+            this.anticipationElapsed = 0;
+            console.log('[SemanticBackend] 🌀 Anticipation drift activated');
         }
 
         this._lastState = this.pendingMorphState;
@@ -386,6 +430,9 @@ export class SemanticBackend {
     }
 
     private applyMorph(state: SemanticState, text: string): void {
+        // Cancel anticipation if a new morph lands (simple mode or new keyword)
+        this.anticipationActive = false;
+
         this.pendingMorphState = state;
         this.pendingMorphMapping = this.classifier.lookupKeyword(state.dominantWord);
 
@@ -539,9 +586,13 @@ export class SemanticBackend {
             );
             this.requestServerShape(state.dominantWord, this.pendingFullText, state.morphTarget);
             this.pendingFullText = null;
+            this.anticipationActive = true;
+            this.anticipationElapsed = 0;
         } else if (!mapping && !this.particleSystem.morphTargets.hasTarget(state.morphTarget) && this.serverClient) {
             console.log(`[SemanticBackend] 🌐 Novel noun "${state.dominantWord}" → requesting server shape`);
             this.requestServerShape(state.dominantWord, state.dominantWord, state.morphTarget);
+            this.anticipationActive = true;
+            this.anticipationElapsed = 0;
         }
     }
 
@@ -581,6 +632,10 @@ export class SemanticBackend {
                     console.log('[SemanticBackend] Hierarchy cancelled — server shape arrived');
                 }
 
+                // Cancel anticipation drift — real shape has landed
+                this.anticipationActive = false;
+                this.anticipationElapsed = 0;
+
                 // Restore physics from "thinking" loosening —
                 // clear spring/noise overrides so particles snap firmly
                 // to the new server shape using the config baseline.
@@ -610,6 +665,12 @@ export class SemanticBackend {
                     `[SemanticBackend] ⚠️ Server failed for prompt="${prompt}", ` +
                     `falling back to "${fallbackTarget}"`,
                 );
+                // Cancel anticipation drift on failure too
+                this.anticipationActive = false;
+                this.anticipationElapsed = 0;
+                this.uniformBridge.springOverride = null;
+                this.uniformBridge.noiseOverride = null;
+
                 if (fallbackTarget !== this.currentTarget) {
                     this.currentTarget = fallbackTarget;
                     this.particleSystem.setTarget(fallbackTarget);

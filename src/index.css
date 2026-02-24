@@ -641,14 +641,26 @@ canvas {
  * ANALYSIS PANEL — Collapsible left sidebar for live diagnostics
  * ═══════════════════════════════════════════════════════════════════════ */
 
-/* ── TOGGLE BUTTON ───────────────────────────────────────────────────
- * Fixed top-left, always visible. Mirrors .tuning-gear-btn on the right.
+/* ── TOP-LEFT CONTROLS CONTAINER ───────────────────────────────────────
+ * Holds the analysis toggle + about-page link in a vertical stack.
  */
-.analysis-toggle-btn {
+.top-left-controls {
   position: fixed;
   top: 1rem;
   left: 1rem;
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* ── TOGGLE BUTTON ───────────────────────────────────────────────────
+ * Always visible. Mirrors .tuning-gear-btn on the right.
+ */
+.analysis-toggle-btn {
+  position: relative;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -669,6 +681,33 @@ canvas {
 }
 
 .analysis-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ── ABOUT PAGE BUTTON ──────────────────────────────────────────────
+ * Matches the analysis toggle circle. Eye icon links to /about.
+ */
+.about-link-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.about-link-btn:hover {
   background: rgba(255, 255, 255, 0.15);
   color: white;
   border-color: rgba(255, 255, 255, 0.3);

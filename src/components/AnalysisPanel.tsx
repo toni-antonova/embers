@@ -253,19 +253,36 @@ export function AnalysisPanel({
 
     return (
         <>
-            {/* TOGGLE BUTTON — always visible */}
-            <button
-                className="analysis-toggle-btn"
-                onClick={() => setIsOpen(!isOpen)}
-                title="Analysis Panel"
-                aria-label="Toggle analysis panel"
-            >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="1" y="8" width="3" height="7" rx="1" fill="currentColor" opacity="0.7" />
-                    <rect x="6.5" y="4" width="3" height="11" rx="1" fill="currentColor" opacity="0.85" />
-                    <rect x="12" y="1" width="3" height="14" rx="1" fill="currentColor" />
-                </svg>
-            </button>
+            {/* TOP-LEFT BUTTON GROUP — analysis toggle + about link */}
+            <div className="top-left-controls">
+                {/* TOGGLE BUTTON — always visible */}
+                <button
+                    className="analysis-toggle-btn"
+                    onClick={() => setIsOpen(!isOpen)}
+                    title="Analysis Panel"
+                    aria-label="Toggle analysis panel"
+                >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="1" y="8" width="3" height="7" rx="1" fill="currentColor" opacity="0.7" />
+                        <rect x="6.5" y="4" width="3" height="11" rx="1" fill="currentColor" opacity="0.85" />
+                        <rect x="12" y="1" width="3" height="14" rx="1" fill="currentColor" />
+                    </svg>
+                </button>
+
+                {/* ABOUT PAGE BUTTON — eye icon */}
+                <a
+                    className="about-link-btn"
+                    href="/about"
+                    title="About this project"
+                    aria-label="About page"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                        <line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        <circle cx="12" cy="8" r="0.75" fill="currentColor" />
+                    </svg>
+                </a>
+            </div>
 
             {/* SLIDE-IN PANEL */}
             <div ref={panelRef} className={`analysis-panel ${isOpen ? 'open' : ''}`}>
