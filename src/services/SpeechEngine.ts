@@ -1,59 +1,49 @@
 /**
- * SpeechEngine — Real-time speech-to-text using the Web Speech API.
- *
- * WHY THIS SERVICE?
- * ─────────────────
- * The particle system already reacts to HOW speech sounds (volume, pitch,
- * rhythm) via AudioEngine + Meyda. But to map visuals to WHAT is being
- * said — semantic meaning — we need actual text transcription.
- *
- * The Web Speech API (specifically SpeechRecognition) provides free,
- * browser-native speech-to-text with no API keys or server costs.
- * It's supported in Chrome, Edge, and Safari (via webkit prefix).
- * For browsers without support (Firefox), we fall back to a text input.
+ * SpeechEngine — Hybrid real-time speech-to-text with automatic fallback.
  *
  * ARCHITECTURE:
  * ─────────────
- * - SpeechEngine follows the same start()/stop()/callback pattern as AudioEngine
- * - Subscribers register via onTranscript(callback) and receive TranscriptEvents
- * - The recognition is configured for continuous, real-time transcription
- * - Auto-restart on `end` event keeps it always listening
- * - Error recovery with a 1-second retry delay prevents crash loops
+ * Two-tier speech recognition with lazy detection:
+ *
+ *   1. PRIMARY: Web Speech API (Chrome, Safari, Edge) — free, zero setup
+ *   2. FALLBACK: WebSocket to Deepgram Nova-2 — works everywhere, ~$0.0077/min
+ *
+ * Detection happens lazily on first mic tap, not on page load (avoids premature
+ * mic permission prompts). The result is cached so subsequent start() calls
+ * don't re-probe.
+ *
+ * SAFARI WORKAROUNDS:
+ * ───────────────────
+ * iOS Safari's Web Speech API has several confirmed bugs (iOS 15–18):
+ *   - isFinal is sometimes never set to true → timeout-based finalization
+ *   - Transcript repetition after speech ends → deduplication filter
+ *   - Continuous mode produces one growing string → handled by re-creation
+ *   - PWA/homescreen mode silently fails → detected and falls to WebSocket
+ *   - 2–3 second warm-up delay → accepted, no workaround needed
  *
  * INDUSTRY CONTEXT:
  * ─────────────────
- * The Web Speech API uses the same underlying engine as Google Assistant
- * (in Chrome) or Siri (in Safari). While it doesn't match dedicated
- * services like Whisper or Deepgram in accuracy, it's zero-latency
- * (no network round-trip), free, and requires no API keys — perfect
- * for a real-time creative coding project.
+ * The Web Speech API routes audio to Google's (Chrome) or Apple's (Safari)
+ * cloud servers. Internet + HTTPS are required. The WebSocket fallback uses
+ * Deepgram's Nova-2 model with explicit linear16 PCM encoding.
  */
 
-// ── STT STATUS ───────────────────────────────────────────────────────
-// Observable status so the UI can show whether the Web Speech API is
-// actively listening, recovering from an error, or has failed.
-export type STTStatus = 'off' | 'listening' | 'restarting' | 'error' | 'unsupported';
+import { WebSocketSTTClient } from '../audio/WebSocketSTTClient';
+import type { TranscriptEvent } from '../audio/types';
 
-// ── TRANSCRIPT EVENT ─────────────────────────────────────────────────
-// This is the standard event shape emitted for every recognized chunk
-// of speech. Both the Web Speech API path and the text-input fallback
-// produce events in this exact format, so downstream consumers don't
-// need to know which input method was used.
-export interface TranscriptEvent {
-    text: string;       // The recognized text (may be partial if isFinal=false)
-    isFinal: boolean;   // true when the browser is confident in the result
-    timestamp: number;  // Date.now() at recognition time
-}
+// Re-export so existing consumers (Canvas, AnalysisPanel, GhostTranscript, etc.)
+// can keep importing from this module without changing their import paths.
+export type { TranscriptEvent };
+
+// ── STT STATUS ───────────────────────────────────────────────────────
+// Observable status so the UI can show speech recognition state.
+export type STTStatus = 'off' | 'listening' | 'restarting' | 'error' | 'unsupported' | 'connecting-ws';
 
 // ── CALLBACK TYPES ───────────────────────────────────────────────────
 type TranscriptCallback = (event: TranscriptEvent) => void;
 type StatusCallback = (status: STTStatus, errorDetail?: string) => void;
 
 // ── SPEECH RECOGNITION TYPE SHIM ─────────────────────────────────────
-// The Web Speech API isn't in TypeScript's standard lib types.
-// We declare just enough of the interface to avoid `any` casts.
-// In industry, you'd use @types/dom-speech-recognition, but this
-// avoids adding a dependency for a small surface area.
 interface SpeechRecognitionEvent extends Event {
     results: SpeechRecognitionResultList;
     resultIndex: number;
@@ -90,68 +80,96 @@ interface SpeechRecognitionInstance extends EventTarget {
     onstart: (() => void) | null;
 }
 
+// ── FATAL ERRORS ─────────────────────────────────────────────────────
+const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'language-not-supported']);
+
+// Max retries for recoverable errors before giving up
+const MAX_RETRIES = 5;
+
+// Safari workaround: if no isFinal=true within this timeout after the
+// last interim result, force-finalize the transcript.
+const SAFARI_FINAL_TIMEOUT_MS = 750;
+
+// ── DETECTION CACHE ──────────────────────────────────────────────────
+// Once we've probed whether Web Speech API actually works, cache the result.
+// 'untested' = haven't tried yet, 'works' = start() succeeded, 'broken' = failed
+type WebSpeechProbeResult = 'untested' | 'works' | 'broken';
+
 // ── SPEECH ENGINE CLASS ──────────────────────────────────────────────
 export class SpeechEngine {
     // ── PUBLIC STATE ─────────────────────────────────────────────────
-    // Whether the browser supports the Web Speech API.
-    // UIOverlay reads this to decide whether to show the text-input fallback.
-    readonly isSupported: boolean;
+    isSupported: boolean;
 
-    // Whether recognition is currently active.
-    // Used by UIOverlay to show listening state.
     private _isRunning = false;
 
     // ── STATUS ───────────────────────────────────────────────────────
-    // Observable status for the UI to react to speech recognition state.
     private _status: STTStatus = 'off';
     private _lastError: string = '';
     private statusListeners: Set<StatusCallback> = new Set();
 
-    // ── PRIVATE STATE ────────────────────────────────────────────────
-    // The SpeechRecognition instance — created fresh on each start().
-    // We don't reuse instances because some browsers (Chrome) get into
-    // bad states if you call start() on an already-stopped instance.
+    // ── WEB SPEECH API STATE ─────────────────────────────────────────
     private recognition: SpeechRecognitionInstance | null = null;
-
-    // Subscriber callbacks — same Set pattern as TuningConfig.
     private listeners: Set<TranscriptCallback> = new Set();
-
-    // Timer ID for the auto-restart delay after errors.
-    // Stored so we can cancel it on stop().
     private restartTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Debounce timer for the 'restarting' status. We delay showing
-    // 'restarting' by 800ms so that quick Chrome auto-restarts (~300ms)
-    // don't cause a visible flicker in the UI badge.
     private restartDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Flag to distinguish intentional stop() from browser auto-stop.
-    // When the user calls stop(), we set this to true so the `onend`
-    // handler knows NOT to auto-restart.
     private intentionallyStopped = false;
+    private retryCount = 0;
+    private dryRestartCount = 0;
+
+    // ── SAFARI WORKAROUNDS ───────────────────────────────────────────
+    /** Timer for force-finalizing transcripts on Safari (broken isFinal). */
+    private safariFinalTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Last interim transcript text — used for deduplication. */
+    private lastInterimText = '';
+    /** Previous final transcript — detects Safari's repetition bug. */
+    private lastFinalText = '';
+    /** Is the current browser Safari? */
+    private readonly isSafari: boolean;
+
+    // ── WEBSOCKET FALLBACK ───────────────────────────────────────────
+    /** The WebSocket STT client (Deepgram). Lazy-initialized on first need. */
+    private wsClient: WebSocketSTTClient | null = null;
+    /** Cleanup handle for WebSocket transcript subscription (retained for future dispose). */
+    private _wsTranscriptUnsub: (() => void) | null = null;
+    /** Cleanup handle for WebSocket status subscription (retained for future dispose). */
+    private _wsStatusUnsub: (() => void) | null = null;
+    /** Whether we're currently using the WebSocket path. */
+    private usingWebSocket = false;
+
+    // ── DETECTION CACHE ──────────────────────────────────────────────
+    /** Cached result of probing whether Web Speech API actually works. */
+    private webSpeechProbe: WebSpeechProbeResult = 'untested';
+
+    /** Deepgram API key from env. */
+    private readonly deepgramApiKey: string;
 
     constructor() {
         // ── DETECT WEB SPEECH API SUPPORT ────────────────────────────
-        // Chrome uses the webkit prefix, Safari uses the standard name,
-        // Firefox doesn't support it at all (as of 2024).
         this.isSupported =
             'SpeechRecognition' in window ||
             'webkitSpeechRecognition' in window;
+
+        // ── DETECT SAFARI ────────────────────────────────────────────
+        const ua = navigator.userAgent;
+        this.isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+
+        // Read Deepgram API key from env (Vite injects VITE_ prefixed vars)
+        this.deepgramApiKey = (typeof import.meta !== 'undefined' &&
+            import.meta.env?.VITE_DEEPGRAM_API_KEY) || '';
 
         if (!this.isSupported) {
             this._status = 'unsupported';
         }
 
         console.log(
-            `[SpeechEngine] Web Speech API ${this.isSupported ? '✅ supported' : '❌ not supported — text fallback will be used'}`
+            `[SpeechEngine] Web Speech API ${this.isSupported ? '✅ supported' : '❌ not supported'}` +
+            (this.isSafari ? ' (Safari detected — workarounds active)' : '') +
+            (this.deepgramApiKey ? ' | Deepgram fallback available' : ' | ⚠️ No VITE_DEEPGRAM_API_KEY — WebSocket fallback disabled')
         );
     }
 
     // ── PUBLIC API ───────────────────────────────────────────────────
 
-    /**
-     * Whether the engine is currently listening for speech.
-     */
     get isRunning(): boolean {
         return this._isRunning;
     }
@@ -159,79 +177,106 @@ export class SpeechEngine {
     /**
      * Start speech recognition.
      *
-     * If the Web Speech API is supported, this creates a new
-     * SpeechRecognition instance and starts it.
-     * If not, this is a no-op (the text fallback is always available).
-     *
-     * NOTE: SpeechRecognition internally requests mic access.
-     * Since AudioEngine also calls getUserMedia(), the browser
-     * will typically only show one permission prompt (mic access
-     * is shared across APIs in the same origin).
+     * LAZY DETECTION STRATEGY:
+     * If Web Speech API is available but untested, try it. If it fails
+     * (e.g. service-not-allowed on iOS PWA), automatically fall through
+     * to the WebSocket path. The probe result is cached.
      */
     start(): void {
-        if (!this.isSupported) {
-            // Text fallback mode — mark as "running" so the UI knows
-            // to accept text input.
+        // ── Already running ──────────────────────────────────────────
+        if (this._isRunning) {
+            console.log('[SpeechEngine] Already running, skipping start()');
+            return;
+        }
+
+        // ── No Web Speech + No Deepgram key → text-only ─────────────
+        if (!this.isSupported && !this.deepgramApiKey) {
             this._isRunning = true;
             this.setStatus('unsupported');
             console.log('[SpeechEngine] Started in text-input fallback mode');
             return;
         }
 
-        if (this._isRunning) {
-            console.log('[SpeechEngine] Already running, skipping start()');
+        // ── Web Speech known to work → use it ────────────────────────
+        if (this.isSupported && this.webSpeechProbe === 'works') {
+            this.intentionallyStopped = false;
+            this.createRecognition();
             return;
         }
 
-        this.intentionallyStopped = false;
-        this.createRecognition();
+        // ── Web Speech known broken → use WebSocket ──────────────────
+        if (this.webSpeechProbe === 'broken') {
+            this.startWebSocketFallback();
+            return;
+        }
+
+        // ── Web Speech available but untested → try it ───────────────
+        if (this.isSupported && this.webSpeechProbe === 'untested') {
+            this.intentionallyStopped = false;
+            this.createRecognition();
+            return;
+        }
+
+        // ── No Web Speech, but have Deepgram key → WebSocket ─────────
+        if (!this.isSupported && this.deepgramApiKey) {
+            this.startWebSocketFallback();
+            return;
+        }
     }
 
     /**
      * Stop speech recognition.
-     *
-     * Cleans up the recognition instance and cancels any pending
-     * restart timers.
      */
     stop(): void {
         this.intentionallyStopped = true;
         this._isRunning = false;
 
-        // Cancel any pending restart timer
+        // Cancel pending timers
         if (this.restartTimer !== null) {
             clearTimeout(this.restartTimer);
             this.restartTimer = null;
         }
-
-        // Cancel debounced 'restarting' status
         if (this.restartDebounceTimer !== null) {
             clearTimeout(this.restartDebounceTimer);
             this.restartDebounceTimer = null;
         }
+        if (this.safariFinalTimer !== null) {
+            clearTimeout(this.safariFinalTimer);
+            this.safariFinalTimer = null;
+        }
 
-        // Stop the recognition instance
+        // Stop Web Speech recognition
         if (this.recognition) {
             try {
                 this.recognition.abort();
             } catch {
-                // Some browsers throw if recognition isn't active — safe to ignore.
+                // Some browsers throw if recognition isn't active
             }
             this.recognition = null;
         }
 
+        // Stop WebSocket client and clean up subscriptions.
+        // Destroy the client so a fresh one is created on next start().
+        if (this.wsClient) {
+            this.wsClient.destroy();
+            this.wsClient = null;
+        }
+        if (this._wsTranscriptUnsub) {
+            this._wsTranscriptUnsub();
+            this._wsTranscriptUnsub = null;
+        }
+        if (this._wsStatusUnsub) {
+            this._wsStatusUnsub();
+            this._wsStatusUnsub = null;
+        }
+
+        this.usingWebSocket = false;
         this.setStatus('off');
         console.log('[SpeechEngine] Stopped');
     }
 
     /**
      * Register a callback to receive transcript events.
-     * Returns an unsubscribe function (same pattern as TuningConfig.onChange).
-     *
-     * Usage:
-     *   const unsub = speechEngine.onTranscript((event) => {
-     *       console.log(event.text, event.isFinal);
-     *   });
-     *   // later: unsub();
      */
     onTranscript(callback: TranscriptCallback): () => void {
         this.listeners.add(callback);
@@ -239,67 +284,46 @@ export class SpeechEngine {
     }
 
     /**
-     * Subscribe to status changes (listening, restarting, error, off).
-     * Returns an unsubscribe function.
+     * Subscribe to status changes.
      */
     onStatusChange(callback: StatusCallback): () => void {
         this.statusListeners.add(callback);
-        // Immediately fire with current status so subscriber gets initial state
         callback(this._status, this._lastError);
         return () => this.statusListeners.delete(callback);
     }
 
-    /** Current STT status. */
     get status(): STTStatus {
         return this._status;
     }
 
-    /** Last error detail string (e.g. 'network', 'not-allowed'). */
     get lastError(): string {
         return this._lastError;
     }
 
     /**
-     * Submit text manually (used by the text-input fallback).
-     * Emits a TranscriptEvent with isFinal=true, as if the user
-     * had spoken the text and the browser confirmed it.
+     * Submit text manually (text-input fallback).
      */
     submitText(text: string): void {
         if (!text.trim()) return;
-
-        const event: TranscriptEvent = {
+        this.emit({
             text: text.trim(),
             isFinal: true,
             timestamp: Date.now(),
-        };
-
-        this.emit(event);
+        });
     }
 
-    // ── PRIVATE METHODS ──────────────────────────────────────────────
+    // ── WEB SPEECH API METHODS ──────────────────────────────────────
 
     /**
      * Create and configure a new SpeechRecognition instance.
-     *
-     * WHY CREATE FRESH EACH TIME?
-     * Chrome's SpeechRecognition can enter broken states if you call
-     * start() on a previously-stopped instance. Creating a new one
-     * each time is the most reliable approach.
      */
     private createRecognition(): void {
-        // Get the constructor (webkit-prefixed in Chrome/Edge)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- vendor-prefixed SpeechRecognition
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
         if (!SpeechRecognitionCtor) return;
 
         const recognition: SpeechRecognitionInstance = new SpeechRecognitionCtor();
 
-        // ── CONFIGURATION ────────────────────────────────────────────
-        // continuous=true: Don't stop after the first sentence.
-        // interimResults=true: Emit partial results as the user speaks,
-        //   giving us real-time text even before the browser is confident.
-        // lang='en-US': English — can be made configurable later.
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
@@ -308,7 +332,15 @@ export class SpeechEngine {
 
         recognition.onstart = () => {
             this._isRunning = true;
-            // Cancel debounced 'restarting' flash — restart succeeded fast
+            this.retryCount = 0;
+
+            // Probe succeeded — cache it
+            if (this.webSpeechProbe === 'untested') {
+                this.webSpeechProbe = 'works';
+                console.log('[SpeechEngine] ✅ Web Speech API probe: works');
+            }
+
+            // Cancel debounced 'restarting' flash
             if (this.restartDebounceTimer !== null) {
                 clearTimeout(this.restartDebounceTimer);
                 this.restartDebounceTimer = null;
@@ -317,14 +349,56 @@ export class SpeechEngine {
             console.log('[SpeechEngine] 🎤 Recognition started');
         };
 
+        let sessionHadResults = false;
+
         recognition.onresult = (event: SpeechRecognitionEvent) => {
-            // The results array accumulates all results since start().
-            // resultIndex tells us where new results begin.
-            // We iterate from resultIndex to the end to get only new results.
+            sessionHadResults = true;
+
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const result = event.results[i];
                 const transcript = result[0].transcript;
                 const isFinal = result.isFinal;
+
+                // ── SAFARI WORKAROUND: Deduplication ─────────────────
+                // Safari sometimes repeats the entire transcript after speech ends.
+                if (this.isSafari && isFinal && transcript === this.lastFinalText) {
+                    console.log('[SpeechEngine] Safari dedup: skipping repeated final transcript');
+                    continue;
+                }
+
+                // ── SAFARI WORKAROUND: isFinal timeout ───────────────
+                // Safari sometimes never sets isFinal=true. We track the
+                // last interim result and force-finalize after 750ms of silence.
+                if (this.isSafari && !isFinal) {
+                    this.lastInterimText = transcript;
+
+                    // Reset the finalization timer
+                    if (this.safariFinalTimer) clearTimeout(this.safariFinalTimer);
+                    this.safariFinalTimer = setTimeout(() => {
+                        this.safariFinalTimer = null;
+                        if (this.lastInterimText) {
+                            console.log('[SpeechEngine] Safari workaround: force-finalizing after timeout');
+                            const forcedEvent: TranscriptEvent = {
+                                text: this.lastInterimText,
+                                isFinal: true,
+                                timestamp: Date.now(),
+                            };
+                            this.lastFinalText = this.lastInterimText;
+                            this.lastInterimText = '';
+                            this.emit(forcedEvent);
+                        }
+                    }, SAFARI_FINAL_TIMEOUT_MS);
+                }
+
+                if (isFinal) {
+                    this.lastFinalText = transcript;
+                    this.lastInterimText = '';
+                    // Cancel Safari timer — real final arrived
+                    if (this.safariFinalTimer) {
+                        clearTimeout(this.safariFinalTimer);
+                        this.safariFinalTimer = null;
+                    }
+                }
 
                 const transcriptEvent: TranscriptEvent = {
                     text: transcript,
@@ -337,72 +411,112 @@ export class SpeechEngine {
         };
 
         recognition.onend = () => {
-            // The browser periodically stops recognition (Chrome does this
-            // roughly every 60 seconds, or after silence). If we didn't
-            // intentionally stop, restart it to keep listening.
             if (!this.intentionallyStopped) {
-                console.log('[SpeechEngine] Recognition ended — auto-restarting...');
-                // Debounce: only show 'restarting' if restart takes >800ms.
-                // This prevents the visible flicker during Chrome's normal
-                // ~300ms restart cycle.
+                if (sessionHadResults) {
+                    this.dryRestartCount = 0;
+                } else {
+                    this.dryRestartCount++;
+                }
+
+                const baseDelay = 300;
+                const restartDelay = Math.min(
+                    baseDelay * Math.pow(2, this.dryRestartCount),
+                    10000,
+                );
+
+                if (this.dryRestartCount > 3) {
+                    console.warn(
+                        `[SpeechEngine] ${this.dryRestartCount} dry restarts in a row — ` +
+                        `backing off to ${restartDelay}ms. Speech service may be unavailable.`
+                    );
+                } else {
+                    console.log('[SpeechEngine] Recognition ended — auto-restarting...');
+                }
+
                 this.restartDebounceTimer = setTimeout(() => {
                     this.restartDebounceTimer = null;
                     if (!this.intentionallyStopped) {
                         this.setStatus('restarting');
                     }
                 }, 800);
-                // Small delay to avoid rapid restart loops
+
                 this.restartTimer = setTimeout(() => {
                     this.restartTimer = null;
                     if (!this.intentionallyStopped) {
                         this.createRecognition();
                     }
-                }, 300);
+                }, restartDelay);
             } else {
                 this._isRunning = false;
-                this.setStatus('off');
+                if (this._status !== 'unsupported') {
+                    this.setStatus('off');
+                }
                 console.log('[SpeechEngine] Recognition ended (intentional stop)');
             }
         };
 
         recognition.onerror = (event: Event & { error: string }) => {
-            // Common error types:
-            // - 'no-speech': No speech detected for a while. Normal, just restart.
-            // - 'audio-capture': Mic not available. Could be permissions issue.
-            // - 'not-allowed': User denied mic permission.
-            // - 'aborted': We called abort(). Expected during stop().
-            // - 'network': Chrome's speech API uses a network service — this
-            //   fires when offline. Recognition won't work offline.
             const errorType = event.error;
 
-            if (errorType === 'aborted') {
-                // This fires when we call stop() — ignore it.
-                return;
-            }
+            if (errorType === 'aborted') return;
 
             if (errorType === 'no-speech') {
-                // Totally normal — user just hasn't said anything.
-                // The onend handler will auto-restart.
                 console.log('[SpeechEngine] No speech detected — will auto-restart');
                 return;
             }
 
-            // Surface error to the UI — 'network', 'not-allowed', etc.
+            // ── FATAL ERRORS → try WebSocket fallback ────────────────
+            if (FATAL_ERRORS.has(errorType)) {
+                this._lastError = errorType;
+
+                // Cache probe result
+                if (this.webSpeechProbe === 'untested') {
+                    this.webSpeechProbe = 'broken';
+                    console.log(`[SpeechEngine] Web Speech API probe: broken (${errorType})`);
+                }
+
+                // Try WebSocket fallback before giving up
+                if (this.deepgramApiKey) {
+                    console.log(`[SpeechEngine] ⚠️ Web Speech fatal error "${errorType}" — switching to WebSocket fallback`);
+                    this.intentionallyStopped = true; // prevent onend from restarting
+                    this.recognition = null;
+                    this.startWebSocketFallback();
+                    return;
+                }
+
+                // No fallback available — text input mode
+                this.isSupported = false;
+                this.setStatus('unsupported', errorType);
+                this.intentionallyStopped = true;
+                this._isRunning = true;
+                console.warn(`[SpeechEngine] ⛔ Fatal error: "${errorType}" — text-input fallback`);
+                return;
+            }
+
+            // ── RECOVERABLE ERRORS ───────────────────────────────────
             this._lastError = errorType;
             this.setStatus('error', errorType);
-            console.warn(`[SpeechEngine] ⚠️ Error: "${errorType}"`);
+            console.warn(`[SpeechEngine] ⚠️ Error: "${errorType}" (retry ${this.retryCount + 1}/${MAX_RETRIES})`);
 
-            // For all other errors, try to restart after a delay.
-            // The 1-second delay prevents rapid crash loops if the error
-            // is persistent (e.g., mic permission denied).
-            if (!this.intentionallyStopped) {
+            if (!this.intentionallyStopped && this.retryCount < MAX_RETRIES) {
+                const delay = Math.min(1000 * Math.pow(2, this.retryCount), 16000);
+                this.retryCount++;
                 this.restartTimer = setTimeout(() => {
                     this.restartTimer = null;
                     if (!this.intentionallyStopped) {
-                        console.log('[SpeechEngine] Retrying after error...');
+                        console.log(`[SpeechEngine] Retrying after error (attempt ${this.retryCount}/${MAX_RETRIES})...`);
                         this.createRecognition();
                     }
-                }, 1000);
+                }, delay);
+            } else if (this.retryCount >= MAX_RETRIES) {
+                // Max retries on Web Speech — try WebSocket as last resort
+                if (this.deepgramApiKey && !this.usingWebSocket) {
+                    console.log('[SpeechEngine] Max Web Speech retries — switching to WebSocket');
+                    this.startWebSocketFallback();
+                } else {
+                    console.warn(`[SpeechEngine] ⛔ Max retries (${MAX_RETRIES}) reached — giving up`);
+                    this._isRunning = false;
+                }
             }
         };
 
@@ -412,19 +526,92 @@ export class SpeechEngine {
         try {
             recognition.start();
         } catch (e) {
-            // Can throw if another recognition instance is already running.
-            // This is rare but possible during rapid start/stop cycles.
             console.error('[SpeechEngine] Failed to start recognition:', e);
+
+            // If first-time probe fails with an exception, try WebSocket
+            if (this.webSpeechProbe === 'untested') {
+                this.webSpeechProbe = 'broken';
+                if (this.deepgramApiKey) {
+                    console.log('[SpeechEngine] Web Speech start() threw — trying WebSocket fallback');
+                    this.startWebSocketFallback();
+                    return;
+                }
+            }
+
             this._isRunning = false;
         }
     }
 
+    // ── WEBSOCKET FALLBACK ──────────────────────────────────────────
+
+    /**
+     * Start the WebSocket STT fallback (Deepgram). Called when Web Speech
+     * API is unavailable, broken, or has exhausted retries.
+     */
+    private startWebSocketFallback(): void {
+        if (this.usingWebSocket) return;
+        if (!this.deepgramApiKey) {
+            console.warn('[SpeechEngine] No Deepgram API key — cannot start WebSocket fallback');
+            this.setStatus('unsupported', 'no-api-key');
+            this._isRunning = true;
+            this.isSupported = false;
+            return;
+        }
+
+        this.usingWebSocket = true;
+        this.setStatus('connecting-ws');
+        console.log('[SpeechEngine] 🔌 Starting WebSocket STT fallback (Deepgram)');
+
+        // Create WebSocket client if not already created
+        if (!this.wsClient) {
+            this.wsClient = new WebSocketSTTClient(this.deepgramApiKey);
+
+            // Wire up transcript events → our listeners
+            this._wsTranscriptUnsub = this.wsClient.onTranscript((event) => {
+                this.emit(event);
+            });
+
+            // Wire up status changes
+            this._wsStatusUnsub = this.wsClient.onStatusChange((wsStatus) => {
+                switch (wsStatus) {
+                    case 'connecting':
+                    case 'reconnecting':
+                        this.setStatus('connecting-ws');
+                        break;
+                    case 'listening':
+                        this.setStatus('listening');
+                        break;
+                    case 'error':
+                        this.setStatus('error', 'websocket');
+                        break;
+                    case 'closed':
+                        if (this._isRunning) {
+                            this.setStatus('error', 'ws-closed');
+                        }
+                        break;
+                }
+            });
+        }
+
+        // Start mic capture + WebSocket connection
+        this.wsClient.start().catch((err) => {
+            console.error('[SpeechEngine] WebSocket fallback failed to start:', err);
+            this.usingWebSocket = false;
+            // Final fallback: text input
+            this.isSupported = false;
+            this.setStatus('unsupported', 'ws-failed');
+            this._isRunning = true;
+        });
+
+        this._isRunning = true;
+    }
+
+    // ── INTERNAL ────────────────────────────────────────────────────
+
     /**
      * Emit a TranscriptEvent to all registered listeners.
-     * Also logs to console for easy debugging.
      */
     private emit(event: TranscriptEvent): void {
-        // Console log with visual distinction between interim and final
         const prefix = event.isFinal ? '✅ FINAL' : '💬 interim';
         console.log(`[SpeechEngine] ${prefix}: "${event.text}"`);
 
@@ -432,7 +619,6 @@ export class SpeechEngine {
             try {
                 listener(event);
             } catch (e) {
-                // Don't let a bad listener crash the engine.
                 console.error('[SpeechEngine] Listener error:', e);
             }
         }

@@ -106,12 +106,31 @@ export const AUDIO_UNIFORM_COUNT = 16;
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Which speech-to-text engine is currently active. */
-export type STTTier = 'webspeech' | 'moonshine' | 'loading';
+export type STTTier = 'webspeech' | 'websocket' | 'loading';
 
 /** Status returned by STTManager.getStatus(). */
 export interface STTStatus {
     engine: STTTier;
     isListening: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TRANSCRIPT EVENT
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Canonical transcript event emitted by all STT engines.
+ *
+ * Both the Web Speech API path and the WebSocket Deepgram path produce
+ * this same shape, so consumers don't need to know which engine is active.
+ */
+export interface TranscriptEvent {
+    /** The recognized text (may be partial if isFinal=false). */
+    text: string;
+    /** true when the engine is confident the utterance is complete. */
+    isFinal: boolean;
+    /** Date.now() at recognition time. */
+    timestamp: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════

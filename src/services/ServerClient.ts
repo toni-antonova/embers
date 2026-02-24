@@ -40,7 +40,7 @@ interface RawServerResponse {
     pipeline: string;
 }
 
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 300_000;
 
 export class ServerClient {
     private baseUrl: string;
