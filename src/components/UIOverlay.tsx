@@ -27,18 +27,23 @@ import { useState, useRef, useEffect } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
 import { SpeechEngine } from '../services/SpeechEngine';
 import type { STTStatus } from '../services/SpeechEngine';
+import type { TuningConfig } from '../services/TuningConfig';
 
 // ── COMPONENT PROPS ──────────────────────────────────────────────────
 interface UIOverlayProps {
     audioEngine: AudioEngine;
     speechEngine: SpeechEngine;
+    tuningConfig: TuningConfig;
 }
 
-export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
+export function UIOverlay({ audioEngine, speechEngine, tuningConfig }: UIOverlayProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
     const [denied, setDenied] = useState(false);
     const deniedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Simple/Complex mode toggle — reads initial state from TuningConfig
+    const [complexMode, setComplexMode] = useState(() => tuningConfig.complexMode);
 
     // Clean up denied timer on unmount
     useEffect(() => {
@@ -50,6 +55,15 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
     // STT status state — driven by SpeechEngine's onStatusChange callback
     const [sttStatus, setSttStatus] = useState<STTStatus>('off');
     const [sttError, setSttError] = useState('');
+
+    // ── MODE TOGGLE ──────────────────────────────────────────────────
+    // Toggles between Simple (pre-built shapes) and Complex (server-rendered).
+    // Writes directly to TuningConfig, which persists to localStorage.
+    const toggleMode = () => {
+        const next = !complexMode;
+        setComplexMode(next);
+        tuningConfig.complexMode = next;
+    };
 
     // ── MIC TOGGLE ───────────────────────────────────────────────────
     // Starts/stops BOTH audio analysis AND speech recognition together.
@@ -107,6 +121,21 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
     // ── RENDER ────────────────────────────────────────────────────────
     return (
         <div className="ui-overlay">
+
+            {/* ── MODE TOGGLE (Simple / Complex) ──────────────────── */}
+            <div
+                className={`mode-toggle ${complexMode ? 'mode-toggle--complex' : ''}`}
+                onClick={toggleMode}
+                role="switch"
+                aria-checked={complexMode}
+                aria-label={complexMode ? 'Switch to Simple mode' : 'Switch to Complex mode'}
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMode(); } }}
+            >
+                <span className="mode-toggle__label mode-toggle__label--left">Simple</span>
+                <span className="mode-toggle__thumb" />
+                <span className="mode-toggle__label mode-toggle__label--right">Complex</span>
+            </div>
 
             {/* ── MIC BUTTON ──────────────────────────────────────── */}
             <button
@@ -169,3 +198,4 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
         </div>
     );
 }
+

@@ -130,7 +130,7 @@ export function useThreeScene(
         // ── SEMANTIC BACKEND ──────────────────────────────────────────
         const semanticBackend = new SemanticBackend(
             speechEngine, classifier, particles, uniformBridge,
-            sessionLogger, serverClient,
+            sessionLogger, serverClient, audioEngine, tuningConfig,
         );
         semanticBackendRef.current = semanticBackend;
 
