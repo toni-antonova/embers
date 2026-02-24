@@ -198,12 +198,7 @@ describe('TuningPanel — Audio Tab', () => {
         expect(screen.getByText('⚡ Curve Shaping')).toBeInTheDocument();
     });
 
-    it('renders the speech section', () => {
-        render(<TuningPanel config={config} audioEngine={mockAudioEngine} />);
-        openAudioTab();
 
-        expect(screen.getByText('🎤 Speech')).toBeInTheDocument();
-    });
 });
 
 // ══════════════════════════════════════════════════════════════════════

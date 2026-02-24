@@ -173,8 +173,6 @@ export function Canvas() {
                         uniformBridgeRef.current.sentimentMovementEnabled = enabled;
                     }
                 }}
-                transcript={lastTranscript}
-                lastSemanticEvent={lastSemanticEvent}
                 onIdleReset={() => {
                     if (uniformBridgeRef.current) {
                         uniformBridgeRef.current.resetToIdle();

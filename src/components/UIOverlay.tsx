@@ -122,19 +122,37 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig }: UIOverlay
     return (
         <div className="ui-overlay">
 
-            {/* ── MODE TOGGLE (Simple / Complex) ──────────────────── */}
-            <div
-                className={`mode-toggle ${complexMode ? 'mode-toggle--complex' : ''}`}
-                onClick={toggleMode}
-                role="switch"
-                aria-checked={complexMode}
-                aria-label={complexMode ? 'Switch to Simple mode' : 'Switch to Complex mode'}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMode(); } }}
-            >
-                <span className="mode-toggle__label mode-toggle__label--left">Simple</span>
-                <span className="mode-toggle__thumb" />
-                <span className="mode-toggle__label mode-toggle__label--right">Complex</span>
+            {/* ── TOP-RIGHT CONTROLS (toggle + STT status) ─────────── */}
+            <div className="top-right-controls">
+                {/* ── MODE TOGGLE (Simple / Complex) ──────────────── */}
+                <div
+                    className={`mode-toggle ${complexMode ? 'mode-toggle--complex' : ''}`}
+                    onClick={toggleMode}
+                    role="switch"
+                    aria-checked={complexMode}
+                    aria-label={complexMode ? 'Switch to Simple mode' : 'Switch to Complex mode'}
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMode(); } }}
+                >
+                    <span className="mode-toggle__label mode-toggle__label--left">Simple</span>
+                    <span className="mode-toggle__thumb" />
+                    <span className="mode-toggle__label mode-toggle__label--right">Complex</span>
+                </div>
+
+                {/* ── STT STATUS (underneath toggle) ──────────────── */}
+                {isListening && (
+                    <div className={`stt-status stt-status--${sttStatus}${isConnectingWS ? ' stt-status--loading' : ''}`}>
+                        <span className="stt-status__dot" />
+                        <span className="stt-status__label">
+                            {sttStatus === 'listening' && 'STT active'}
+                            {sttStatus === 'restarting' && 'STT restarting…'}
+                            {sttStatus === 'error' && `STT error: ${sttError}`}
+                            {isConnectingWS && 'Connecting to speech service…'}
+                            {sttStatus === 'unsupported' && 'STT unavailable — type below'}
+                            {sttStatus === 'off' && 'STT off'}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* ── MIC BUTTON ──────────────────────────────────────── */}
@@ -151,21 +169,6 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig }: UIOverlay
             </button>
             {denied && (
                 <span className="mic-tooltip">Microphone access denied</span>
-            )}
-
-            {/* ── STT STATUS BADGE ─────────────────────────────────── */}
-            {isListening && (
-                <div className={`stt-status stt-status--${sttStatus}${isConnectingWS ? ' stt-status--loading' : ''}`}>
-                    <span className="stt-status__dot" />
-                    <span className="stt-status__label">
-                        {sttStatus === 'listening' && 'STT active'}
-                        {sttStatus === 'restarting' && 'STT restarting…'}
-                        {sttStatus === 'error' && `STT error: ${sttError}`}
-                        {isConnectingWS && 'Connecting to speech service…'}
-                        {sttStatus === 'unsupported' && 'STT unavailable — type below'}
-                        {sttStatus === 'off' && 'STT off'}
-                    </span>
-                </div>
             )}
 
             {/* ── TEXT FALLBACK ─────────────────────────────────────── */}

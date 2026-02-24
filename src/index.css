@@ -50,6 +50,25 @@ canvas {
   box-sizing: border-box;
 }
 
+/* ── TOP-RIGHT CONTROLS CONTAINER ────────────────────────────────────
+ * Groups the mode toggle and STT status badge in the top-right corner,
+ * immediately to the left of the gear button. Uses a higher z-index
+ * than the tuning panel (z-index: 999) so it stays visible when the
+ * settings sidebar slides open.
+ */
+.top-right-controls {
+  position: fixed;
+  top: 1rem;
+  right: calc(1rem + 40px + 0.75rem);
+  /* gear btn width + gap */
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
 /* ── MODE TOGGLE (Simple / Complex) ──────────────────────────────────
  * Minimal pill switch with sliding highlight behind the active label.
  * Glassmorphism matches existing UI elements.
@@ -66,8 +85,6 @@ canvas {
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  align-self: center;
-  margin-bottom: 0.75rem;
   user-select: none;
   transition: border-color 0.3s ease;
   overflow: hidden;
@@ -127,6 +144,11 @@ canvas {
   .mode-toggle__label {
     padding: 7px 14px;
     font-size: 10px;
+  }
+
+  .top-right-controls {
+    right: calc(1rem + 48px + 0.5rem);
+    /* larger mobile gear btn */
   }
 }
 
@@ -237,7 +259,7 @@ canvas {
 }
 
 /* ── STT STATUS BADGE ─────────────────────────────────────────────────
- * Appears below the mic button when listening is active.
+ * Lives inside .top-right-controls, directly below the mode toggle.
  * Shows the Web Speech API recognition state so the user knows
  * whether words are being captured without needing the console open.
  */
@@ -246,19 +268,17 @@ canvas {
   display: flex;
   align-items: center;
   gap: 6px;
-  align-self: center;
-  padding: 4px 12px;
-  border-radius: 20px;
+  padding: 3px 10px;
+  border-radius: 14px;
   background: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 10px;
+  font-size: 9px;
   color: rgba(255, 255, 255, 0.6);
   white-space: nowrap;
   animation: stt-fade-in 0.3s ease;
-  margin-bottom: 0.5rem;
 }
 
 .stt-status__dot {
@@ -541,41 +561,7 @@ canvas {
   }
 }
 
-.debug-panel {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 1rem;
-  border-radius: 8px;
-  font-family: monospace;
-  font-size: 0.8rem;
-  pointer-events: auto;
-  backdrop-filter: blur(5px);
-}
 
-.debug-row {
-  display: flex;
-  justify-content: space-between;
-  width: 200px;
-  margin-bottom: 0.25rem;
-}
-
-.debug-bar {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  width: 100px;
-  align-self: center;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.debug-fill {
-  height: 100%;
-  background: white;
-  width: 0%;
-  transition: width 0.1s linear;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════
  * ANALYSIS PANEL — Collapsible left sidebar for live diagnostics
@@ -1052,11 +1038,7 @@ canvas {
   cursor: default;
 }
 
-.tuning-values {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
+
 
 .tuning-current-value {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -1066,16 +1048,7 @@ canvas {
   text-align: right;
 }
 
-/* Live audio feature value — shown next to audio sliders in a subtle
- * accent color so you can see the raw input while adjusting parameters.
- */
-.tuning-live-value {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 9.5px;
-  color: rgba(100, 220, 140, 0.7);
-  min-width: 38px;
-  text-align: right;
-}
+
 
 /* ── SLIDER STYLING ───────────────────────────────────────────────────
  * Custom range input styling. The default browser slider is ugly and
@@ -1460,42 +1433,4 @@ canvas {
   background: rgba(100, 149, 237, 0.3);
   border-color: rgba(100, 149, 237, 0.5);
   color: white;
-}
-
-/*
- * Ghost transcript display — shows the last recognized phrase.
- * Positioned above the mic button as a subtle, ephemeral indicator.
- * Uses a fade-in animation for smooth appearance.
- */
-.transcript-display {
-  position: fixed;
-  bottom: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(80vw, 600px);
-  text-align: center;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.4);
-  pointer-events: none;
-  z-index: 15;
-  animation: transcript-fade-in 0.2s ease;
-}
-
-/* Final transcripts get slightly brighter text */
-.transcript-display.final {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-@keyframes transcript-fade-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
 }
