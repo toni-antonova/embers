@@ -89,7 +89,7 @@ afterEach(() => {
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Mic Button', () => {
     it('shows mic button with "Start listening" label initially', () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         const btn = screen.getByLabelText('Start listening');
         expect(btn).toBeInTheDocument();
@@ -97,7 +97,7 @@ describe('UIOverlay — Mic Button', () => {
     });
 
     it('toggles to active state after clicking', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         // Click the mic button.
         await act(async () => {
@@ -113,7 +113,7 @@ describe('UIOverlay — Mic Button', () => {
     });
 
     it('toggles back to inactive after stopping', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         // Start → Stop → verify state returns.
         await act(async () => {
@@ -135,7 +135,7 @@ describe('UIOverlay — Mic Button', () => {
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Mode Toggle', () => {
     it('renders in Simple mode initially (complexMode=false)', () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         const toggle = screen.getByRole('switch');
         expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -143,7 +143,7 @@ describe('UIOverlay — Mode Toggle', () => {
     });
 
     it('toggles to Complex mode on click', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         await act(async () => {
             fireEvent.click(screen.getByRole('switch'));
@@ -155,7 +155,7 @@ describe('UIOverlay — Mode Toggle', () => {
     });
 
     it('updates tuningConfig.complexMode on toggle', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         await act(async () => {
             fireEvent.click(screen.getByRole('switch'));
@@ -166,7 +166,7 @@ describe('UIOverlay — Mode Toggle', () => {
     });
 
     it('toggles back to Simple on second click', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         await act(async () => {
             fireEvent.click(screen.getByRole('switch'));
@@ -181,7 +181,7 @@ describe('UIOverlay — Mode Toggle', () => {
     });
 
     it('supports keyboard activation (Enter key)', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} lastTranscript={null} lastSemanticEvent={null} />);
 
         await act(async () => {
             fireEvent.keyDown(screen.getByRole('switch'), { key: 'Enter' });
