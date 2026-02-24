@@ -26,6 +26,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
 import { SpeechEngine } from '../services/SpeechEngine';
+import type { STTStatus } from '../services/SpeechEngine';
 
 // ── COMPONENT PROPS ──────────────────────────────────────────────────
 interface UIOverlayProps {
@@ -44,8 +45,11 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
         return () => { if (deniedTimerRef.current) clearTimeout(deniedTimerRef.current); };
     }, []);
 
-    // Text-input fallback state (only used when Web Speech API is unavailable).
     const [fallbackText, setFallbackText] = useState('');
+
+    // STT status state — driven by SpeechEngine's onStatusChange callback
+    const [sttStatus, setSttStatus] = useState<STTStatus>('off');
+    const [sttError, setSttError] = useState('');
 
     // ── MIC TOGGLE ───────────────────────────────────────────────────
     // Starts/stops BOTH audio analysis AND speech recognition together.
@@ -72,6 +76,15 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
             }
         }
     };
+
+    // Subscribe to STT status changes for the visible indicator
+    useEffect(() => {
+        const unsub = speechEngine.onStatusChange((status, errorDetail) => {
+            setSttStatus(status);
+            if (errorDetail) setSttError(errorDetail);
+        });
+        return unsub;
+    }, [speechEngine]);
 
 
 
@@ -101,6 +114,23 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
             </button>
             {denied && (
                 <span className="mic-tooltip">Microphone access denied</span>
+            )}
+
+            {/* ── STT STATUS BADGE ─────────────────────────────────── */}
+            {/* Shows the current speech recognition state so the user
+                knows if words are being captured, without needing the
+                browser console open. */}
+            {isListening && (
+                <div className={`stt-status stt-status--${sttStatus}`}>
+                    <span className="stt-status__dot" />
+                    <span className="stt-status__label">
+                        {sttStatus === 'listening' && 'STT active'}
+                        {sttStatus === 'restarting' && 'STT restarting…'}
+                        {sttStatus === 'error' && `STT error: ${sttError}`}
+                        {sttStatus === 'unsupported' && 'STT unavailable — type below'}
+                        {sttStatus === 'off' && 'STT off'}
+                    </span>
+                </div>
             )}
 
             {/* ── TEXT FALLBACK (only when Speech API unavailable) ── */}

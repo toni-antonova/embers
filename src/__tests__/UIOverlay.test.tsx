@@ -47,6 +47,7 @@ function createMockSpeechEngine() {
         start: vi.fn(),
         stop: vi.fn(),
         onTranscript: vi.fn().mockReturnValue(() => { }), // returns an unsub fn
+        onStatusChange: vi.fn().mockReturnValue(() => { }), // returns an unsub fn
         submitText: vi.fn(),
     } as any;
 }

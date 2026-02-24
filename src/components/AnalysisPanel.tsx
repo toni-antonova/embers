@@ -3,6 +3,7 @@ import { AudioEngine } from '../services/AudioEngine';
 import { WorkspaceEngine } from '../engine/WorkspaceEngine';
 import { SemanticBackend } from '../services/SemanticBackend';
 import { ParticleSystem } from '../engine/ParticleSystem';
+import { SpeechEngine } from '../services/SpeechEngine';
 import type { TranscriptEvent } from '../services/SpeechEngine';
 import type { SessionLogger } from '../services/SessionLogger';
 
@@ -13,6 +14,8 @@ interface AnalysisPanelProps {
     particleSystem: ParticleSystem | null;
     lastTranscript: TranscriptEvent | null;
     sessionLogger: SessionLogger | null;
+    speechEngine: SpeechEngine | null;
+    serActive: boolean;
 }
 
 // Helpers to mutate DOM nodes efficiently
@@ -39,7 +42,9 @@ export function AnalysisPanel({
     semanticBackend,
     particleSystem,
     lastTranscript,
-    sessionLogger
+    sessionLogger,
+    speechEngine,
+    serActive
 }: AnalysisPanelProps) {
 
     // Refs for direct DOM manipulation to avoid React re-renders at 60fps
@@ -55,6 +60,8 @@ export function AnalysisPanel({
     const breathingRef = useRef<HTMLSpanElement>(null);
 
     const systemRefs = useRef<Record<string, HTMLSpanElement | null>>({});
+    const pipelineRefs = useRef<Record<string, HTMLSpanElement | null>>({});
+    const pipelineDotRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
     const requestRef = useRef<number>(0);
     const lastFpsTimeRef = useRef<number>(0);
@@ -149,6 +156,39 @@ export function AnalysisPanel({
                 updateText('events', sessionLogger.eventCount.toString(), systemRefs);
             }
 
+            // --- PIPELINE ---
+            if (speechEngine) {
+                const sttLabel = speechEngine.status === 'listening' ? 'active'
+                    : speechEngine.status === 'restarting' ? 'restarting'
+                        : speechEngine.status === 'error' ? `error: ${speechEngine.lastError}`
+                            : speechEngine.status === 'unsupported' ? 'unsupported'
+                                : 'off';
+                updateText('stt', sttLabel, pipelineRefs);
+                const sttDot = pipelineDotRefs.current['stt'];
+                if (sttDot) {
+                    sttDot.style.backgroundColor = speechEngine.status === 'listening' ? '#4ade80'
+                        : speechEngine.status === 'restarting' ? '#fbbf24'
+                            : speechEngine.status === 'error' ? '#f87171'
+                                : 'rgba(255,255,255,0.3)';
+                }
+            }
+            {
+                const serLabel = serActive ? 'active' : 'off';
+                updateText('ser', serLabel, pipelineRefs);
+                const serDot = pipelineDotRefs.current['ser'];
+                if (serDot) {
+                    serDot.style.backgroundColor = serActive ? '#4ade80' : 'rgba(255,255,255,0.3)';
+                }
+            }
+            {
+                const serverLabel = semanticBackend ? 'connected' : 'offline';
+                updateText('server', serverLabel, pipelineRefs);
+                const serverDot = pipelineDotRefs.current['server'];
+                if (serverDot) {
+                    serverDot.style.backgroundColor = semanticBackend ? '#4ade80' : 'rgba(255,255,255,0.3)';
+                }
+            }
+
             requestRef.current = requestAnimationFrame(updateData);
         };
 
@@ -159,7 +199,7 @@ export function AnalysisPanel({
                 cancelAnimationFrame(requestRef.current);
             }
         };
-    }, [audioEngine, workspaceEngine, semanticBackend, particleSystem]);
+    }, [audioEngine, workspaceEngine, semanticBackend, particleSystem, speechEngine, serActive]);
 
 
 
@@ -243,6 +283,12 @@ export function AnalysisPanel({
                 </div>
             </Section>
 
+            <Section title="PIPELINE">
+                <StatusRow label="STT" statusKey="stt" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
+                <StatusRow label="SER" statusKey="ser" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
+                <StatusRow label="Server" statusKey="server" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
+            </Section>
+
             <Section title="SYSTEM">
                 <TextRow label="FPS" textKey="fps" textRefs={systemRefs} />
                 <TextRow label="Particles" textKey="particles" textRefs={systemRefs} />
@@ -322,6 +368,34 @@ function TextRow({ label, textKey, textRefs }: { label: string, textKey: string,
             <span style={{ opacity: 0.7 }}>{label}:</span>
             {/* eslint-disable-next-line react-hooks/immutability -- intentional imperative DOM ref */}
             <span ref={(el) => { if (textRefs.current) textRefs.current[textKey] = el; }}>--</span>
+        </div>
+    );
+}
+
+function StatusRow({ label, statusKey, textRefs, dotRefs }: {
+    label: string,
+    statusKey: string,
+    textRefs: React.RefObject<Record<string, HTMLSpanElement | null>>,
+    dotRefs: React.RefObject<Record<string, HTMLSpanElement | null>>
+}) {
+    return (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ opacity: 0.7 }}>{label}:</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {/* eslint-disable-next-line react-hooks/immutability -- intentional imperative DOM ref */}
+                <span
+                    ref={(el) => { if (dotRefs.current) dotRefs.current[statusKey] = el; }}
+                    style={{
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(255,255,255,0.3)',
+                        transition: 'background-color 0.3s ease',
+                    }}
+                />
+                {/* eslint-disable-next-line react-hooks/immutability -- intentional imperative DOM ref */}
+                <span ref={(el) => { if (textRefs.current) textRefs.current[statusKey] = el; }}>--</span>
+            </span>
         </div>
     );
 }

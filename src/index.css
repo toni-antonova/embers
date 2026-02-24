@@ -146,6 +146,82 @@ canvas {
   }
 }
 
+/* ── STT STATUS BADGE ─────────────────────────────────────────────────
+ * Appears below the mic button when listening is active.
+ * Shows the Web Speech API recognition state so the user knows
+ * whether words are being captured without needing the console open.
+ */
+.stt-status {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  animation: stt-fade-in 0.3s ease;
+  margin-bottom: 0.5rem;
+}
+
+.stt-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stt-status__label {
+  line-height: 1;
+}
+
+/* Color variants */
+.stt-status--listening .stt-status__dot {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  animation: stt-pulse 2s ease infinite;
+}
+
+.stt-status--restarting .stt-status__dot {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+  animation: stt-pulse 1s ease infinite;
+}
+
+.stt-status--error .stt-status__dot {
+  background: #f87171;
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+}
+.stt-status--error {
+  border-color: rgba(248, 113, 113, 0.2);
+  color: rgba(248, 113, 113, 0.85);
+}
+
+.stt-status--unsupported .stt-status__dot {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.stt-status--off .stt-status__dot {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes stt-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes stt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .debug-panel {
   position: absolute;
   top: 1rem;

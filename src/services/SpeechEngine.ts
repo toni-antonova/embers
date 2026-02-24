@@ -29,6 +29,11 @@
  * for a real-time creative coding project.
  */
 
+// ── STT STATUS ───────────────────────────────────────────────────────
+// Observable status so the UI can show whether the Web Speech API is
+// actively listening, recovering from an error, or has failed.
+export type STTStatus = 'off' | 'listening' | 'restarting' | 'error' | 'unsupported';
+
 // ── TRANSCRIPT EVENT ─────────────────────────────────────────────────
 // This is the standard event shape emitted for every recognized chunk
 // of speech. Both the Web Speech API path and the text-input fallback
@@ -40,8 +45,9 @@ export interface TranscriptEvent {
     timestamp: number;  // Date.now() at recognition time
 }
 
-// ── CALLBACK TYPE ────────────────────────────────────────────────────
+// ── CALLBACK TYPES ───────────────────────────────────────────────────
 type TranscriptCallback = (event: TranscriptEvent) => void;
+type StatusCallback = (status: STTStatus, errorDetail?: string) => void;
 
 // ── SPEECH RECOGNITION TYPE SHIM ─────────────────────────────────────
 // The Web Speech API isn't in TypeScript's standard lib types.
@@ -95,6 +101,12 @@ export class SpeechEngine {
     // Used by UIOverlay to show listening state.
     private _isRunning = false;
 
+    // ── STATUS ───────────────────────────────────────────────────────
+    // Observable status for the UI to react to speech recognition state.
+    private _status: STTStatus = 'off';
+    private _lastError: string = '';
+    private statusListeners: Set<StatusCallback> = new Set();
+
     // ── PRIVATE STATE ────────────────────────────────────────────────
     // The SpeechRecognition instance — created fresh on each start().
     // We don't reuse instances because some browsers (Chrome) get into
@@ -108,6 +120,11 @@ export class SpeechEngine {
     // Stored so we can cancel it on stop().
     private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // Debounce timer for the 'restarting' status. We delay showing
+    // 'restarting' by 800ms so that quick Chrome auto-restarts (~300ms)
+    // don't cause a visible flicker in the UI badge.
+    private restartDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     // Flag to distinguish intentional stop() from browser auto-stop.
     // When the user calls stop(), we set this to true so the `onend`
     // handler knows NOT to auto-restart.
@@ -120,6 +137,10 @@ export class SpeechEngine {
         this.isSupported =
             'SpeechRecognition' in window ||
             'webkitSpeechRecognition' in window;
+
+        if (!this.isSupported) {
+            this._status = 'unsupported';
+        }
 
         console.log(
             `[SpeechEngine] Web Speech API ${this.isSupported ? '✅ supported' : '❌ not supported — text fallback will be used'}`
@@ -152,6 +173,7 @@ export class SpeechEngine {
             // Text fallback mode — mark as "running" so the UI knows
             // to accept text input.
             this._isRunning = true;
+            this.setStatus('unsupported');
             console.log('[SpeechEngine] Started in text-input fallback mode');
             return;
         }
@@ -181,6 +203,12 @@ export class SpeechEngine {
             this.restartTimer = null;
         }
 
+        // Cancel debounced 'restarting' status
+        if (this.restartDebounceTimer !== null) {
+            clearTimeout(this.restartDebounceTimer);
+            this.restartDebounceTimer = null;
+        }
+
         // Stop the recognition instance
         if (this.recognition) {
             try {
@@ -191,6 +219,7 @@ export class SpeechEngine {
             this.recognition = null;
         }
 
+        this.setStatus('off');
         console.log('[SpeechEngine] Stopped');
     }
 
@@ -207,6 +236,27 @@ export class SpeechEngine {
     onTranscript(callback: TranscriptCallback): () => void {
         this.listeners.add(callback);
         return () => this.listeners.delete(callback);
+    }
+
+    /**
+     * Subscribe to status changes (listening, restarting, error, off).
+     * Returns an unsubscribe function.
+     */
+    onStatusChange(callback: StatusCallback): () => void {
+        this.statusListeners.add(callback);
+        // Immediately fire with current status so subscriber gets initial state
+        callback(this._status, this._lastError);
+        return () => this.statusListeners.delete(callback);
+    }
+
+    /** Current STT status. */
+    get status(): STTStatus {
+        return this._status;
+    }
+
+    /** Last error detail string (e.g. 'network', 'not-allowed'). */
+    get lastError(): string {
+        return this._lastError;
     }
 
     /**
@@ -258,6 +308,12 @@ export class SpeechEngine {
 
         recognition.onstart = () => {
             this._isRunning = true;
+            // Cancel debounced 'restarting' flash — restart succeeded fast
+            if (this.restartDebounceTimer !== null) {
+                clearTimeout(this.restartDebounceTimer);
+                this.restartDebounceTimer = null;
+            }
+            this.setStatus('listening');
             console.log('[SpeechEngine] 🎤 Recognition started');
         };
 
@@ -286,6 +342,15 @@ export class SpeechEngine {
             // intentionally stop, restart it to keep listening.
             if (!this.intentionallyStopped) {
                 console.log('[SpeechEngine] Recognition ended — auto-restarting...');
+                // Debounce: only show 'restarting' if restart takes >800ms.
+                // This prevents the visible flicker during Chrome's normal
+                // ~300ms restart cycle.
+                this.restartDebounceTimer = setTimeout(() => {
+                    this.restartDebounceTimer = null;
+                    if (!this.intentionallyStopped) {
+                        this.setStatus('restarting');
+                    }
+                }, 800);
                 // Small delay to avoid rapid restart loops
                 this.restartTimer = setTimeout(() => {
                     this.restartTimer = null;
@@ -295,6 +360,7 @@ export class SpeechEngine {
                 }, 300);
             } else {
                 this._isRunning = false;
+                this.setStatus('off');
                 console.log('[SpeechEngine] Recognition ended (intentional stop)');
             }
         };
@@ -321,6 +387,9 @@ export class SpeechEngine {
                 return;
             }
 
+            // Surface error to the UI — 'network', 'not-allowed', etc.
+            this._lastError = errorType;
+            this.setStatus('error', errorType);
             console.warn(`[SpeechEngine] ⚠️ Error: "${errorType}"`);
 
             // For all other errors, try to restart after a delay.
@@ -365,6 +434,23 @@ export class SpeechEngine {
             } catch (e) {
                 // Don't let a bad listener crash the engine.
                 console.error('[SpeechEngine] Listener error:', e);
+            }
+        }
+    }
+
+    /**
+     * Update the STT status and notify all status listeners.
+     */
+    private setStatus(status: STTStatus, errorDetail?: string): void {
+        this._status = status;
+        if (errorDetail) {
+            this._lastError = errorDetail;
+        }
+        for (const listener of this.statusListeners) {
+            try {
+                listener(status, errorDetail);
+            } catch (e) {
+                console.error('[SpeechEngine] Status listener error:', e);
             }
         }
     }

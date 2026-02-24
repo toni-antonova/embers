@@ -23,6 +23,7 @@ export interface ThreeSceneRefs {
     particleSystem: React.MutableRefObject<ParticleSystem | null>;
     uniformBridge: React.MutableRefObject<UniformBridge | null>;
     semanticBackend: React.MutableRefObject<SemanticBackend | null>;
+    serManager: React.MutableRefObject<SERManager | null>;
 }
 
 export function useThreeScene(
@@ -35,6 +36,7 @@ export function useThreeScene(
     const particleSystemRef = useRef<ParticleSystem | null>(null);
     const uniformBridgeRef = useRef<UniformBridge | null>(null);
     const semanticBackendRef = useRef<SemanticBackend | null>(null);
+    const serManagerRef = useRef<SERManager | null>(null);
     const animationFrameIdRef = useRef<number>(0);
     const raycasterRef = useRef(new THREE.Raycaster());
     const pointerRef = useRef(new THREE.Vector2());
@@ -137,6 +139,7 @@ export function useThreeScene(
         // prosodic emotion detection. Polls until AudioEngine is ready
         // (i.e., user has clicked the mic button).
         const serManager = new SERManager(audioEngine, uniformBridge);
+        serManagerRef.current = serManager;
         let serPollCount = 0;
         const serPollId = setInterval(() => {
             if (serManager.active) {
@@ -343,6 +346,7 @@ export function useThreeScene(
 
             clearInterval(serPollId);
             serManager.stop();
+            serManagerRef.current = null;
 
             renderer.dispose();
             renderer.forceContextLoss();
@@ -351,5 +355,5 @@ export function useThreeScene(
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [canvasKey, cameraType]);
 
-    return { particleSystem: particleSystemRef, uniformBridge: uniformBridgeRef, semanticBackend: semanticBackendRef };
+    return { particleSystem: particleSystemRef, uniformBridge: uniformBridgeRef, semanticBackend: semanticBackendRef, serManager: serManagerRef };
 }

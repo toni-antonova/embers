@@ -49,7 +49,7 @@ export function Canvas() {
     const { audioEngine, speechEngine, tuningConfig, workspaceEngine } = singletons;
 
     // Three.js scene lifecycle (created/destroyed with canvasKey/cameraType)
-    const { particleSystem: particleSystemRef, uniformBridge: uniformBridgeRef, semanticBackend: semanticBackendRef } =
+    const { particleSystem: particleSystemRef, uniformBridge: uniformBridgeRef, semanticBackend: semanticBackendRef, serManager: serManagerRef } =
         useThreeScene(canvasRef, canvasKey, guardedSetCanvasKey, cameraType, singletons);
 
     // ── SYNC INITIAL UI STATE → UNIFORM BRIDGE ─────────────────────────
@@ -190,6 +190,8 @@ export function Canvas() {
                 particleSystem={particleSystemRef.current}  /* eslint-disable-line react-hooks/refs */
                 lastTranscript={lastTranscript}
                 sessionLogger={singletons.sessionLogger}
+                speechEngine={speechEngine}
+                serActive={serManagerRef.current?.active ?? false}  /* eslint-disable-line react-hooks/refs */
             />
         </div>
     );
