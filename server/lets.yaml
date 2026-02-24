@@ -118,46 +118,37 @@ commands:
         .
 
   deploy:
-    description: Deploy latest image to Cloud Run (delete + recreate to avoid GPU quota overlap)
+    description: Deploy latest image to Cloud Run (in-place update via services replace)
     cmd: |
-      echo "Deleting existing service (freeing GPU)..."
-      gcloud run services delete lumen-pipeline \
-        --project=lumen-pipeline --region=us-central1 --quiet 2>/dev/null || true
-      echo "Waiting 120s for GPU deallocation..."
-      sleep 120
-      echo "Creating service from service.yaml..."
+      echo "Deploying service from service.yaml..."
       gcloud run services replace ../infrastructure/service.yaml \
         --project=lumen-pipeline --region=us-central1 &&
       gcloud run services add-iam-policy-binding lumen-pipeline \
         --member="allUsers" --role="roles/run.invoker" \
         --project=lumen-pipeline --region=us-central1 \
-        --quiet
+        --quiet &&
+      echo "✓ Deploy complete"
 
   apply-terraform:
     description: Apply Terraform config (infra-only — buckets, secrets, IAM, monitoring)
     cmd: cd ../infrastructure/terraform && terraform apply -auto-approve
 
   release:
-    description: Full release — cloud build + delete/recreate service + health check
+    description: Full release — cloud build + deploy + health check
     cmd: |
-      echo "── 1/5 Building image via Cloud Build..." &&
+      echo "── 1/3 Building image via Cloud Build..." &&
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
         --project=lumen-pipeline --region=us-central1 \
         . &&
-      echo "── 2/5 Deleting existing service (freeing GPU)..." &&
-      gcloud run services delete lumen-pipeline \
-        --project=lumen-pipeline --region=us-central1 --quiet 2>/dev/null || true
-      echo "── 3/5 Waiting 120s for GPU deallocation..." &&
-      sleep 120 &&
-      echo "── 4/5 Creating service from service.yaml..." &&
+      echo "── 2/3 Deploying service..." &&
       gcloud run services replace infrastructure/service.yaml \
         --project=lumen-pipeline --region=us-central1 &&
       gcloud run services add-iam-policy-binding lumen-pipeline \
         --member="allUsers" --role="roles/run.invoker" \
         --project=lumen-pipeline --region=us-central1 \
         --quiet &&
-      echo "── 5/5 Checking health..." &&
+      echo "── 3/3 Checking health..." &&
       SERVICE_URL=$(gcloud run services describe lumen-pipeline --project=lumen-pipeline --region=us-central1 --format='value(status.url)') &&
       for i in $(seq 1 30); do
         STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$SERVICE_URL/health/ready" 2>/dev/null || echo "000")
