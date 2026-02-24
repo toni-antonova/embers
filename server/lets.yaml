@@ -157,7 +157,7 @@ commands:
         --format='value(status.url)') \
       npm run build && \
       BUCKET=$(cd infrastructure/terraform && terraform output -raw frontend_bucket_name) && \
-      gcloud storage rsync dist/ "gs://$BUCKET" \
+      gcloud storage rsync dist/ "gs://$BUCKET" -r \
         --delete-unmatched-destination-objects \
         --cache-control="public, max-age=300" && \
       echo "✓ Frontend deployed to: https://storage.googleapis.com/$BUCKET/index.html"

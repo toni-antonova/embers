@@ -6,6 +6,16 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
 
+  // Use relative asset paths so the build works on GCS static hosting
+  // (where files are served from a bucket path, not the domain root).
+  base: './',
+
+  // Workers must use ES module format to support code-splitting in production builds.
+  // The SER worker is already instantiated with { type: 'module' }.
+  worker: {
+    format: 'es',
+  },
+
   // ── VITEST CONFIGURATION ──────────────────────────────────────────
   // Vitest is Vite's native test runner. Because it shares the same Vite
   // transform pipeline, all our imports (React JSX, .glsl files, etc.)
