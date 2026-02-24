@@ -58,6 +58,9 @@ export function AnalysisPanel({
     serActive
 }: AnalysisPanelProps) {
 
+    // ── PANEL TOGGLE STATE ───────────────────────────────────────────
+    const [isOpen, setIsOpen] = useState(false);
+
     // Refs for direct DOM manipulation to avoid React re-renders at 60fps
     const panelRef = useRef<HTMLDivElement>(null);
     const audioRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -249,158 +252,156 @@ export function AnalysisPanel({
 
 
     return (
-        <div
-            ref={panelRef}
-            style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '280px',
-                height: '100%',
-                backgroundColor: 'rgba(0, 0, 0, 0.75)',
-                backdropFilter: 'blur(4px)',
-                WebkitBackdropFilter: 'blur(4px)',
-                borderRight: '1px solid rgba(255, 255, 255, 0.1)',
-                padding: '16px',
-                boxSizing: 'border-box',
-                color: 'white',
-                fontFamily: 'monospace',
-                fontSize: '11px',
-                pointerEvents: 'none', // Critical: pass through clicks to canvas/tuning panel under it (if somehow overlapping)
-                overflowY: 'auto',
-                zIndex: 40, // Below UIOverlay/TuningPanel which might need clicks
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '24px'
-            }}
-        >
-            <Section title="AUDIO">
-                <BarRow label="Energy" barKey="energy" barColor="white" barRefs={audioRefs} valRefs={audioValRefs} />
-                <BarRow label="Tension" barKey="tension" barColor="#00ffff" barRefs={audioRefs} valRefs={audioValRefs} />
-                <BarRow label="Urgency" barKey="urgency" barColor="#ffa500" barRefs={audioRefs} valRefs={audioValRefs} />
-                <BarRow label="Breathiness" barKey="breathiness" barColor="#888888" barRefs={audioRefs} valRefs={audioValRefs} />
-                <BarRow label="Flatness" barKey="flatness" barColor="#ffff00" barRefs={audioRefs} valRefs={audioValRefs} />
-            </Section>
+        <>
+            {/* TOGGLE BUTTON — always visible */}
+            <button
+                className="analysis-toggle-btn"
+                onClick={() => setIsOpen(!isOpen)}
+                title="Analysis Panel"
+                aria-label="Toggle analysis panel"
+            >📊</button>
 
-            <Section title="SEMANTIC">
-                <TextRow label="Concept" textKey="concept" textRefs={semanticRefs} />
-                <TextRow label="Hierarchy" textKey="hierarchy" textRefs={semanticRefs} />
-                <TextRow label="Abstraction" textKey="abstraction" textRefs={semanticRefs} />
-                <TextRow label="Confidence" textKey="confidence" textRefs={semanticRefs} />
-                {/* Sentiment: centered-origin bar (negative=blue left, positive=gold right) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ width: '80px', opacity: 0.7 }}>Sentiment:</span>
-                    <div style={{ width: '100px', height: '10px', backgroundColor: 'rgba(255,255,255,0.1)', position: 'relative' }}>
-                        {/* Center tick mark */}
-                        <div style={{ position: 'absolute', left: '50%', top: 0, width: '1px', height: '100%', backgroundColor: 'rgba(255,255,255,0.3)' }} />
-                        <div
-                            ref={(el) => { sentimentBarRef.current = el; }}
-                            style={{
-                                position: 'absolute',
-                                top: 0,
-                                height: '100%',
-                                width: '0%',
-                                transition: 'width 0.15s linear, left 0.15s linear, right 0.15s linear',
-                            }}
-                        />
-                    </div>
-                    <span ref={(el) => { sentimentValRef.current = el; }} style={{ minWidth: '40px', textAlign: 'right' }}>
-                        0.00
-                    </span>
+            {/* SLIDE-IN PANEL */}
+            <div ref={panelRef} className={`analysis-panel ${isOpen ? 'open' : ''}`}>
+                <div className="analysis-panel-header">
+                    <span>📊 Analysis</span>
+                    <button
+                        className="analysis-close-btn"
+                        onClick={() => setIsOpen(false)}
+                        aria-label="Close analysis panel"
+                    >✕</button>
                 </div>
-                <TextRow label="Target" textKey="target" textRefs={semanticRefs} />
-            </Section>
 
-            <Section title="WORKSPACE">
-                <BarRow label="Coherence" barKey="coherence" barColor="white" barRefs={workspaceRefs} valRefs={workspaceValRefs} />
-                <BarRow label="Entropy" barKey="entropy" barColor="white" barRefs={workspaceRefs} valRefs={workspaceValRefs} />
-                <BarRow label="Arousal" barKey="arousal" barColor="white" barRefs={workspaceRefs} valRefs={workspaceValRefs} />
-                <TextRow label="Idle" textKey="idle" textRefs={workspaceValRefs} />
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ opacity: 0.7 }}>Breathing:</span>
-                    <span ref={breathingRef} style={{ transition: 'opacity 0.1s linear' }}>♡</span>
-                </div>
-            </Section>
+                <div className="analysis-panel-content">
+                    <Section title="AUDIO">
+                        <BarRow label="Energy" barKey="energy" barColor="white" barRefs={audioRefs} valRefs={audioValRefs} />
+                        <BarRow label="Tension" barKey="tension" barColor="#00ffff" barRefs={audioRefs} valRefs={audioValRefs} />
+                        <BarRow label="Urgency" barKey="urgency" barColor="#ffa500" barRefs={audioRefs} valRefs={audioValRefs} />
+                        <BarRow label="Breathiness" barKey="breathiness" barColor="#888888" barRefs={audioRefs} valRefs={audioValRefs} />
+                        <BarRow label="Flatness" barKey="flatness" barColor="#ffff00" barRefs={audioRefs} valRefs={audioValRefs} />
+                    </Section>
 
-            <Section title="TRANSCRIPT">
-                <div
-                    ref={ghostScrollRef}
-                    style={{
-                        minHeight: '3em',
-                        maxHeight: '8em',
-                        overflowY: 'auto',
-                        lineHeight: 1.6,
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '3px',
-                        alignContent: 'flex-start',
-                    }}
-                >
-                    {ghostWords.length > 0 ? (
-                        ghostWords.map(gw => {
-                            const opacity = ghostWordOpacity(gw);
-                            return (
-                                <span
-                                    key={gw.id}
+                    <Section title="SEMANTIC">
+                        <TextRow label="Concept" textKey="concept" textRefs={semanticRefs} />
+                        <TextRow label="Hierarchy" textKey="hierarchy" textRefs={semanticRefs} />
+                        <TextRow label="Abstraction" textKey="abstraction" textRefs={semanticRefs} />
+                        <TextRow label="Confidence" textKey="confidence" textRefs={semanticRefs} />
+                        {/* Sentiment: centered-origin bar (negative=blue left, positive=gold right) */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '80px', opacity: 0.7 }}>Sentiment:</span>
+                            <div style={{ width: '100px', height: '10px', backgroundColor: 'rgba(255,255,255,0.1)', position: 'relative' }}>
+                                {/* Center tick mark */}
+                                <div style={{ position: 'absolute', left: '50%', top: 0, width: '1px', height: '100%', backgroundColor: 'rgba(255,255,255,0.3)' }} />
+                                <div
+                                    ref={(el) => { sentimentBarRef.current = el; }}
                                     style={{
-                                        opacity,
-                                        fontStyle: 'italic',
-                                        color: gw.isKeyword ? '#ffcc66' : 'rgba(255,255,255,0.9)',
-                                        fontWeight: gw.isKeyword ? 'bold' : 'normal',
-                                        transition: 'opacity 0.2s linear',
+                                        position: 'absolute',
+                                        top: 0,
+                                        height: '100%',
+                                        width: '0%',
+                                        transition: 'width 0.15s linear, left 0.15s linear, right 0.15s linear',
                                     }}
-                                >
-                                    {gw.text}
+                                />
+                            </div>
+                            <span ref={(el) => { sentimentValRef.current = el; }} style={{ minWidth: '40px', textAlign: 'right' }}>
+                                0.00
+                            </span>
+                        </div>
+                        <TextRow label="Target" textKey="target" textRefs={semanticRefs} />
+                    </Section>
+
+                    <Section title="WORKSPACE">
+                        <BarRow label="Coherence" barKey="coherence" barColor="white" barRefs={workspaceRefs} valRefs={workspaceValRefs} />
+                        <BarRow label="Entropy" barKey="entropy" barColor="white" barRefs={workspaceRefs} valRefs={workspaceValRefs} />
+                        <BarRow label="Arousal" barKey="arousal" barColor="white" barRefs={workspaceRefs} valRefs={workspaceValRefs} />
+                        <TextRow label="Idle" textKey="idle" textRefs={workspaceValRefs} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ opacity: 0.7 }}>Breathing:</span>
+                            <span ref={breathingRef} style={{ transition: 'opacity 0.1s linear' }}>♡</span>
+                        </div>
+                    </Section>
+
+                    <Section title="TRANSCRIPT">
+                        <div
+                            ref={ghostScrollRef}
+                            style={{
+                                minHeight: '3em',
+                                maxHeight: '8em',
+                                overflowY: 'auto',
+                                lineHeight: 1.6,
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '3px',
+                                alignContent: 'flex-start',
+                            }}
+                        >
+                            {ghostWords.length > 0 ? (
+                                ghostWords.map(gw => {
+                                    const opacity = ghostWordOpacity(gw);
+                                    return (
+                                        <span
+                                            key={gw.id}
+                                            style={{
+                                                opacity,
+                                                fontStyle: 'italic',
+                                                color: gw.isKeyword ? '#ffcc66' : 'rgba(255,255,255,0.9)',
+                                                fontWeight: gw.isKeyword ? 'bold' : 'normal',
+                                                transition: 'opacity 0.2s linear',
+                                            }}
+                                        >
+                                            {gw.text}
+                                        </span>
+                                    );
+                                })
+                            ) : (
+                                <span style={{ opacity: 0.3, fontStyle: 'italic' }}>
+                                    {lastTranscript && !lastTranscript.isFinal
+                                        ? '⏳ listening…'
+                                        : '...'}
                                 </span>
-                            );
-                        })
-                    ) : (
-                        <span style={{ opacity: 0.3, fontStyle: 'italic' }}>
-                            {lastTranscript && !lastTranscript.isFinal
-                                ? '⏳ listening…'
-                                : '...'}
-                        </span>
-                    )}
+                            )}
+                        </div>
+                    </Section>
+
+                    <Section title="PIPELINE">
+                        <StatusRow label="STT" statusKey="stt" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
+                        <StatusRow label="SER" statusKey="ser" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
+                        <StatusRow label="Server" statusKey="server" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
+                    </Section>
+
+                    <Section title="SYSTEM">
+                        <TextRow label="FPS" textKey="fps" textRefs={systemRefs} />
+                        <TextRow label="Particles" textKey="particles" textRefs={systemRefs} />
+                        <TextRow label="Renderer" textKey="renderer" textRefs={systemRefs} />
+                        <TextRow label="Events" textKey="events" textRefs={systemRefs} />
+                    </Section>
+
+                    {/* Download button — pointer-events: auto since panel content is pointer-events: none */}
+                    <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+                        <button
+                            onClick={() => sessionLogger?.downloadJSON()}
+                            style={{
+                                pointerEvents: 'auto',
+                                width: '100%',
+                                padding: '8px',
+                                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                borderRadius: '4px',
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                fontFamily: 'monospace',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                                transition: 'background-color 0.15s',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)')}
+                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)')}
+                        >
+                            ⬇ Export Session JSON
+                        </button>
+                    </div>
                 </div>
-            </Section>
-
-            <Section title="PIPELINE">
-                <StatusRow label="STT" statusKey="stt" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
-                <StatusRow label="SER" statusKey="ser" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
-                <StatusRow label="Server" statusKey="server" textRefs={pipelineRefs} dotRefs={pipelineDotRefs} />
-            </Section>
-
-            <Section title="SYSTEM">
-                <TextRow label="FPS" textKey="fps" textRefs={systemRefs} />
-                <TextRow label="Particles" textKey="particles" textRefs={systemRefs} />
-                <TextRow label="Renderer" textKey="renderer" textRefs={systemRefs} />
-                <TextRow label="Events" textKey="events" textRefs={systemRefs} />
-            </Section>
-
-            {/* Download button — pointer-events: auto since panel is pointer-events: none */}
-            <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
-                <button
-                    onClick={() => sessionLogger?.downloadJSON()}
-                    style={{
-                        pointerEvents: 'auto',
-                        width: '100%',
-                        padding: '8px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                        border: '1px solid rgba(255, 255, 255, 0.15)',
-                        borderRadius: '4px',
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        fontFamily: 'monospace',
-                        fontSize: '11px',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.15s',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)')}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)')}
-                >
-                    ⬇ Export Session JSON
-                </button>
             </div>
-        </div>
+        </>
     );
 }
 
