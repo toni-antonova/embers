@@ -18,7 +18,7 @@
 # Or let the weekly Cloud Build trigger handle it automatically.
 # ============================================================
 
-FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
+FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 
 # ---- System packages + Python 3.13 via deadsnakes ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
