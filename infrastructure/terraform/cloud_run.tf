@@ -100,10 +100,6 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
         name  = "EAGER_LOAD_ALL"
         value = "true"
       }
-      env {
-        name  = "VRAM_OFFLOAD_THRESHOLD_GB"
-        value = "99"
-      }
 
       # ── Resource Limits ──────────────────────────────────────────────────
       resources {
