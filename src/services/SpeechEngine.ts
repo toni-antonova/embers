@@ -506,7 +506,11 @@ export class SpeechEngine {
             this.usingWebSocket = false;
             // Final fallback: text input
             this.isSupported = false;
-            this.setStatus('unsupported', 'ws-failed');
+            // Preserve the actual error name so the UI can show contextual messages
+            const errorDetail = (err instanceof DOMException && err.name === 'NotAllowedError')
+                ? 'not-allowed'
+                : 'ws-failed';
+            this.setStatus('unsupported', errorDetail);
             this._isRunning = true;
         });
 

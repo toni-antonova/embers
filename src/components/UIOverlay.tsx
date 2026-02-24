@@ -23,7 +23,7 @@
  *   the CSS fade-in animation on each new result
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { AudioEngine } from '../services/AudioEngine';
 import { SpeechEngine } from '../services/SpeechEngine';
 import type { STTStatus } from '../services/SpeechEngine';
@@ -41,16 +41,13 @@ interface UIOverlayProps {
 export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerProcessing }: UIOverlayProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
-    const [denied, setDenied] = useState(false);
-    const deniedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [showPermissionModal, setShowPermissionModal] = useState(false);
 
     // Simple/Complex mode toggle — reads initial state from TuningConfig
     const [complexMode, setComplexMode] = useState(() => tuningConfig.complexMode);
 
-    // Clean up denied timer on unmount
-    useEffect(() => {
-        return () => { if (deniedTimerRef.current) clearTimeout(deniedTimerRef.current); };
-    }, []);
+    // Detect Safari for browser-specific instructions
+    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
 
     const [fallbackText, setFallbackText] = useState('');
 
@@ -83,14 +80,10 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerPro
                 await audioEngine.start();
                 speechEngine.start();
                 setIsListening(true);
-                setDenied(false);
+                setShowPermissionModal(false);
             } catch {
-                // Microphone permission denied or unavailable.
-                setDenied(true);
-                // Clear any existing timer
-                if (deniedTimerRef.current) clearTimeout(deniedTimerRef.current);
-                // Auto-dismiss tooltip after 3 seconds.
-                deniedTimerRef.current = setTimeout(() => setDenied(false), 3000);
+                // Microphone permission denied or unavailable — show modal.
+                setShowPermissionModal(true);
             }
         }
     };
@@ -156,7 +149,11 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerPro
                             {sttStatus === 'restarting' && 'STT restarting…'}
                             {sttStatus === 'error' && `STT error: ${sttError}`}
                             {isConnectingWS && 'Connecting to speech service…'}
-                            {sttStatus === 'unsupported' && 'STT unavailable — type below'}
+                            {sttStatus === 'unsupported' && (
+                                sttError === 'not-allowed' || sttError === 'service-not-allowed'
+                                    ? 'Microphone blocked — enable in browser settings'
+                                    : 'STT unavailable — type below'
+                            )}
                             {sttStatus === 'off' && 'STT off'}
                         </span>
                     </div>
@@ -177,8 +174,67 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerPro
                 </svg>
                 {!isListening && <span className="mic-slash" />}
             </button>
-            {denied && (
-                <span className="mic-tooltip">Microphone access denied</span>
+
+            {/* ── PERMISSION DENIED MODAL ─────────────────────────────── */}
+            {showPermissionModal && (
+                <div className="perm-modal-backdrop" onClick={() => setShowPermissionModal(false)}>
+                    <div className="perm-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="perm-modal__icon">🎤</div>
+                        <h3 className="perm-modal__title">Microphone Access Needed</h3>
+                        <p className="perm-modal__body">
+                            {isSafari ? (
+                                <>
+                                    Safari has blocked microphone access for this site.
+                                    To enable it:
+                                    <ol className="perm-modal__steps">
+                                        <li>Open <strong>Safari → Settings</strong> (⌘,)</li>
+                                        <li>Go to the <strong>Websites</strong> tab</li>
+                                        <li>Click <strong>Microphone</strong> in the sidebar</li>
+                                        <li>Set this site to <strong>Allow</strong></li>
+                                        <li>Reload the page</li>
+                                    </ol>
+                                </>
+                            ) : (
+                                <>
+                                    Your browser has blocked microphone access.
+                                    Click the lock icon in the address bar and allow microphone access,
+                                    then try again.
+                                </>
+                            )}
+                        </p>
+                        <div className="perm-modal__actions">
+                            <button
+                                className="perm-modal__btn perm-modal__btn--primary"
+                                onClick={async () => {
+                                    setShowPermissionModal(false);
+                                    try {
+                                        await audioEngine.start();
+                                        speechEngine.start();
+                                        setIsListening(true);
+                                    } catch {
+                                        setShowPermissionModal(true);
+                                    }
+                                }}
+                            >
+                                Try Again
+                            </button>
+                            <button
+                                className="perm-modal__btn perm-modal__btn--dismiss"
+                                onClick={() => setShowPermissionModal(false)}
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── MIC PROMPT — tiny CTA below mic ────────────────── */}
+            {!isListening && (
+                <div className="mic-prompt-group">
+                    <span className="mic-prompt">describe a scene (less than five words)</span>
+                    <span className="mic-hint">✨ image may take 3–5 seconds to render</span>
+                </div>
             )}
 
             {/* ── TEXT FALLBACK ─────────────────────────────────────── */}
@@ -189,7 +245,11 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerPro
                     <input
                         className="speech-fallback-input"
                         type="text"
-                        placeholder="Type words here (speech not supported)..."
+                        placeholder={
+                            sttError === 'not-allowed' || sttError === 'service-not-allowed'
+                                ? 'Enable microphone in browser settings to use voice'
+                                : 'Type words here (speech not supported)...'
+                        }
                         value={fallbackText}
                         onChange={(e) => setFallbackText(e.target.value)}
                         onKeyDown={(e) => {

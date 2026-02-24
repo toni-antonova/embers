@@ -74,9 +74,11 @@ afterEach(() => {
 // ══════════════════════════════════════════════════════════════════════
 
 describe('GhostTitle — Placeholder', () => {
-    it('shows placeholder text before any speech', () => {
-        render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
-        expect(screen.getByText('speak to shape light')).toBeInTheDocument();
+    it('renders empty ghost text before any speech', () => {
+        const { container } = render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
+        const textSpan = container.querySelector('.ghost-title__text');
+        expect(textSpan).toBeInTheDocument();
+        expect(textSpan?.textContent).toBe('');
     });
 
     it('subscribes to SpeechEngine on mount', () => {
@@ -113,14 +115,15 @@ describe('GhostTitle — Live Transcript', () => {
     });
 
     it('ignores interim (non-final) transcripts', () => {
-        render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
+        const { container } = render(<GhostTitle speechEngine={mockSpeech} semanticBackend={null} />);
 
         act(() => {
             mockSpeech.pushTranscript('partial text', false);
         });
 
-        // Placeholder should still be visible
-        expect(screen.getByText('speak to shape light')).toBeInTheDocument();
+        // No final words should appear — ghost text stays empty
+        const words = container.querySelectorAll('.ghost-word');
+        expect(words.length).toBe(0);
     });
 
     it('accumulates words from multiple transcripts', () => {

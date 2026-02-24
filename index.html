@@ -8,6 +8,17 @@
     window.dataLayer = window.dataLayer || [];
     function gtag() { dataLayer.push(arguments); }
     gtag('js', new Date());
+
+    // Self-tagging: visit once with ?creator=true or ?creator=friend to permanently tag sessions
+    var creatorParam = new URLSearchParams(window.location.search).get('creator');
+    if (creatorParam === 'true' || creatorParam === 'friend') {
+      localStorage.setItem('embers_creator', creatorParam === 'true' ? 'creator' : 'friend');
+    }
+    var creatorTag = localStorage.getItem('embers_creator');
+    if (creatorTag) {
+      gtag('set', 'user_properties', { user_type: creatorTag });
+    }
+
     gtag('config', 'G-X8BPBWFY13');
   </script>
   <meta charset="UTF-8" />
