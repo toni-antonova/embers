@@ -242,6 +242,45 @@ vec3 newVel = vel + totalForce * uDelta;`}</code></pre>
                     turbulence.
                 </p>
 
+                <div className="report-figure">
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <img
+                            src="/report-assets/mesh_horse.png"
+                            alt="Horse point cloud — 2048 points, single color"
+                            style={{ width: '48%', minWidth: '280px' }}
+                        />
+                        <img
+                            src="/report-assets/mesh_horse_parts.png"
+                            alt="Horse point cloud color-coded by part: head, body, front legs, back legs, tail, neck"
+                            style={{ width: '48%', minWidth: '280px' }}
+                        />
+                    </div>
+                    <div className="report-figure__caption">
+                        "Horse" — full point cloud (left) and parts decomposition (right).
+                        PartCrafter splits the mesh into 6 labeled parts: head, body, front legs, back legs, tail, neck.
+                        Each part can take on independent motion dynamics.
+                    </div>
+                </div>
+
+                <div className="report-figure">
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <img
+                            src="/report-assets/mesh_person.png"
+                            alt="Person point cloud — 2048 points, single color"
+                            style={{ width: '48%', minWidth: '280px' }}
+                        />
+                        <img
+                            src="/report-assets/mesh_person_parts.png"
+                            alt="Person point cloud color-coded by part: head, torso, left arm, right arm, left leg, right leg"
+                            style={{ width: '48%', minWidth: '280px' }}
+                        />
+                    </div>
+                    <div className="report-figure__caption">
+                        "Person" — same pipeline, different template. 6 parts: head, torso, left arm, right arm, left leg, right leg.
+                        The same 2048 points, the same five forces, but each part moves independently.
+                    </div>
+                </div>
+
                 {/* ARCHITECTURE */}
                 <h2>System Architecture</h2>
 
