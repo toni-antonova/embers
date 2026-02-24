@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # ── Limits ───────────────────────────────────────────────────────────────
     max_request_text_length: int = 200
-    generation_timeout_seconds: int = 15
+    generation_timeout_seconds: int = 300
     max_points: int = 2048
     generation_rate_limit_per_minute: int = 20  # Tighter cap on GPU work (cache misses)
     vram_offload_threshold_gb: float = 80.0  # Offload fallback models if VRAM exceeds this (RTX Pro 6000: 96GB)

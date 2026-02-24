@@ -13,7 +13,7 @@ dependencies = [
     "pydantic-settings>=2.13",
 
     # ML runtime
-    "torch>=2.7,<2.8",
+    "torch>=2.8,<2.9",
     "diffusers>=0.33",
     "accelerate>=1.7",
     "transformers>=4.52",
@@ -38,7 +38,7 @@ dependencies = [
     "scikit-learn>=1.5",
     "huggingface-hub>=0.30",
     "torch-cluster>=1.6.3,<1.7",   # Pinned: must match torch + CUDA version
-    "torchvision>=0.22,<0.23",     # Pinned: must match torch 2.7 + CUDA 12.8
+    "torchvision>=0.23,<0.24",     # Pinned: must match torch 2.8 + CUDA 12.8
 
     # Image
     "Pillow>=12.1",
@@ -65,6 +65,15 @@ dependencies = [
     # Headless rendering (fallback pipeline)
     "pyrender>=0.1.45",
     "PyOpenGL>=3.1",
+
+    # Fallback pipeline: Hunyuan3D + Grounded SAM2
+    # These are GitHub-only packages (not on PyPI). Install via:
+    #   uv pip install "hy3dgen @ git+https://github.com/Tencent/Hunyuan3D-2.git"
+    #   uv pip install "groundingdino-py @ git+https://github.com/IDEA-Research/GroundingDINO.git"
+    #   uv pip install "sam2 @ git+https://github.com/facebookresearch/sam2.git"
+    # They must be added to the Dockerfile (not pyproject.toml) because they
+    # require git+https:// URLs, which uv/pip resolves differently than PyPI.
+    # See Dockerfile.base for the actual install commands.
 ]
 
 [project.optional-dependencies]

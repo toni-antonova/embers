@@ -29,7 +29,7 @@ RUN uv sync --frozen --no-dev --no-install-project --no-install-package torch-cl
 # only prevents installing, not uninstalling). Re-install the working
 # pre-built PyG wheel after sync.
 RUN uv pip install torch-cluster==1.6.3 \
-    -f https://data.pyg.org/whl/torch-2.7.0+cu128.html \
+    -f https://data.pyg.org/whl/torch-2.8.0+cu128.html \
     --reinstall-package torch-cluster \
     && echo "--- torch-cluster verification ---" \
     && uv pip show torch-cluster \

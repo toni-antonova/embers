@@ -118,33 +118,46 @@ commands:
         .
 
   deploy:
-    description: Deploy latest image to Cloud Run (image-only, no config change)
+    description: Deploy latest image to Cloud Run (delete + recreate to avoid GPU quota overlap)
     cmd: |
-      gcloud run services update lumen-pipeline \
-        --image=us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
-        --project=lumen-pipeline \
-        --region=us-central1
+      echo "Deleting existing service (freeing GPU)..."
+      gcloud run services delete lumen-pipeline \
+        --project=lumen-pipeline --region=us-central1 --quiet 2>/dev/null || true
+      echo "Waiting 60s for GPU deallocation..."
+      sleep 60
+      echo "Creating service from service.yaml..."
+      gcloud run services replace ../infrastructure/service.yaml \
+        --project=lumen-pipeline --region=us-central1 &&
+      gcloud run services add-iam-policy-binding lumen-pipeline \
+        --member="allUsers" --role="roles/run.invoker" \
+        --project=lumen-pipeline --region=us-central1 \
+        --quiet
 
   apply-terraform:
-    description: Apply Terraform config (infra changes)
+    description: Apply Terraform config (infra-only — buckets, secrets, IAM, monitoring)
     cmd: cd ../infrastructure/terraform && terraform apply -auto-approve
 
   release:
-    description: Full release — terraform apply + cloud build + deploy + health check
+    description: Full release — cloud build + delete/recreate service + health check
     cmd: |
-      echo "── 1/4 Applying Terraform (env vars, scaling, probes)..." &&
-      (cd ../infrastructure/terraform && terraform apply -auto-approve) &&
-      echo "── 2/4 Building image via Cloud Build..." &&
+      echo "── 1/4 Building image via Cloud Build..." &&
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
         --project=lumen-pipeline --region=us-central1 \
         . &&
-      echo "── 3/4 Deploying new revision..." &&
-      gcloud run services update lumen-pipeline \
-        --image=us-central1-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
-        --project=lumen-pipeline \
-        --region=us-central1 &&
-      echo "── 4/4 Checking health..." &&
+      echo "── 2/5 Deleting existing service (freeing GPU)..." &&
+      gcloud run services delete lumen-pipeline \
+        --project=lumen-pipeline --region=us-central1 --quiet 2>/dev/null || true
+      echo "── 3/5 Waiting 60s for GPU deallocation..." &&
+      sleep 60 &&
+      echo "── 4/5 Creating service from service.yaml..." &&
+      gcloud run services replace infrastructure/service.yaml \
+        --project=lumen-pipeline --region=us-central1 &&
+      gcloud run services add-iam-policy-binding lumen-pipeline \
+        --member="allUsers" --role="roles/run.invoker" \
+        --project=lumen-pipeline --region=us-central1 \
+        --quiet &&
+      echo "── 5/5 Checking health..." &&
       SERVICE_URL=$(gcloud run services describe lumen-pipeline --project=lumen-pipeline --region=us-central1 --format='value(status.url)') &&
       for i in $(seq 1 30); do
         STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$SERVICE_URL/health/ready" 2>/dev/null || echo "000")
@@ -171,13 +184,13 @@ commands:
         --project=lumen-pipeline --region=us-central1 \
         --format='value(status.url)') \
       npm run build && \
-      BUCKET=$(cd infrastructure/terraform && terraform output -raw frontend_bucket_name) && \
-      gcloud storage rsync dist/ "gs://$BUCKET" -r \
+      gcloud storage rsync dist/ "gs://dots-frontend-lumen-pipeline" -r \
         --delete-unmatched-destination-objects \
         --cache-control="public, max-age=300" && \
-      echo "✓ Frontend deployed to: https://storage.googleapis.com/$BUCKET/index.html"
+      echo "✓ Frontend deployed to: https://storage.googleapis.com/dots-frontend-lumen-pipeline/index.html"
 
   release-all:
     description: Full release — backend + frontend + health check
     cmd: |
       lets release && lets deploy-frontend
+

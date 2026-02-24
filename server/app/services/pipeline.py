@@ -296,8 +296,8 @@ class PipelineOrchestrator:
                 mesh = hunyuan.generate(reference_image)
                 step_a_ms = round((time.perf_counter() - fallback_t0) * 1000, 1)
 
-                # Check cumulative fallback timeout (default 15s)
-                fallback_timeout = getattr(self._settings, "fallback_timeout_seconds", 15)
+                # Check cumulative fallback timeout (default 120s)
+                fallback_timeout = getattr(self._settings, "fallback_timeout_seconds", 120)
                 if (time.perf_counter() - fallback_t0) > fallback_timeout:
                     logger.warning(
                         "fallback_timeout",
