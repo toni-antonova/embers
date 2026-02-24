@@ -50,8 +50,10 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
     timeout = "60s"
 
     # ── Max concurrent requests per instance ─────────────────────────────────
-    # GPU models can't safely handle concurrent inference
-    max_instance_request_concurrency = 1
+    # GPU inference is single-threaded (offloaded to executor), but concurrency
+    # must be > 1 so health probes, cache hits, and /metrics don't queue behind
+    # 2-15s GPU requests (causing probe timeouts and container restarts).
+    max_instance_request_concurrency = 4
 
     containers {
       image = local.image_uri

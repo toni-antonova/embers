@@ -118,9 +118,9 @@ commands:
         .
 
   deploy:
-    description: Deploy latest image to Cloud Run
+    description: Deploy latest image to Cloud Run (image-only, no config change)
     cmd: |
-      gcloud run deploy lumen-pipeline \
+      gcloud run services update lumen-pipeline \
         --image=us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
         --project=lumen-pipeline \
         --region=us-east4
@@ -130,19 +130,34 @@ commands:
     cmd: cd ../infrastructure/terraform && terraform apply -auto-approve
 
   release:
-    description: Full release — cloud build + deploy + health check
+    description: Full release — terraform apply + cloud build + deploy + health check
     cmd: |
+      echo "── 1/4 Applying Terraform (env vars, scaling, probes)..." &&
+      (cd ../infrastructure/terraform && terraform apply -auto-approve) &&
+      echo "── 2/4 Building image via Cloud Build..." &&
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
         --project=lumen-pipeline --region=us-east4 \
-        . && \
-      gcloud run deploy lumen-pipeline \
+        . &&
+      echo "── 3/4 Deploying new revision..." &&
+      gcloud run services update lumen-pipeline \
         --image=us-east4-docker.pkg.dev/lumen-pipeline/lumen-pipeline-docker/lumen-pipeline:latest \
         --project=lumen-pipeline \
-        --region=us-east4 && \
-      echo "✓ Deployed. Checking health..." && \
-      SERVICE_URL=$(gcloud run services describe lumen-pipeline --project=lumen-pipeline --region=us-east4 --format='value(status.url)') && \
-      curl -s "$SERVICE_URL/health" | python3 -m json.tool
+        --region=us-east4 &&
+      echo "── 4/4 Checking health..." &&
+      SERVICE_URL=$(gcloud run services describe lumen-pipeline --project=lumen-pipeline --region=us-east4 --format='value(status.url)') &&
+      for i in $(seq 1 30); do
+        STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$SERVICE_URL/health/ready" 2>/dev/null || echo "000")
+        if [ "$STATUS" = "200" ]; then
+          echo "✓ Service healthy!"
+          curl -s "$SERVICE_URL/health/ready" | python3 -m json.tool
+          exit 0
+        fi
+        echo "  Waiting for readiness... ($i/30, status=$STATUS)"
+        sleep 10
+      done
+      echo "✗ Health check timed out (300s). Check logs: gcloud logging read 'resource.labels.service_name=\"lumen-pipeline\"' --project=lumen-pipeline --limit=20"
+      exit 1
 
   release-pipeline:
     description: Alias for release

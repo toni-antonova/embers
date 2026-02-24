@@ -83,14 +83,16 @@ class ShapeCache:
         # ── Collision tracking ───────────────────────────────────────────
         # Maps hash → original normalized text, used to detect when two
         # different inputs normalize to the same cache key.
+        # Capped to prevent unbounded memory growth on long-running instances.
         self._key_origins: dict[str, str] = {}
+        self._key_origins_max = 10_000
 
     # ── Connection ───────────────────────────────────────────────────────
 
     async def connect(self) -> None:
         """Initialize Cloud Storage client. Async wrapper around sync SDK."""
         if self._bucket_name:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._connect_sync)
         else:
             logger.info("cache_memory_only", reason="no CACHE_BUCKET set")
@@ -98,7 +100,7 @@ class ShapeCache:
     def _connect_sync(self) -> None:
         """Synchronous Cloud Storage connection."""
         try:
-            from google.cloud import storage  # type: ignore[import-untyped]
+            from google.cloud import storage
 
             self._client = storage.Client()
             self._bucket = self._client.bucket(self._bucket_name)
@@ -153,7 +155,8 @@ class ShapeCache:
                     hash=key,
                 )
         else:
-            self._key_origins[key] = normalized
+            if len(self._key_origins) < self._key_origins_max:
+                self._key_origins[key] = normalized
 
     # ── Get ──────────────────────────────────────────────────────────────
 
@@ -206,7 +209,7 @@ class ShapeCache:
             # We're the first — fetch from storage
             try:
                 t0_storage = time.perf_counter()
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(None, self._get_from_storage, key)
                 elapsed_ms = (time.perf_counter() - t0_storage) * 1000
 
@@ -258,7 +261,7 @@ class ShapeCache:
 
         # Tier 2: Cloud Storage (fire and forget in executor)
         if self._bucket:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._set_in_storage, key, response)
 
     def _set_in_storage(self, key: str, response: GenerateResponse) -> None:

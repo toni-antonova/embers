@@ -285,14 +285,16 @@ export const ACTION_MODIFIERS: Record<string, number> = {
     sleeping: 0.3,
     gentle: 0.4,
     whisper: 0.3,
-    quiet: 0.4,
+    // Note: 'quiet' and 'still' are in ABSTRACT_CONCEPTS (→ sphere shape),
+    // so they're excluded here to avoid dead code. The classifier checks
+    // ABSTRACT_CONCEPTS before ACTION_MODIFIERS, meaning entries here
+    // would never be reached for those words.
     slow: 0.5,
     fading: 0.4,
     melting: 0.5,
     resting: 0.3,
     breathing: 0.6,
     gliding: 0.5,
-    still: 0.3,
     soft: 0.4,
     silent: 0.3,
 };

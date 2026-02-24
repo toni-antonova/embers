@@ -50,16 +50,18 @@ htmlcov/
 .env.*
 !.env.example
 
-# Terraform
-infrastructure/terraform/.terraform/
-infrastructure/terraform/.terraform.lock.hcl
-infrastructure/terraform/*.tfstate
-infrastructure/terraform/*.tfstate.backup
-infrastructure/terraform/*.backup
-infrastructure/terraform/terraform.tfvars
-infrastructure/terraform/crash.log
-infrastructure/terraform/*.tfplan
-infrastructure/terraform/deploy.tfplan
+# Terraform (all directories)
+**/.terraform/
+*.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+**/terraform.tfvars
+
+# Temp audit/debug files
+gpu-quota-audit.txt
+pre-deploy-bug-report.md
 
 # Local-only docs
 .agent/workflows/

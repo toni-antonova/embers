@@ -24,7 +24,8 @@ async def generate(
 ) -> GenerateResponse:
     """Generate a part-labeled point cloud from a text concept.
 
-    Rate-limited to 60 requests/minute per IP to prevent GPU cost abuse.
+    Rate-limited to 300 requests/minute per IP at the HTTP layer.
+    GPU cost is protected by the inner generation_rate_limit_per_minute gate.
     Validation is Pydantic. Errors are exceptions. Logic is in the orchestrator.
     This endpoint is just wiring.
     """

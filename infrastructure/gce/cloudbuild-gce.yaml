@@ -50,7 +50,7 @@ steps:
               -e MODEL_WEIGHTS_BUCKET=${_WEIGHTS_BUCKET} \
               -e API_KEY=\"\$$API_KEY\" \
               -e HF_TOKEN=\"\$$HF_TOKEN\" \
-              -e ALLOWED_ORIGINS='' \
+              -e ALLOWED_ORIGINS='https://storage.googleapis.com,http://localhost:5173' \
               -e EAGER_LOAD_ALL=true \
               -e VRAM_OFFLOAD_THRESHOLD_GB=99 \
               -e LOG_JSON=true \

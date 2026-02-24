@@ -190,7 +190,7 @@ class PipelineOrchestrator:
         self, text: str, template: TemplateInfo
     ) -> tuple[np.ndarray, np.ndarray, list[str], str]:
         """Run synchronous GPU work in a thread to avoid blocking the event loop."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._generate_sync, text, template)
 
     def _generate_sync(

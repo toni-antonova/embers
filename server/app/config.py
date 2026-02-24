@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     api_key: SecretStr = SecretStr("")
 
     # Comma-separated origins for CORS (e.g. "https://app.example.com,http://localhost:5173").
-    # Empty string = allow all origins (development only).
+    # Empty string = deny all cross-origin requests (secure default).
     allowed_origins: str = ""
 
     # Rate limit on /generate endpoint (slowapi format, e.g. "60/minute").

@@ -52,6 +52,19 @@ export function Canvas() {
     const { particleSystem: particleSystemRef, uniformBridge: uniformBridgeRef, semanticBackend: semanticBackendRef } =
         useThreeScene(canvasRef, canvasKey, guardedSetCanvasKey, cameraType, singletons);
 
+    // ── SYNC INITIAL UI STATE → UNIFORM BRIDGE ─────────────────────────
+    // UniformBridge defaults differ from Canvas's initial React state
+    // (e.g., colorMode='white' vs 'color', sentimentEnabled=false vs true).
+    // Push the React state into the bridge after it's created so the
+    // shader sees the correct values on first frame.
+    useEffect(() => {
+        if (uniformBridgeRef.current) {
+            uniformBridgeRef.current.colorMode = colorMode;
+            uniformBridgeRef.current.sentimentEnabled = sentimentEnabled;
+            uniformBridgeRef.current.sentimentMovementEnabled = sentimentMovementEnabled;
+        }
+    }, [uniformBridgeRef, colorMode, sentimentEnabled, sentimentMovementEnabled]);
+
     // ── SPEECH TRANSCRIPT LOGGING ─────────────────────────────────────────
     useEffect(() => {
         const unsub = speechEngine.onTranscript((event) => {

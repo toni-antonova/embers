@@ -269,6 +269,7 @@ export const WORD_AROUSAL: Record<string, number> = {
     radiant: 0.65,
     graceful: 0.5,
     marvelous: 0.65,
+    excellent: 0.7,
     fun: 0.65,
     win: 0.7,
     embrace: 0.55,
