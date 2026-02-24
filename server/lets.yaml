@@ -182,6 +182,22 @@ commands:
         --cache-control="public, max-age=300" && \
       echo "✓ Frontend deployed to: https://storage.googleapis.com/dots-frontend-lumen-pipeline/index.html"
 
+  deploy-firebase:
+    description: Build frontend + deploy to Firebase Hosting (embers.camp)
+    cmd: |
+      cd .. && \
+      VITE_LUMEN_SERVER_URL=$(gcloud run services describe lumen-pipeline \
+        --project=lumen-pipeline --region=us-central1 \
+        --format='value(status.url)') \
+      VITE_LUMEN_API_KEY=$(gcloud secrets versions access latest \
+        --secret=lumen-api-key --project=lumen-pipeline) \
+      npm run build && \
+      firebase deploy --only hosting:embers-camp --project=lumen-pipeline && \
+      echo "✓ Frontend deployed to:" && \
+      echo "  https://embers-camp.web.app" && \
+      echo "  https://embers.camp" && \
+      echo "  https://embers.camp/about  (report)"
+
   release-all:
     description: Full release — backend + frontend + health check
     cmd: |
