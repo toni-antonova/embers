@@ -34,9 +34,10 @@ interface UIOverlayProps {
     audioEngine: AudioEngine;
     speechEngine: SpeechEngine;
     tuningConfig: TuningConfig;
+    isServerProcessing?: boolean;
 }
 
-export function UIOverlay({ audioEngine, speechEngine, tuningConfig }: UIOverlayProps) {
+export function UIOverlay({ audioEngine, speechEngine, tuningConfig, isServerProcessing }: UIOverlayProps) {
     // ── STATE ────────────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
     const [denied, setDenied] = useState(false);
@@ -142,6 +143,10 @@ export function UIOverlay({ audioEngine, speechEngine, tuningConfig }: UIOverlay
                 {/* ── STT STATUS (underneath toggle) ──────────────── */}
                 {isListening && (
                     <div className={`stt-status stt-status--${sttStatus}${isConnectingWS ? ' stt-status--loading' : ''}`}>
+                        {/* Server processing spinner — left of STT dot */}
+                        {isServerProcessing && complexMode && (
+                            <span className="server-spinner" />
+                        )}
                         <span className="stt-status__dot" />
                         <span className="stt-status__label">
                             {sttStatus === 'listening' && 'STT active'}

@@ -43,6 +43,7 @@ export function Canvas() {
     const [colorMode, setColorMode] = useState<ColorMode>('color');
     const [sentimentEnabled, setSentimentEnabled] = useState(true);
     const [sentimentMovementEnabled, setSentimentMovementEnabled] = useState(true);
+    const [isServerProcessing, setIsServerProcessing] = useState(false);
 
     // Service singletons (persist across canvas remounts)
     const singletons = useSingletons();
@@ -84,6 +85,17 @@ export function Canvas() {
         });
         return unsub;
     }, [speechEngine, workspaceEngine, semanticBackendRef]);
+
+    // ── SERVER PROCESSING POLL ─────────────────────────────────────────
+    // Poll SemanticBackend.isProcessing every 200ms to drive the UI spinner.
+    // Only updates React state when the value actually changes.
+    useEffect(() => {
+        const id = setInterval(() => {
+            const current = semanticBackendRef.current?.isProcessing ?? false;
+            setIsServerProcessing((prev) => prev !== current ? current : prev);
+        }, 200);
+        return () => clearInterval(id);
+    }, [semanticBackendRef]);
 
     // ── SHAPE CHANGE CALLBACKS ────────────────────────────────────────────
     const handleShapeChange = useCallback((shapeName: string) => {
@@ -143,7 +155,7 @@ export function Canvas() {
                     style={{ display: 'block', width: '100%', height: '100%' }}
                 />
             )}
-            <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} tuningConfig={tuningConfig} />
+            <UIOverlay audioEngine={audioEngine} speechEngine={speechEngine} tuningConfig={tuningConfig} isServerProcessing={isServerProcessing} />
             <TuningPanel
                 config={tuningConfig}
                 audioEngine={audioEngine}

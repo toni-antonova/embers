@@ -402,10 +402,11 @@ export class TuningConfig {
         this.isMobile = options?.isMobile ?? IS_MOBILE;
 
         // 0. Load mode toggle from localStorage.
+        //    Default to Complex for first-time visitors (no saved preference).
         try {
-            this._complexMode = localStorage.getItem(MODE_STORAGE_KEY) === 'complex';
+            this._complexMode = (localStorage.getItem(MODE_STORAGE_KEY) ?? 'complex') === 'complex';
         } catch {
-            this._complexMode = false;
+            this._complexMode = true;
         }
 
         // 1. Load defaults from PARAM_DEFS.

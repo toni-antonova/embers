@@ -170,6 +170,16 @@ export class SemanticBackend {
     private idleDecayElapsed: number = 0;
     private idleDecayStartAbstraction: number = 0.5;
 
+    // ── SERVER PROCESSING STATE ──────────────────────────────────────
+    // Tracks whether a server shape request is in-flight (_isGenerating)
+    // and whether particles are still settling after the shape lands
+    // (_isSettling, ~1.5s heuristic). The public `isProcessing` getter
+    // drives the UI spinner in UIOverlay.
+    private _isGenerating: boolean = false;
+    private _isSettling: boolean = false;
+    private _settleTimerId: ReturnType<typeof setTimeout> | null = null;
+    private static readonly SETTLE_DURATION_MS = 1500;
+
     constructor(
         speechEngine: SpeechEngine,
         classifier: KeywordClassifier,
@@ -356,6 +366,14 @@ export class SemanticBackend {
     }
 
     /**
+     * Whether the server is generating a shape or particles are still settling.
+     * Drives the UI spinner in UIOverlay.
+     */
+    get isProcessing(): boolean {
+        return this._isGenerating || this._isSettling;
+    }
+
+    /**
      * Clean up subscriptions.
      */
     dispose(): void {
@@ -376,6 +394,10 @@ export class SemanticBackend {
         this.pendingMorphState = null;
         this.pendingMorphMapping = null;
         this.idleDecayActive = false;
+        // Clear processing state
+        this._isGenerating = false;
+        this._isSettling = false;
+        if (this._settleTimerId) { clearTimeout(this._settleTimerId); this._settleTimerId = null; }
         console.log('[SemanticBackend] Disposed');
     }
 
@@ -802,6 +824,12 @@ export class SemanticBackend {
     private requestServerShape(word: string, prompt: string, fallbackTarget: string): void {
         if (!this.serverClient) return;
 
+        // Clear any in-progress settle timer from a previous request
+        // to prevent a brief false-negative flash between rapid requests.
+        if (this._settleTimerId) { clearTimeout(this._settleTimerId); this._settleTimerId = null; }
+        this._isSettling = false;
+        this._isGenerating = true;
+
         // Log the request
         this.sessionLogger?.log('system', {
             event: 'server_request',
@@ -813,6 +841,9 @@ export class SemanticBackend {
         console.log(`[SemanticBackend] 🌐 Requesting server shape: prompt="${prompt}"`);
 
         this.serverClient.generateShape(prompt).then((response) => {
+            // Server responded — stop the "generating" phase
+            this._isGenerating = false;
+
             if (response) {
                 // Read scale at response time (not request time) so live
                 // tuner changes during the async server call are respected.
@@ -841,6 +872,14 @@ export class SemanticBackend {
                 this.uniformBridge.springOverride = null;
                 this.uniformBridge.noiseOverride = null;
 
+                // Start settle timer — particles need ~1.5s for springs
+                // to pull them into the new formation.
+                this._isSettling = true;
+                this._settleTimerId = setTimeout(() => {
+                    this._isSettling = false;
+                    this._settleTimerId = null;
+                }, SemanticBackend.SETTLE_DURATION_MS);
+
                 console.log(
                     `[SemanticBackend] ✅ Server shape received: prompt="${prompt}" ` +
                     `(${response.pipeline}, ${response.generationTimeMs}ms, ` +
@@ -868,6 +907,17 @@ export class SemanticBackend {
                     this.currentTarget = fallbackTarget;
                     this.particleSystem.setTarget(fallbackTarget);
                 }
+            }
+        }).catch((err) => {
+            // Network error or rejection — clear generating flag
+            this._isGenerating = false;
+            console.warn(
+                `[SemanticBackend] ⚠️ Server request rejected for prompt="${prompt}":`,
+                err,
+            );
+            if (fallbackTarget !== this.currentTarget) {
+                this.currentTarget = fallbackTarget;
+                this.particleSystem.setTarget(fallbackTarget);
             }
         });
     }
