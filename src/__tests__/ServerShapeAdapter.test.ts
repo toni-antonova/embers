@@ -54,7 +54,7 @@ describe('ServerShapeAdapter', () => {
             const response = makeResponse(4);
             const tex = ServerShapeAdapter.toDataTexture(response, 4, 1.0); // 16 pixels total
             const data = tex.image.data! as Float32Array;
-            const JITTER = 0.02;
+            const JITTER = 0.005;
 
             // Pixels 4..15 are expanded — each maps to serverPoint[i % 4]
             for (let i = 4; i < 16; i++) {

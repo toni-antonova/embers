@@ -53,7 +53,6 @@ function createMockParticleSystem() {
         uNoiseAmplitude: { value: 0.25 },
         uSpringK: { value: 1.5 },
         uRepulsionStrength: { value: 5.0 },
-        uTransitionPhase: { value: 0 },
     };
 
     const renderUniforms = {

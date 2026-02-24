@@ -23,7 +23,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TuningConfig, PARAM_DEFS } from '../services/TuningConfig';
+import { TuningConfig, PARAM_DEFS, COMPLEX_OVERRIDES } from '../services/TuningConfig';
 
 // ── HELPERS ──────────────────────────────────────────────────────────
 // Clear localStorage before each test so saved values from one test
@@ -274,7 +274,7 @@ describe('TuningConfig — localStorage Persistence', () => {
 
     it('loads saved values from localStorage on construction', () => {
         // ARRANGE: Pre-seed localStorage with custom values.
-        const seedData = { pointSize: 6.0, springK: 9.0, __version: 11 };
+        const seedData = { pointSize: 6.0, springK: 9.0, __version: 12 };
         localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
 
         // ACT: Create a new config — it should pick up the seeded values.
@@ -401,7 +401,7 @@ describe('TuningConfig — Mobile Overrides', () => {
 
     it('localStorage values override mobile defaults', () => {
         // Seed localStorage with user-saved values
-        const seedData = { pointSize: 3.0, cameraZ: 15, __version: 11 };
+        const seedData = { pointSize: 3.0, cameraZ: 15, __version: 12 };
         localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
 
         const config = new TuningConfig({ isMobile: true });
@@ -414,3 +414,81 @@ describe('TuningConfig — Mobile Overrides', () => {
     });
 });
 
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 9: COMPLEX MODE SNAPSHOT LIFECYCLE
+// ══════════════════════════════════════════════════════════════════════
+describe('TuningConfig — Complex Mode Snapshot', () => {
+
+    it('constructor with persisted complex mode builds snapshot (toggle off reverts)', () => {
+        // Persist complex mode in localStorage
+        localStorage.setItem('dots-mode', 'complex');
+
+        const config = new TuningConfig();
+
+        // Should be in complex mode with overrides applied
+        expect(config.complexMode).toBe(true);
+        expect(config.get('serverShapeScale')).toBe(COMPLEX_OVERRIDES.serverShapeScale);
+        expect(config.get('springK')).toBe(COMPLEX_OVERRIDES.springK);
+
+        // Toggle OFF → should revert to simple defaults (snapshot built in constructor)
+        config.complexMode = false;
+
+        // Values should revert to PARAM_DEFS defaults (not stuck at complex overrides)
+        const springDefault = PARAM_DEFS.find(d => d.key === 'springK')!.defaultValue;
+        expect(config.get('springK')).toBe(springDefault);
+    });
+
+    it('toggle on applies overrides and toggle off reverts to user-modified values', () => {
+        const config = new TuningConfig();
+
+        // User tweaks springK to 7.0
+        config.set('springK', 7.0);
+
+        // Toggle complex ON → should snapshot 7.0 then apply override
+        config.complexMode = true;
+        expect(config.get('springK')).toBe(COMPLEX_OVERRIDES.springK);
+
+        // Toggle complex OFF → should revert to 7.0 (not the default 3.0)
+        config.complexMode = false;
+        expect(config.get('springK')).toBe(7.0);
+    });
+
+    it('resetAll in complex mode re-applies overrides and rebuilds snapshot', () => {
+        const config = new TuningConfig();
+        config.complexMode = true;
+
+        // Manually tweak a complex override value
+        config.set('springK', 9.0);
+        expect(config.get('springK')).toBe(9.0);
+
+        // Reset all → should go back to defaults, then re-apply complex overrides
+        config.resetAll();
+        expect(config.get('springK')).toBe(COMPLEX_OVERRIDES.springK);
+
+        // Toggle OFF → should revert to the reset defaults (not the manual 9.0)
+        config.complexMode = false;
+        const springDefault = PARAM_DEFS.find(d => d.key === 'springK')!.defaultValue;
+        expect(config.get('springK')).toBe(springDefault);
+    });
+
+    it('resetAll in simple mode clears any stale snapshot', () => {
+        const config = new TuningConfig();
+
+        // Toggle complex ON then OFF (creates then clears snapshot)
+        config.complexMode = true;
+        config.complexMode = false;
+
+        // Reset all — should clear any stale snapshot data
+        config.resetAll();
+        const springDefault = PARAM_DEFS.find(d => d.key === 'springK')!.defaultValue;
+        expect(config.get('springK')).toBe(springDefault);
+
+        // Toggle ON again should work without issues
+        config.complexMode = true;
+        expect(config.get('springK')).toBe(COMPLEX_OVERRIDES.springK);
+
+        config.complexMode = false;
+        expect(config.get('springK')).toBe(springDefault);
+    });
+});

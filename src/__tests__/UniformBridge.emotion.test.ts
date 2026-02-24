@@ -51,7 +51,6 @@ function createMockParticleSystem() {
         uNoiseAmplitude: { value: 0.25 },
         uSpringK: { value: 1.5 },
         uRepulsionStrength: { value: 5.0 },
-        uTransitionPhase: { value: 0 },
     };
 
     const renderUniforms = {
@@ -262,22 +261,3 @@ describe('UniformBridge — Spring Override', () => {
     });
 });
 
-
-// ══════════════════════════════════════════════════════════════════════
-// SUITE 7: TRANSITION PHASE UNIFORM
-// ══════════════════════════════════════════════════════════════════════
-
-describe('UniformBridge — Transition Phase', () => {
-    it('pushes transitionPhase to uTransitionPhase uniform', () => {
-        bridge.transitionPhase = 2;
-        bridge.update();
-
-        expect(mockParticles.velocityVariable.material.uniforms.uTransitionPhase.value).toBe(2);
-    });
-
-    it('defaults to 0 (idle)', () => {
-        bridge.update();
-
-        expect(mockParticles.velocityVariable.material.uniforms.uTransitionPhase.value).toBe(0);
-    });
-});

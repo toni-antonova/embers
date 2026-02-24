@@ -189,7 +189,7 @@ describe('SemanticBackend — Complex Mode Routing', () => {
         expect(backend.lastAction).toBe('morph');
     });
 
-    it('complex mode sends full phrase to server after dissolve', async () => {
+    it('complex mode sends full phrase to server immediately', async () => {
         const mockConfig = createMockTuningConfig(true);
         const mockServer = createMockServerClient();
 
@@ -201,10 +201,7 @@ describe('SemanticBackend — Complex Mode Routing', () => {
         mockSpeech.pushTranscript('a beautiful mountain landscape', true);
         backend.update(0.016);
 
-        // Complete dissolve phase (0.3s / 0.016 ≈ 19 frames)
-        for (let i = 0; i < 25; i++) backend.update(0.016);
-
-        // Server should have been called with the full phrase
+        // Server should have been called immediately (no dissolve needed)
         expect(mockServer.generateShape).toHaveBeenCalledWith(
             'a beautiful mountain landscape'
         );
@@ -328,7 +325,8 @@ describe('SemanticBackend — Dispose', () => {
         // Trigger complex mode morph
         mockSpeech.pushTranscript('a dragon blows fire', true);
         backend.update(0.016);
-        expect(backend.currentTransitionPhase).toBe(TransitionPhase.Dissolve);
+        // Complex mode stays Idle (no dissolve choreography)
+        expect(backend.currentTransitionPhase).toBe(TransitionPhase.Idle);
 
         // Dispose
         backend.dispose();

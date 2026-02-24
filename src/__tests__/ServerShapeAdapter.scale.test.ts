@@ -132,7 +132,7 @@ describe('ServerShapeAdapter — Scale Parameter', () => {
         // Jitter at scale 3 should be about 3x the jitter at scale 1
         // We check that scale 3 jitter is strictly larger (exact ratio varies with random)
         // Maximum possible jitter at scale 1 is 0.02, at scale 3 is 0.06
-        expect(maxJitter1).toBeLessThanOrEqual(0.021); // JITTER_RADIUS * 1.0
-        expect(maxJitter3).toBeLessThanOrEqual(0.061); // JITTER_RADIUS * 3.0
+        expect(maxJitter1).toBeLessThanOrEqual(0.0051); // JITTER_RADIUS * 1.0
+        expect(maxJitter3).toBeLessThanOrEqual(0.0151); // JITTER_RADIUS * 3.0
     });
 });

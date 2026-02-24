@@ -57,7 +57,6 @@ function createMockUniformBridge() {
         noiseOverride: null as number | null,
         emotionalIntensityOverride: null as number | null,
         springOverride: null as number | null,
-        transitionPhase: 0,
     } as any;
 }
 
@@ -121,7 +120,6 @@ describe('Transition Choreography — Phase Sequencing', () => {
         backend.update(0.016);
 
         expect(backend.currentTransitionPhase).toBe(TransitionPhase.Dissolve);
-        expect(mockBridge.transitionPhase).toBe(TransitionPhase.Dissolve);
     });
 
     it('Dissolve → Reform → Settle → Idle sequence completes', () => {
@@ -339,7 +337,6 @@ describe('Transition Choreography — Dispose', () => {
         backend.dispose();
 
         expect(mockBridge.springOverride).toBeNull();
-        expect(mockBridge.transitionPhase).toBe(0);
         expect(backend.currentTransitionPhase).toBe(TransitionPhase.Idle);
     });
 });

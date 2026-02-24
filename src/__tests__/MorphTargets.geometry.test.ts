@@ -205,8 +205,39 @@ describe('MorphTargets — Tree Geometry', () => {
 
 
 // ══════════════════════════════════════════════════════════════════════
-// hasTarget() API
+// QUADRUPED GEOMETRY
 // ══════════════════════════════════════════════════════════════════════
+
+describe('MorphTargets — Quadruped Geometry', () => {
+    it('has particles extending forward beyond the body (head)', () => {
+        const pts = positions('quadruped');
+        // Head sphere is centered at x≈-3.2 — some particles should be at x < -2.5
+        const headParticles = pts.filter(([x, ,]) => x < -2.5);
+        expect(headParticles.length).toBeGreaterThan(0);
+    });
+
+    it('has head particles elevated above the body center', () => {
+        const pts = positions('quadruped');
+        // Head is at y≈1.8, so particles in the head region should be above y=1.0
+        const elevatedHead = pts.filter(([x, y]) => x < -2.5 && y > 1.0);
+        expect(elevatedHead.length).toBeGreaterThan(0);
+    });
+
+    it('has particles extending rearward beyond the body (tail)', () => {
+        const pts = positions('quadruped');
+        // Tail extends from x=2.5 to x≈4.3
+        const tailParticles = pts.filter(([x]) => x > 2.5);
+        expect(tailParticles.length).toBeGreaterThan(0);
+    });
+
+    it('is longer than wide (elongated horse silhouette)', () => {
+        const pts = positions('quadruped');
+        const bb = boundingBox(pts);
+        const xExtent = bb.maxX - bb.minX;
+        const zExtent = bb.maxZ - bb.minZ;
+        expect(xExtent).toBeGreaterThan(zExtent * 2);
+    });
+});
 
 describe('MorphTargets — hasTarget()', () => {
     it('returns true for all valid shape names', () => {

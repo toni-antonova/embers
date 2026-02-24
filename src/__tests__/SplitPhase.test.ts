@@ -51,7 +51,6 @@ function createMockParticleSystem(config: TuningConfig) {
         uSpringK: { value: config.get('springK') },
         uRepulsionStrength: { value: config.get('repulsionStrength') },
         uRepulsionRadius: { value: config.get('repulsionRadius') },
-        uTransitionPhase: { value: 0 },
         uDrag: { value: config.get('drag') },
         uNoiseFrequency: { value: config.get('noiseFrequency') },
         uBreathingAmplitude: { value: config.get('breathingAmplitude') },
@@ -209,7 +208,6 @@ describe('Split-Phase Protocol — Full Loop Sequence', () => {
         bridge.springOverride = 0.4;
         bridge.noiseOverride = 0.6;
         bridge.abstractionOverride = 0.5;
-        bridge.transitionPhase = 1;
 
         // Simulate correct animation loop order:
         // Phase 1: writeConfigUniforms
@@ -223,7 +221,6 @@ describe('Split-Phase Protocol — Full Loop Sequence', () => {
         expect(u.uSpringK.value).toBeCloseTo(0.4, 1);
         expect(u.uNoiseAmplitude.value).toBeCloseTo(0.6, 1);
         expect(u.uAbstraction.value).toBeCloseTo(0.5, 1);
-        expect(u.uTransitionPhase.value).toBe(1);
     });
 
     it('multiple consecutive frames maintain consistent overrides', () => {
