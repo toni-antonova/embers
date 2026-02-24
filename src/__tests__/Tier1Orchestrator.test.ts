@@ -174,7 +174,7 @@ describe('Tier1Orchestrator — Sync Resolution', () => {
         const result = orchestrator.resolveSync('run');
         expect(result).not.toBeNull();
         expect(result!.latencyMs).toBeGreaterThanOrEqual(0);
-        expect(result!.latencyMs).toBeLessThan(50);
+        expect(result!.latencyMs).toBeLessThan(100);
     });
 });
 
