@@ -25,6 +25,29 @@
  * artists/designers iterate on visual parameters without touching code.
  */
 
+// ── MOBILE DETECTION ─────────────────────────────────────────────────
+// Runs once at module load. Uses the same heuristic as SpeechEngine:
+// iOS detection + UA "Mobi|Android" + touch + narrow viewport.
+function isMobileDevice(): boolean {
+    if (typeof window === 'undefined') return false;
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return isIOS || /Mobi|Android/i.test(ua) ||
+        ('ontouchstart' in window && window.innerWidth < 1024);
+}
+
+/** True if the page loaded on a mobile device. Evaluated once at module init. */
+const IS_MOBILE = isMobileDevice();
+
+// ── MOBILE DEFAULT OVERRIDES ─────────────────────────────────────────
+// Only the params that differ on mobile. Everything else uses PARAM_DEFS.
+export const MOBILE_OVERRIDES: Record<string, number> = {
+    pointSize: 1.5,         // Slightly bigger dots on small screens
+    formationScale: 1.1,    // Shrink formation to avoid viewport overflow
+    cameraZ: 12,            // Pull camera back for breathing room
+};
+
 // ── PARAMETER DEFINITION ─────────────────────────────────────────────
 // Each tunable parameter is fully described by this interface.
 // The UI generates sliders automatically from this metadata.
@@ -52,6 +75,27 @@ export const PARAM_DEFS: ParamDef[] = [
     {
         key: 'pointOpacity', label: 'Point Opacity',
         defaultValue: 0.7, min: 0.1, max: 1.0, step: 0.05,
+        group: '🔴 Particle Appearance'
+    },
+    {
+        // Brightness multiplier for the final particle color.
+        // Higher = dots glow more intensely without changing size.
+        key: 'pointBrightness', label: 'Point Brightness',
+        defaultValue: 1.0, min: 0.5, max: 3.0, step: 0.1,
+        group: '🔴 Particle Appearance'
+    },
+    {
+        // Core weight: intensity of the bright center dot.
+        // Higher = sharper, more defined center point.
+        key: 'coreWeight', label: 'Core Weight',
+        defaultValue: 0.8, min: 0.0, max: 2.0, step: 0.1,
+        group: '🔴 Particle Appearance'
+    },
+    {
+        // Glow weight: intensity of the soft halo around the dot.
+        // Higher = bigger, softer glow. Lower = tighter, harder dots.
+        key: 'glowWeight', label: 'Glow Weight',
+        defaultValue: 0.4, min: 0.0, max: 2.0, step: 0.1,
         group: '🔴 Particle Appearance'
     },
     {
@@ -309,7 +353,7 @@ const STORAGE_KEY = 'dots-tuning-config';
 // ── CONFIG VERSIONING ────────────────────────────────────────────────
 // Bump this whenever defaults change. Old localStorage will be discarded
 // automatically so stale dev settings don't silently override production defaults.
-const CONFIG_VERSION = 6;
+const CONFIG_VERSION = 9;
 
 // ── TUNING CONFIG CLASS ──────────────────────────────────────────────
 export class TuningConfig {
@@ -319,13 +363,26 @@ export class TuningConfig {
     // Subscribers notified on every value change.
     private listeners: Set<ConfigListener> = new Set();
 
-    constructor() {
+    /** Whether this instance uses mobile defaults. */
+    readonly isMobile: boolean;
+
+    constructor(options?: { isMobile?: boolean }) {
+        this.isMobile = options?.isMobile ?? IS_MOBILE;
+
         // 1. Load defaults from PARAM_DEFS.
         for (const def of PARAM_DEFS) {
             this.values.set(def.key, def.defaultValue);
         }
 
-        // 2. Override with any saved values from localStorage.
+        // 2. Apply mobile overrides (before localStorage, so user tweaks win).
+        if (this.isMobile) {
+            for (const [key, value] of Object.entries(MOBILE_OVERRIDES)) {
+                this.values.set(key, value);
+            }
+            console.log('[TuningConfig] 📱 Applied mobile overrides');
+        }
+
+        // 3. Override with any saved values from localStorage.
         this.loadFromStorage();
 
         console.log('[TuningConfig] Initialized with', this.values.size, 'parameters');
@@ -379,6 +436,10 @@ export class TuningConfig {
      * Get the default value for a parameter key.
      */
     getDefault(key: string): number {
+        // On mobile, return the mobile override if one exists.
+        if (this.isMobile && key in MOBILE_OVERRIDES) {
+            return MOBILE_OVERRIDES[key];
+        }
         return PARAM_DEFS.find(d => d.key === key)?.defaultValue ?? 0;
     }
 
@@ -388,9 +449,13 @@ export class TuningConfig {
      */
     resetAll(): void {
         for (const def of PARAM_DEFS) {
-            this.values.set(def.key, def.defaultValue);
+            // Use mobile override when applicable, otherwise PARAM_DEFS default.
+            const value = (this.isMobile && def.key in MOBILE_OVERRIDES)
+                ? MOBILE_OVERRIDES[def.key]
+                : def.defaultValue;
+            this.values.set(def.key, value);
             for (const listener of this.listeners) {
-                listener(def.key, def.defaultValue);
+                listener(def.key, value);
             }
         }
         this.saveToStorage();

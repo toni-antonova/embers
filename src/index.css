@@ -45,6 +45,8 @@ canvas {
   flex-direction: column;
   justify-content: flex-end;
   padding: 2rem;
+  /* Account for mobile browser chrome (address bar, tab bar) */
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 
@@ -102,17 +104,25 @@ canvas {
   opacity: 0;
 }
 
-/* Mobile: larger touch target */
+/* Mobile: larger touch target + clear browser chrome */
 @media (max-width: 768px),
 (pointer: coarse) {
   .mic-button {
     width: 56px;
     height: 56px;
+    /* Extra bottom margin to clear mobile browser navigation bars
+       (Chrome tab bar, Safari toolbar). Combined with safe-area-inset
+       on the parent, this keeps the button fully tappable. */
+    margin-bottom: 3.5rem;
   }
 
   .mic-button .mic-icon {
     width: 24px;
     height: 24px;
+  }
+
+  .stt-status {
+    margin-bottom: 1rem;
   }
 }
 
@@ -206,11 +216,225 @@ canvas {
 }
 
 .stt-status--unsupported .stt-status__dot {
-  background: rgba(255, 255, 255, 0.3);
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+}
+
+/* Loading state: pulsing dot while Moonshine model downloads */
+.stt-status--loading .stt-status__dot,
+.stt-status--loading-model .stt-status__dot {
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+  animation: stt-loading-spin 1s linear infinite;
+}
+
+.stt-status--loading .stt-status__label,
+.stt-status--loading-model .stt-status__label {
+  color: rgba(251, 191, 36, 0.9);
+}
+
+@keyframes stt-loading-spin {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.5);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .stt-status--off .stt-status__dot {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * TIMEOUT FALLBACK NOTE
+ * ═══════════════════════════════════════════════════════════════════════ */
+.speech-fallback-note {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0.5rem 0 0;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * iOS DICTATION PROMPT — Modal shown when service-not-allowed fires
+ * ═══════════════════════════════════════════════════════════════════════
+ * Glassmorphism modal explaining how to enable Dictation in iOS Settings.
+ * Appears over the canvas with a semi-transparent backdrop.
+ */
+.dictation-prompt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  animation: dictation-overlay-in 0.3s ease;
+  pointer-events: auto;
+}
+
+.dictation-prompt {
+  background: rgba(20, 20, 28, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 1.5rem;
+  max-width: 340px;
+  width: 100%;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: dictation-slide-up 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dictation-prompt__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0.75rem;
+}
+
+.dictation-prompt__icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.dictation-prompt__title {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.dictation-prompt__body {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.dictation-prompt__steps {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 0 0 1.25rem;
+}
+
+.dictation-prompt__steps li {
+  counter-increment: step;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  line-height: 1.4;
+}
+
+.dictation-prompt__steps li:last-child {
+  border-bottom: none;
+}
+
+.dictation-prompt__steps li::before {
+  content: counter(step);
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dictation-prompt__steps li strong {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+}
+
+.dictation-prompt__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.dictation-prompt__btn {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 10px;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.dictation-prompt__btn--retry {
+  background: rgba(255, 255, 255, 0.95);
+  color: #111;
+}
+
+.dictation-prompt__btn--retry:hover {
+  background: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+}
+
+.dictation-prompt__btn--dismiss {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dictation-prompt__btn--dismiss:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+@keyframes dictation-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dictation-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes stt-fade-in {

@@ -77,7 +77,12 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
         }
     };
 
-    // Subscribe to STT status changes for the visible indicator
+    // Subscribe to STT status changes for the visible indicator.
+    // NOTE: We do NOT stop AudioEngine on STT errors. The audio analysis
+    // pipeline (volume, pitch, energy) works fine on mobile — only the
+    // Web Speech API's speech-to-text is unavailable. The STT badge will
+    // show the error, but the particle visualization keeps responding to
+    // audio features.
     useEffect(() => {
         const unsub = speechEngine.onStatusChange((status, errorDetail) => {
             setSttStatus(status);
@@ -95,6 +100,9 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
         speechEngine.submitText(fallbackText);
         setFallbackText('');
     };
+
+    // Is the engine currently connecting to the WebSocket fallback?
+    const isConnectingWS = sttStatus === 'connecting-ws';
 
     // ── RENDER ────────────────────────────────────────────────────────
     return (
@@ -117,33 +125,29 @@ export function UIOverlay({ audioEngine, speechEngine }: UIOverlayProps) {
             )}
 
             {/* ── STT STATUS BADGE ─────────────────────────────────── */}
-            {/* Shows the current speech recognition state so the user
-                knows if words are being captured, without needing the
-                browser console open. */}
             {isListening && (
-                <div className={`stt-status stt-status--${sttStatus}`}>
+                <div className={`stt-status stt-status--${sttStatus}${isConnectingWS ? ' stt-status--loading' : ''}`}>
                     <span className="stt-status__dot" />
                     <span className="stt-status__label">
                         {sttStatus === 'listening' && 'STT active'}
                         {sttStatus === 'restarting' && 'STT restarting…'}
                         {sttStatus === 'error' && `STT error: ${sttError}`}
+                        {isConnectingWS && 'Connecting to speech service…'}
                         {sttStatus === 'unsupported' && 'STT unavailable — type below'}
                         {sttStatus === 'off' && 'STT off'}
                     </span>
                 </div>
             )}
 
-            {/* ── TEXT FALLBACK (only when Speech API unavailable) ── */}
-            {/* When the Web Speech API isn't available (Firefox, etc.),
-                show a text input so the user can still type words that
-                get processed by the semantic pipeline. The form only
-                appears when listening is active (or always in fallback). */}
+            {/* ── TEXT FALLBACK ─────────────────────────────────────── */}
+            {/* Shows when Web Speech API is unsupported (desktop Firefox)
+                or when WebSocket fallback fails */}
             {!speechEngine.isSupported && isListening && (
                 <div className="speech-fallback-container">
                     <input
                         className="speech-fallback-input"
                         type="text"
-                        placeholder="Type words here (speech not supported in this browser)..."
+                        placeholder="Type words here (speech not supported)..."
                         value={fallbackText}
                         onChange={(e) => setFallbackText(e.target.value)}
                         onKeyDown={(e) => {

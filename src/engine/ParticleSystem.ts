@@ -146,6 +146,9 @@ export class ParticleSystem {
                 uEmotionalIntensity: { value: 0.0 }, // Emotional intensity (0=sad, 1=angry)
                 uEmotionArousal: { value: 0.0 },     // SER arousal (0=calm, 1=excited)
                 uEmotionDominance: { value: 0.0 },    // SER dominance (0=submissive, 1=dominant)
+                uBrightness: { value: 1.0 },   // Overall brightness multiplier
+                uCoreWeight: { value: 0.8 },   // Core dot intensity
+                uGlowWeight: { value: 0.4 },   // Glow halo intensity
             },
             vertexShader: renderVert,
             fragmentShader: renderFrag,
@@ -221,6 +224,9 @@ export class ParticleSystem {
         // Appearance uniforms (render shader)
         renderUniforms.uPointSize.value = this.config.get('pointSize');
         renderUniforms.uAlpha.value = this.config.get('pointOpacity');
+        renderUniforms.uBrightness.value = this.config.get('pointBrightness');
+        renderUniforms.uCoreWeight.value = this.config.get('coreWeight');
+        renderUniforms.uGlowWeight.value = this.config.get('glowWeight');
 
         // Time and delta
         velUniforms.uTime.value = this.time;

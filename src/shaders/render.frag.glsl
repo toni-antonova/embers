@@ -29,6 +29,9 @@ uniform float uAlpha;       // Overall opacity multiplier
 uniform float uColorMode;   // 0.0 = white/tension, 1.0 = color (sentiment)
 uniform float uTime;        // Animation time for subtle hue drift
 uniform float uRolloff;     // Spectral rolloff → edge softness (0=soft, 1=crisp)
+uniform float uBrightness;  // Overall brightness multiplier (tunable)
+uniform float uCoreWeight;  // Core dot intensity (tunable)
+uniform float uGlowWeight;  // Glow halo intensity (tunable)
 
 // Color channel uniforms
 uniform float uTension;     // 0–1, from spectral centroid (0=relaxed, 1=tense)
@@ -127,7 +130,7 @@ void main() {
     float edgeSoftness = mix(0.45, 0.15, uRolloff);
     float core = 1.0 - smoothstep(0.0, edgeSoftness, dist);
     float glow = 1.0 - smoothstep(edgeSoftness * 0.67, 0.5, dist);
-    float alpha = (core * 0.8 + glow * 0.4) * uAlpha;
+    float alpha = (core * uCoreWeight + glow * uGlowWeight) * uAlpha;
     if (alpha < 0.01) discard;
 
     // ── COLOR SYSTEM ──────────────────────────────────────────────
@@ -191,5 +194,5 @@ void main() {
     finalColor *= energyGlow;
 
     // Color modulation: core area full brightness, outer glow dimmer
-    gl_FragColor = vec4(finalColor * (core * 0.5 + 0.5), alpha);
+    gl_FragColor = vec4(finalColor * uBrightness * (core * 0.5 + 0.5), alpha);
 }

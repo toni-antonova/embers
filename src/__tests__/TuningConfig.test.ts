@@ -274,7 +274,7 @@ describe('TuningConfig — localStorage Persistence', () => {
 
     it('loads saved values from localStorage on construction', () => {
         // ARRANGE: Pre-seed localStorage with custom values.
-        const seedData = { pointSize: 6.0, springK: 9.0, __version: 6 };
+        const seedData = { pointSize: 6.0, springK: 9.0, __version: 9 };
         localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
 
         // ACT: Create a new config — it should pick up the seeded values.
@@ -354,3 +354,63 @@ describe('TuningConfig — Edge Cases', () => {
         }
     });
 });
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 8: MOBILE OVERRIDES
+// ══════════════════════════════════════════════════════════════════════
+describe('TuningConfig — Mobile Overrides', () => {
+    it('applies mobile defaults for pointSize, formationScale, cameraZ', () => {
+        const config = new TuningConfig({ isMobile: true });
+
+        expect(config.get('pointSize')).toBe(1.5);
+        expect(config.get('formationScale')).toBe(1.1);
+        expect(config.get('cameraZ')).toBe(12);
+    });
+
+    it('uses standard PARAM_DEFS defaults when not mobile', () => {
+        const config = new TuningConfig({ isMobile: false });
+
+        expect(config.get('pointSize')).toBe(1.0);
+        expect(config.get('formationScale')).toBe(1.6);
+        expect(config.get('cameraZ')).toBe(9);
+    });
+
+    it('getDefault() returns mobile defaults when isMobile is true', () => {
+        const config = new TuningConfig({ isMobile: true });
+
+        expect(config.getDefault('pointSize')).toBe(1.5);
+        expect(config.getDefault('formationScale')).toBe(1.1);
+        expect(config.getDefault('cameraZ')).toBe(12);
+        // Non-overridden params should still use PARAM_DEFS
+        expect(config.getDefault('springK')).toBe(3.0);
+    });
+
+    it('resetAll() resets to mobile defaults when isMobile is true', () => {
+        const config = new TuningConfig({ isMobile: true });
+
+        config.set('pointSize', 5.0);
+        config.set('formationScale', 2.5);
+        config.set('cameraZ', 20);
+
+        config.resetAll();
+
+        expect(config.get('pointSize')).toBe(1.5);
+        expect(config.get('formationScale')).toBe(1.1);
+        expect(config.get('cameraZ')).toBe(12);
+    });
+
+    it('localStorage values override mobile defaults', () => {
+        // Seed localStorage with user-saved values
+        const seedData = { pointSize: 3.0, cameraZ: 15, __version: 9 };
+        localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
+
+        const config = new TuningConfig({ isMobile: true });
+
+        // User's saved values should win over mobile defaults
+        expect(config.get('pointSize')).toBe(3.0);
+        expect(config.get('cameraZ')).toBe(15);
+        // But formationScale should use mobile default (not saved)
+        expect(config.get('formationScale')).toBe(1.1);
+    });
+});
+
