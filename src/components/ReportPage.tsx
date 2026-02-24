@@ -37,35 +37,8 @@ export function ReportPage() {
        * ═══════════════════════════════════════════════════════════════ */}
             <div className="report-body">
 
-                {/* ── THE STARTING IDEA ────────────────────────────────────── */}
-                <h2>Where This Started</h2>
-
-                <p>
-                    The idea that got stuck in my head was simple: when someone says "a horse
-                    gallops in the wind," you don't need to show a horse galloping. You need the{' '}
-                    <em>feeling</em> of galloping — fast, rhythmic, forward, expansive. The words
-                    prime your perception. A shape confirms the subject. The motion confirms the
-                    quality. Your brain does the compositing.
-                </p>
-
-                <p>
-                    I kept thinking about what happens in the gap between speaking a word and seeing
-                    its meaning. The system doesn't know what you said yet — but it can already hear
-                    <em> how</em> you're saying it. So the particles start there: breathing to your
-                    breath, reacting to your energy and tension. Then, as the semantics crystallize —
-                    first a noun, then a category, then a specific shape — the particles descend from
-                    abstract response to concrete form. They whoosh and flow during that in-between
-                    moment, then snap into the shape the system has resolved.
-                </p>
-
-                <p>
-                    That descent from abstract to concrete became the organizing principle for the
-                    whole architecture: a fast emotional layer that responds instantly, and a slower
-                    semantic layer that refines the picture as meaning arrives.
-                </p>
-
                 {/* ── TL;DR ──────────────────────────────────────────────── */}
-                <h2>What I Built</h2>
+                <h2>What I Built — and Why</h2>
 
                 <p>
                     Zen Swarm is a real-time speech-to-visualization system. You speak into your
@@ -82,8 +55,21 @@ export function ReportPage() {
                 <p>
                     These channels drive a single, inspectable visual field: a particle system whose
                     parameters are derived from measurable inputs and whose internal state (coherence,
-                    arousal, entropy) is <strong>explicit, tunable, and logged</strong>.
+                    arousal, entropy) is <strong>explicit, tunable, and logged</strong>. The mapping is
+                    configurable via <strong>theory lenses</strong> — parameterized assumptions inspired
+                    by Global Workspace Theory, Attention Schema Theory, and integration proxies — so
+                    the system's behavior is inspectable rather than a black box.
                 </p>
+
+                <div className="report-callout report-callout--insight">
+                    <div className="report-callout__label">💡 Key Insight</div>
+                    <p style={{ margin: 0 }}>
+                        I read Option 4 not as an invitation to build a generative art demo, but as an
+                        opportunity to build a <strong>research instrument</strong> — a test harness where
+                        representational assumptions about consciousness can be implemented, manipulated,
+                        logged, and compared.
+                    </p>
+                </div>
 
                 {/* ── PERFORMANCE CARDS ───────────────────────────────────── */}
                 <div className="perf-grid">
@@ -521,65 +507,6 @@ Top uncached concepts: horse (6), okapi (5), cat (4), narwhal (3)
 → Action: Add to pre-generation list`}</code></pre>
 
                 {/* ═══════════════════════════════════════════════════════════
-         * SECTION: END-TO-END FLOW
-         * ═══════════════════════════════════════════════════════════ */}
-                <h2>End-to-End: From Microphone to Particles</h2>
-
-                <p>
-                    This is how the full system connects. Two parallel channels — prosody
-                    and semantics — run simultaneously and converge in the GPU shader:
-                </p>
-
-                <div className="e2e-diagram">
-                    <div className="e2e-source">
-                        <div className="e2e-source__icon">🎤</div>
-                        <div className="e2e-source__label">Microphone</div>
-                    </div>
-
-                    <div className="e2e-arrow">↓</div>
-
-                    <div className="e2e-split">
-                        <div className="e2e-channel e2e-channel--prosody">
-                            <div className="e2e-channel__label">Prosody Channel</div>
-                            <div className="e2e-channel__desc">How you say it</div>
-                            <div className="e2e-step">Audio Worklet → Meyda</div>
-                            <div className="e2e-step">7 features at 60fps</div>
-                            <div className="e2e-step">SER emotion (ONNX)</div>
-                            <div className="e2e-step-timing">&lt;16ms per frame</div>
-                        </div>
-
-                        <div className="e2e-channel e2e-channel--semantic">
-                            <div className="e2e-channel__label">Semantic Channel</div>
-                            <div className="e2e-channel__desc">What you say</div>
-                            <div className="e2e-step">STT → compromise.js</div>
-                            <div className="e2e-step">Verb hash → MiniLM</div>
-                            <div className="e2e-step">Shape target resolve</div>
-                            <div className="e2e-step-timing">&lt;50ms (Tier 1)</div>
-                        </div>
-                    </div>
-
-                    <div className="e2e-arrow">↓</div>
-
-                    <div className="e2e-merge">
-                        <div className="e2e-merge__label">UniformBridge</div>
-                        <div className="e2e-merge__desc">
-                            Prosody → shader uniforms (spring, drag, noise, color)<br />
-                            Semantics → morph target texture (128×128 position data)
-                        </div>
-                    </div>
-
-                    <div className="e2e-arrow">↓</div>
-
-                    <div className="e2e-gpu">
-                        <div className="e2e-gpu__label">GPU Compute (WebGL2)</div>
-                        <div className="e2e-gpu__desc">
-                            velocity.frag → position.frag → render.vert → screen
-                        </div>
-                        <div className="e2e-gpu__detail">16,384 particles · 5 forces · ping-pong textures · 110+ FPS</div>
-                    </div>
-                </div>
-
-                {/* ═══════════════════════════════════════════════════════════
          * SECTION: ENGINEERING WAR STORIES
          * ═══════════════════════════════════════════════════════════ */}
                 <h2>Engineering Under Constraint</h2>
@@ -718,6 +645,16 @@ Top uncached concepts: horse (6), okapi (5), cat (4), narwhal (3)
                     </p>
                 </div>
 
+                <div className="report-callout report-callout--tbd">
+                    <div className="report-callout__label">📊 TBD: 3D Shape Fidelity Audit</div>
+                    <p style={{ margin: 0 }}>
+                        Run batch generation of 50 concepts through both PartCrafter and the fallback
+                        pipeline. Compare part decomposition quality (counts, proportions, spatial
+                        distribution), measure generation latency distributions, and create visual
+                        comparison grids of the resulting point clouds.
+                    </p>
+                </div>
+
                 {/* ═══════════════════════════════════════════════════════════
          * SECTION: AUDIO MILESTONE
          * ═══════════════════════════════════════════════════════════ */}
@@ -750,46 +687,51 @@ Top uncached concepts: horse (6), okapi (5), cat (4), narwhal (3)
                     </div>
                 </div>
 
+                <div className="report-figure-row">
+                    <div>
+                        <img
+                            src="/report-assets/04_audio_reactivity_after.png"
+                            alt="Audio reactivity debug view"
+                        />
+                        <div className="report-figure__caption">Audio reactivity — feature bars responding to speech</div>
+                    </div>
+                    <div>
+                        <img
+                            src="/report-assets/06_pipeline_restored.png"
+                            alt="Full pipeline restored after debugging"
+                        />
+                        <div className="report-figure__caption">Full pipeline restored after debugging session</div>
+                    </div>
+                </div>
+
                 {/* ═══════════════════════════════════════════════════════════
          * SECTION: WHAT I'D DO DIFFERENTLY
          * ═══════════════════════════════════════════════════════════ */}
                 <h2>Honest Retrospective</h2>
 
                 <p>
-                    <strong>The GPU surprised me.</strong> I initially targeted NVIDIA L4 GPUs, but
-                    their 24GB VRAM couldn't hold all four models simultaneously. I had to pivot
-                    mid-project to the RTX PRO 6000 Blackwell in a different region. That one
-                    discovery — that eager loading was non-negotiable for latency but incompatible
-                    with the GPU I'd planned around — cost a full day and reshaped the infrastructure.
-                </p>
-
-                <p>
-                    <strong>Safari nearly broke the whole demo.</strong> I assumed Web Speech API
-                    would work everywhere. It doesn't. Safari on iOS has confirmed bugs going back
-                    to iOS 15: <code>isFinal</code> sometimes never fires, transcripts duplicate,
-                    and PWA mode silently fails. The three-tier STT fallback wasn't in the original
-                    plan — it emerged from testing on real devices.
-                </p>
-
-                <p>
-                    <strong>I changed the 3D model twice.</strong> I started with CLIP-Forge for
-                    text-to-point-cloud generation, pivoted to TripoSR for speed, and ended up on
-                    PartCrafter when I realized part decomposition was the feature that actually
-                    mattered. Each pivot taught me something about what the particle system needed
-                    from its shape source.
-                </p>
-
-                <p>
                     <strong>AFINN-165 for sentiment is a known limitation.</strong> It's a lightweight
                     baseline, not a serious affect model. Planned upgrade: GoEmotions-class classifier
-                    or a compact model trained on session logs. The instrumentation to evaluate this
-                    is already in place — this is an informed deferral, not an oversight.
+                    or a compact model trained on session logs (audio features → emotion labels). The
+                    instrumentation to evaluate this is already in place — this is an informed deferral,
+                    not an oversight.
                 </p>
 
                 <p>
-                    <strong>WebGPU migration is deferred, not forgotten.</strong> The GLSL shaders
-                    map almost 1:1 to WGSL compute shaders. Payoff: 131K+ particles, proper compute
-                    random access, better memory management.
+                    <strong>Theory lenses are operational metaphors.</strong> They make assumptions explicit
+                    and testable, but they are not full computational implementations of GNW/AST. The point
+                    is comparability and ablation, not philosophical overreach.
+                </p>
+
+                <p>
+                    <strong>WebGPU migration is deferred, not forgotten.</strong> The GLSL fragment shaders
+                    map almost 1:1 to WGSL compute shaders. Payoff: larger particle counts (131K+), proper
+                    compute random access, better memory management. Estimated effort: 2–3 weeks.
+                </p>
+
+                <p>
+                    <strong>CI/CD needs tightening.</strong> Cloud Build + Terraform works, but a
+                    production-grade pipeline would add PR checks, staging, canaries, and automated test gates.
                 </p>
 
                 {/* ═══════════════════════════════════════════════════════════
