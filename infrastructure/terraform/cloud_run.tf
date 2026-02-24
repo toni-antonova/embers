@@ -96,7 +96,14 @@ resource "google_cloud_run_v2_service" "lumen_pipeline" {
         name  = "ALLOWED_ORIGINS"
         value = var.allowed_origins
       }
-      # Note: PORT is set automatically by Cloud Run — do not specify it here.
+      env {
+        name  = "EAGER_LOAD_ALL"
+        value = "true"
+      }
+      env {
+        name  = "VRAM_OFFLOAD_THRESHOLD_GB"
+        value = "99"
+      }
 
       # ── Resource Limits ──────────────────────────────────────────────────
       resources {
