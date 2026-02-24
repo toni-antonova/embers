@@ -123,8 +123,8 @@ commands:
       echo "Deleting existing service (freeing GPU)..."
       gcloud run services delete lumen-pipeline \
         --project=lumen-pipeline --region=us-central1 --quiet 2>/dev/null || true
-      echo "Waiting 60s for GPU deallocation..."
-      sleep 60
+      echo "Waiting 120s for GPU deallocation..."
+      sleep 120
       echo "Creating service from service.yaml..."
       gcloud run services replace ../infrastructure/service.yaml \
         --project=lumen-pipeline --region=us-central1 &&
@@ -140,7 +140,7 @@ commands:
   release:
     description: Full release — cloud build + delete/recreate service + health check
     cmd: |
-      echo "── 1/4 Building image via Cloud Build..." &&
+      echo "── 1/5 Building image via Cloud Build..." &&
       cd .. && gcloud builds submit \
         --config infrastructure/cloudbuild.yaml \
         --project=lumen-pipeline --region=us-central1 \
@@ -148,8 +148,8 @@ commands:
       echo "── 2/5 Deleting existing service (freeing GPU)..." &&
       gcloud run services delete lumen-pipeline \
         --project=lumen-pipeline --region=us-central1 --quiet 2>/dev/null || true
-      echo "── 3/5 Waiting 60s for GPU deallocation..." &&
-      sleep 60 &&
+      echo "── 3/5 Waiting 120s for GPU deallocation..." &&
+      sleep 120 &&
       echo "── 4/5 Creating service from service.yaml..." &&
       gcloud run services replace infrastructure/service.yaml \
         --project=lumen-pipeline --region=us-central1 &&

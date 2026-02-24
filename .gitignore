@@ -69,3 +69,8 @@ planning/
 analysis/
 PRINCIPAL_ENGINEER_REVIEW.md
 *.xlsx
+*.xls
+*.md
+!README.md
+!*/README.md
+!*/**/README.md

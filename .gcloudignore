@@ -17,3 +17,9 @@ server/.ruff_cache/
 server/htmlcov/
 server/**/__pycache__/
 server/**/*.egg-info/
+
+# ── Re-exclude documentation ─────────────────────────────────────────
+server/**/*.md
+!server/**/README.md
+server/**/*.xlsx
+server/**/*.xls
