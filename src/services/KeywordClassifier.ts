@@ -46,7 +46,7 @@
 
 import { CONCRETE_NOUNS, ABSTRACT_CONCEPTS, ACTION_MODIFIERS } from '../data/keywords';
 import type { KeywordMapping } from '../data/keywords';
-import { AFINN_SUBSET, AFINN_MAX_SCORE } from '../data/sentiment';
+import { AFINN_SUBSET, AFINN_MAX_SCORE, WORD_AROUSAL } from '../data/sentiment';
 
 // ══════════════════════════════════════════════════════════════════════
 // TYPES
@@ -203,7 +203,26 @@ export class KeywordClassifier implements SemanticBackend {
         // Apply modifier to base intensity and clamp to 0–1 range.
         // Base intensity: 0.5 if a keyword was found, 0.1 if not.
         const baseIntensity = bestMatch ? 0.5 : 0.1;
-        const emotionalIntensity = Math.max(0, Math.min(1, baseIntensity * intensityMultiplier));
+        let emotionalIntensity = Math.max(0, Math.min(1, baseIntensity * intensityMultiplier));
+
+        // ── STEP 4b: Derive arousal from sentiment words ─────────
+        // Override emotionalIntensity with word-level arousal so the
+        // Plutchik wheel can distinguish angry (high) from sad (low).
+        // Uses the weighted average arousal of all sentiment-bearing words.
+        let arousalSum = 0;
+        let arousalCount = 0;
+        for (const word of words) {
+            if (AFINN_SUBSET[word] !== undefined) {
+                const arousal = WORD_AROUSAL[word] ?? 0.5; // default moderate
+                arousalSum += arousal;
+                arousalCount++;
+            }
+        }
+        if (arousalCount > 0) {
+            // Blend word arousal with modifier intensity (word arousal dominates)
+            const wordArousal = arousalSum / arousalCount;
+            emotionalIntensity = Math.max(emotionalIntensity, wordArousal);
+        }
 
         // ── STEP 5: Assemble the SemanticState ───────────────────────
         if (bestMatch) {

@@ -274,7 +274,7 @@ describe('TuningConfig — localStorage Persistence', () => {
 
     it('loads saved values from localStorage on construction', () => {
         // ARRANGE: Pre-seed localStorage with custom values.
-        const seedData = { pointSize: 6.0, springK: 9.0, __version: 4 };
+        const seedData = { pointSize: 6.0, springK: 9.0, __version: 6 };
         localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
 
         // ACT: Create a new config — it should pick up the seeded values.

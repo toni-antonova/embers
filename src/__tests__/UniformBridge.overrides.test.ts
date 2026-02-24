@@ -31,7 +31,7 @@ function createMockAudioEngine() {
         start: vi.fn(),
         stop: vi.fn(),
         setConfig: vi.fn(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
 }
 
@@ -64,12 +64,14 @@ function createMockParticleSystem() {
         uColor: { value: { copy: vi.fn(), set: vi.fn() } },
         uSentiment: { value: 0 },
         uEmotionalIntensity: { value: 0 },
+        uEmotionArousal: { value: 0 },
+        uEmotionDominance: { value: 0 },
     };
 
     return {
         velocityVariable: { material: { uniforms: velocityUniforms } },
         particles: { material: { uniforms: renderUniforms } },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
 }
 
@@ -214,7 +216,7 @@ describe('UniformBridge — Emotional Intensity Override', () => {
         bridge.update();
 
         const r = // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mockParticles.particles.material as any).uniforms;
+            (mockParticles.particles.material as any).uniforms;
         expect(r.uEmotionalIntensity.value).toBe(0.8);
     });
 
@@ -225,7 +227,7 @@ describe('UniformBridge — Emotional Intensity Override', () => {
         bridge.update();
 
         const r = // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mockParticles.particles.material as any).uniforms;
+            (mockParticles.particles.material as any).uniforms;
         expect(r.uEmotionalIntensity.value).toBe(0);
     });
 });

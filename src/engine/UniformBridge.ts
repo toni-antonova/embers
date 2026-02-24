@@ -267,6 +267,12 @@ export class UniformBridge {
         // Smoothly interpolate the raw sentiment override toward a stable
         // value. This runs whenever EITHER Sentiment Color or Sentiment
         // Movement is active, so movement can work independently of color.
+        //
+        // ASYMMETRIC ATTACK / RELEASE:
+        // Emotional peaks ramp up at full lerp speed so they hit hard.
+        // Decay toward neutral uses half speed so the system settles
+        // gracefully between rapid sentiment changes (e.g. "happy...
+        // terrible... wonderful" in quick succession).
         {
             const colorActive = this.sentimentEnabled
                 && this.sentimentOverride !== null;
@@ -277,10 +283,15 @@ export class UniformBridge {
                 ? this.sentimentOverride!
                 : 0;
 
-            // Temporal smoothing — lerp toward target, clamped to [-1, 1]
-            const speed = this.config.get('sentimentSmoothing');
+            // Temporal smoothing — asymmetric: fast attack, slow release
+            const baseSpeed = this.config.get('sentimentSmoothing');
             const dt = this.particleSystem.velocityVariable.material.uniforms.uDelta.value;
-            this.smoothedSentiment += (target - this.smoothedSentiment) * Math.min(1.0, speed * dt);
+            const delta = target - this.smoothedSentiment;
+            // Attack: moving away from zero (toward a stronger emotion)
+            // Release: moving toward zero (decaying back to neutral)
+            const isAttack = Math.abs(target) > Math.abs(this.smoothedSentiment);
+            const speed = isAttack ? baseSpeed : baseSpeed * 0.5;
+            this.smoothedSentiment += delta * Math.min(1.0, speed * dt);
             this.smoothedSentiment = Math.max(-1, Math.min(1, this.smoothedSentiment));
         }
 
@@ -301,6 +312,10 @@ export class UniformBridge {
             renderUniforms.uEmotionalIntensity.value = isColorActive
                 ? (this.emotionalIntensityOverride ?? 0)
                 : 0;
+
+            // Pass full VAD for Plutchik emotion wheel color mapping
+            renderUniforms.uEmotionArousal.value = this.smoothedArousal;
+            renderUniforms.uEmotionDominance.value = this.smoothedDominance;
         }
 
         // ── SENTIMENT MOVEMENT → VELOCITY SHADER UNIFORMS ─────────
@@ -326,6 +341,22 @@ export class UniformBridge {
             velUniforms.uSentimentMovement.value = movementSentiment;
             velUniforms.uSentimentMovementIntensity.value =
                 this.config.get('sentimentMovementIntensity');
+
+            // ── DIAGNOSTIC: SENTIMENT MOVEMENT ────────────────────────
+            // Logs alongside the existing [UNIFORMS] diagnostic (~0.5s interval).
+            // Shows the raw override, smoothed value, final uniform, and intensity
+            // so you can see the full chain while tuning with the panel open.
+            if (this.logCounter === 0 && this.sentimentMovementEnabled) {
+                const intensity = this.config.get('sentimentMovementIntensity');
+                const product = movementSentiment * intensity;
+                console.log(
+                    `[SENTIMENT-MOVE] override:${this.sentimentOverride?.toFixed(3) ?? 'null'} ` +
+                    `smoothed:${this.smoothedSentiment.toFixed(3)} ` +
+                    `uniform:${movementSentiment.toFixed(3)} ` +
+                    `intensity:${intensity.toFixed(2)} ` +
+                    `product:${product.toFixed(3)}`
+                );
+            }
         }
 
         // ── BASE COLOR ───────────────────────────────────────────────

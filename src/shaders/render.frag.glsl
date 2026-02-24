@@ -12,12 +12,16 @@
 //
 // COLOR MODES:
 //   White (0): Subtle tension-driven warm↔cool tint on white base.
-//   Color (1): Sentiment-driven monotone coloring.
-//     - Happy (positive sentiment)     → yellow-orange
-//     - Sad   (negative, low intensity) → blue
-//     - Angry (negative, high intensity)→ red
-//     - Neutral                         → soft warm white
-//     Base hue shifts with per-particle variation for organic feel.
+//   Color (1): Plutchik emotion wheel coloring via VAD.
+//     Uses valence (sentiment) and arousal to position on
+//     the Plutchik circumplex, mapping to distinct hues:
+//       Happy    → Gold/Yellow    (V+, A+)
+//       Surprise → Amber/Orange   (V+, A++)
+//       Angry    → Red            (V−, A++)
+//       Disgust  → Green          (V−, A mid)
+//       Fear     → Purple         (V−, A+)
+//       Sad      → Blue           (V−, A−)
+//       Neutral  → Warm White     (desaturated)
 // ═══════════════════════════════════════════════════════════════════════
 
 uniform vec3 uColor;        // Base particle color (fallback)
@@ -28,9 +32,11 @@ uniform float uRolloff;     // Spectral rolloff → edge softness (0=soft, 1=cri
 
 // Color channel uniforms
 uniform float uTension;     // 0–1, from spectral centroid (0=relaxed, 1=tense)
-uniform float uSentiment;   // −1 to +1, from keyword classifier
+uniform float uSentiment;   // −1 to +1, valence from keyword classifier / SER
 uniform float uEnergy;      // 0–1, from RMS
-uniform float uEmotionalIntensity; // 0–1, from classifier (high = angry, low = sad)
+uniform float uEmotionalIntensity; // 0–1, from classifier
+uniform float uEmotionArousal;     // 0–1, from SER (calm→excited)
+uniform float uEmotionDominance;   // 0–1, from SER (submissive→dominant)
 
 varying vec2 vUV;           // Per-particle UV from vertex shader
 
@@ -52,6 +58,64 @@ vec3 hsl2rgb(float h, float s, float l) {
     return rgb + m;
 }
 
+// ── PLUTCHIK EMOTION WHEEL ───────────────────────────────────────────
+// Maps (valence, arousal) → hue on the Plutchik circumplex model.
+//
+// The 2D affect space (valence on X, arousal on Y) is divided into
+// angular regions, each assigned a perceptually distinct hue.
+// This gives smooth, continuous transitions between emotion colors.
+//
+// Emotion positions in V-A space (from ser-worker.ts VAD table):
+//   Happy:    V=+0.8, A=0.7  → Gold    (45°)
+//   Surprise: V=+0.3, A=0.8  → Amber   (30°)
+//   Angry:    V=−0.6, A=0.8  → Red     (0°)
+//   Fear:     V=−0.7, A=0.7  → Purple  (280°)
+//   Disgust:  V=−0.7, A=0.4  → Green   (120°)
+//   Sad:      V=−0.6, A=0.2  → Blue    (220°)
+//   Neutral:  V= 0.0, A=0.2  → Warm    (desaturated)
+float emotionHue(float valence, float arousal) {
+    // Remap arousal from [0,1] to centered [-0.5, +0.5]
+    float a = arousal - 0.5;
+    float v = valence;
+
+    // Compute angle in V-A space (radians, -π to +π)
+    float angle = atan(a, v);
+
+    // Normalize angle from [-π, +π] to [0, 1]
+    float normAngle = (angle + 3.14159) / 6.28318;
+
+    // Piecewise hue mapping — each angular region maps to a color
+    float hue;
+    if (normAngle < 0.12) {
+        // Sad region (V−, A−) → Blue (0.61)
+        hue = 0.61;
+    } else if (normAngle < 0.30) {
+        // Transition: Sad→Happy (crossing through positive valence, low arousal)
+        hue = mix(0.61, 0.125, (normAngle - 0.12) / 0.18);
+    } else if (normAngle < 0.42) {
+        // Happy region (V+, A+) → Gold (0.125 = 45°)
+        hue = mix(0.125, 0.083, (normAngle - 0.30) / 0.12);
+    } else if (normAngle < 0.52) {
+        // Surprise region (V+, strong A+) → Amber (0.083 = 30°)
+        hue = mix(0.083, 0.03, (normAngle - 0.42) / 0.10);
+    } else if (normAngle < 0.64) {
+        // Angry region (V−, A++) → Red (0.0 = 0°)
+        hue = mix(0.03, 0.0, (normAngle - 0.52) / 0.12);
+    } else if (normAngle < 0.74) {
+        // Fear region (V−, A+) → Purple (0.78 = 280°)
+        // Jump through hue = 1.0 to wrap from red to purple
+        hue = mix(1.0, 0.78, (normAngle - 0.64) / 0.10);
+    } else if (normAngle < 0.86) {
+        // Disgust region (V−, A mid) → Green (0.33 = 120°)
+        hue = mix(0.78, 0.33, (normAngle - 0.74) / 0.12);
+    } else {
+        // Wrap: Disgust→Sad (Green back to Blue)
+        hue = mix(0.33, 0.61, (normAngle - 0.86) / 0.14);
+    }
+
+    return fract(hue);
+}
+
 void main() {
     // Distance from center of the point quad (0.5, 0.5)
     float dist = length(gl_PointCoord - vec2(0.5));
@@ -70,37 +134,37 @@ void main() {
     vec3 finalColor;
 
     if (uColorMode > 0.5) {
-        // ── COLOR MODE: Sentiment-driven monotone coloring ────────
+        // ── COLOR MODE: Plutchik Emotion Wheel ────────────────────
         //
-        // Determine the emotional hue:
-        //   Happy  (sentiment > 0):  hue ~0.10 (yellow-orange)
-        //   Sad    (sentiment < 0, low intensity):  hue ~0.60 (blue)
-        //   Angry  (sentiment < 0, high intensity): hue ~0.00 (red)
-        //   Neutral: hue ~0.08 (warm white-ish)
+        // Map (valence, arousal) → hue via the Plutchik circumplex.
+        // Saturation scales with emotional intensity.
+        // Lightness modulated by dominance.
 
         float sentAbs = abs(uSentiment);
-        float hue;
-        float sat;
-        float lit;
 
-        if (uSentiment > 0.05) {
-            // HAPPY: yellow-orange
-            hue = 0.10;  // ~36° yellow-orange
-            sat = 0.7 * sentAbs;
-            lit = 0.65 + sentAbs * 0.1;
-        } else if (uSentiment < -0.05) {
-            // NEGATIVE: blend between blue (sad) and red (angry) by intensity
-            float sadHue = 0.60;   // 216° blue
-            float angryHue = 0.0;  // 0° red
-            hue = mix(sadHue, angryHue, uEmotionalIntensity);
-            sat = 0.6 * sentAbs;
-            lit = 0.55 + sentAbs * 0.1;
-        } else {
-            // NEUTRAL: soft warm white
-            hue = 0.08;
-            sat = 0.05;
-            lit = 0.75;
-        }
+        // Effective arousal: blend SER arousal with text-based emotionalIntensity.
+        // When SER isn't running, emotionalIntensity from the classifier
+        // distinguishes angry (high) from sad (low), giving us color diversity.
+        // When SER IS running, its arousal takes precedence.
+        float effectiveArousal = max(uEmotionArousal, uEmotionalIntensity);
+
+        // Emotional strength: how far from neutral are we?
+        float emotionStrength = max(sentAbs, effectiveArousal * 0.6);
+
+        // Compute hue from Plutchik emotion wheel using effective arousal
+        float hue = emotionHue(uSentiment, effectiveArousal);
+
+        // Saturation: near-neutral = desaturated, strong emotion = vivid.
+        // With additive blending on a dark background, overlapping particles
+        // wash out high-lightness colors to white. Pushing saturation to 0.95
+        // and using a steeper ramp keeps hues vivid even at particle density.
+        float sat = smoothstep(0.0, 0.25, emotionStrength) * 0.95;
+
+        // Lightness: base 0.50 (was 0.65 — too pastel with additive blending).
+        // Lower base preserves hue identity when particles overlap.
+        //   - dominance pushes brighter (dominant) or dimmer (submissive)
+        //   - strong emotion brightens moderately
+        float lit = 0.50 + uEmotionDominance * 0.10 + emotionStrength * 0.08;
 
         // Per-particle hue variation for organic feel (very subtle ±0.03)
         float hueVariation = (vUV.x * 0.37 + vUV.y * 0.23 + uTime * 0.02);

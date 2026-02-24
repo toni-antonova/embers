@@ -62,6 +62,8 @@ function createMockParticleSystem() {
         uColor: { value: { copy: vi.fn(), set: vi.fn() } },
         uSentiment: { value: 0 },
         uEmotionalIntensity: { value: 0 },
+        uEmotionArousal: { value: 0 },
+        uEmotionDominance: { value: 0 },
     };
 
     return {

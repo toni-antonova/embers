@@ -435,9 +435,13 @@ export class SemanticBackend {
             this._lastState = state;
             this._lastAction = 'hold';
 
-            // Still push sentiment — emotional context applies even without a morph
-            this.uniformBridge.sentimentOverride = state.sentiment;
-            this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
+            // Push sentiment only if we actually detected emotion words.
+            // Without this guard, rapid interim transcripts with no AFINN
+            // matches overwrite the previous emotion → flash of color then reset.
+            if (Math.abs(state.sentiment) > 0.05) {
+                this.uniformBridge.sentimentOverride = state.sentiment;
+                this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
+            }
 
             if (event.isFinal) {
                 this.logEvent(event.text, state, 'hold');

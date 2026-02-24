@@ -82,6 +82,8 @@ function createMockParticleSystem() {
         },
         uSentiment: { value: 0 },
         uEmotionalIntensity: { value: 0 },
+        uEmotionArousal: { value: 0 },
+        uEmotionDominance: { value: 0 },
     };
 
     return {

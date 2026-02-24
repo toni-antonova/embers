@@ -195,22 +195,31 @@ void main() {
 
     if (sentMov > 0.0) {
         // JOY profile: lighter spring, freer flow, calmer noise, bigger breath
-        smSpringOffset  = -sentMov * 2.5;
-        smDragOffset    = -sentMov * 1.8;
-        smNoiseAmpOff   = -sentMov * 0.3;
-        smNoiseFreqOff  = -sentMov * 0.3;
-        smBreathOff     =  sentMov * 1.0;
+        smSpringOffset  = -sentMov * 4.0;
+        smDragOffset    = -sentMov * 3.0;
+        smNoiseAmpOff   = -sentMov * 0.5;
+        smNoiseFreqOff  = -sentMov * 0.5;
+        smBreathOff     =  sentMov * 2.0;
     } else if (sentMov < 0.0) {
         // Negative: interpolate between SAD (mild) and ANGRY (strong)
         float angerRatio = smoothstep(0.3, 0.8, sentAbs);
         // SAD: heavy, bound, quiet, slow
         // ANGRY: firm, snappy, chaotic, tight swirls
-        smSpringOffset  = mix(sentAbs * 1.5,  sentAbs * 0.8, angerRatio);
-        smDragOffset    = mix(sentAbs * 1.5, -sentAbs * 0.8, angerRatio);
-        smNoiseAmpOff   = mix(-sentAbs * 0.2, sentAbs * 1.5, angerRatio);
-        smNoiseFreqOff  = mix(-sentAbs * 0.2, sentAbs * 0.8, angerRatio);
-        smBreathOff     = mix(-sentAbs * 0.5, sentAbs * 0.5, angerRatio);
+        smSpringOffset  = mix(sentAbs * 2.5,  sentAbs * 1.5, angerRatio);
+        smDragOffset    = mix(sentAbs * 2.5, -sentAbs * 1.5, angerRatio);
+        smNoiseAmpOff   = mix(-sentAbs * 0.3, sentAbs * 2.5, angerRatio);
+        smNoiseFreqOff  = mix(-sentAbs * 0.3, sentAbs * 1.5, angerRatio);
+        smBreathOff     = mix(-sentAbs * 0.8, sentAbs * 1.0, angerRatio);
     }
+
+    // ── SOFT CLAMPS (safety net for extreme sentiment × intensity) ────
+    // Prevent overcorrection from strong words at high intensity settings.
+    // Caps chosen so the effect reads as emotionally intense, not glitchy.
+    smSpringOffset  = clamp(smSpringOffset, -5.0, 4.0);
+    smDragOffset    = clamp(smDragOffset,   -4.0, 4.0);
+    smNoiseAmpOff   = clamp(smNoiseAmpOff,  -0.8, 3.0);
+    smNoiseFreqOff  = clamp(smNoiseFreqOff, -0.8, 2.0);
+    smBreathOff     = clamp(smBreathOff,    -1.0, 3.0);
 
     // ── TENSION → CURL FREQUENCY ONLY ─────────────────────────────────
     // Higher tension = tighter curl patterns. This is the ONLY thing

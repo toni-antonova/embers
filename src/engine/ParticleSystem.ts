@@ -142,8 +142,10 @@ export class ParticleSystem {
                 uRolloff: { value: 0.5 },    // Spectral rolloff → edge softness
                 uTension: { value: 0.0 },    // Spectral centroid → warm/cool color
                 uEnergy: { value: 0.0 },      // RMS → brightness boost
-                uSentiment: { value: 0.0 },   // Sentiment color shift (−1 to +1)
+                uSentiment: { value: 0.0 },   // Sentiment color shift (−1 to +1) → maps to valence
                 uEmotionalIntensity: { value: 0.0 }, // Emotional intensity (0=sad, 1=angry)
+                uEmotionArousal: { value: 0.0 },     // SER arousal (0=calm, 1=excited)
+                uEmotionDominance: { value: 0.0 },    // SER dominance (0=submissive, 1=dominant)
             },
             vertexShader: renderVert,
             fragmentShader: renderFrag,
@@ -184,13 +186,20 @@ export class ParticleSystem {
         }
     }
 
-    update(deltaTime: number) {
+    /**
+     * Phase 1: Write config baselines to shader uniforms.
+     *
+     * This sets the "ground truth" from TuningConfig sliders BEFORE
+     * UniformBridge applies its modulations (emotion overrides, transition
+     * choreography, audio features). Must run before UniformBridge.update().
+     *
+     * Previously this was combined with compute() in a single update(),
+     * which caused UniformBridge's writes to be silently overwritten
+     * by the config baseline before the GPU ever saw them.
+     */
+    writeConfigUniforms(deltaTime: number): void {
         this.time += deltaTime;
 
-        // ── READ TUNING CONFIG → UPDATE UNIFORMS ─────────────────────
-        // Every frame, we read the latest values from TuningConfig and
-        // push them to the shader uniforms. This is how the TuningPanel
-        // sliders control particle behavior in real time.
         const velUniforms = this.velocityVariable.material.uniforms;
         const renderUniforms = (this.particles.material as THREE.ShaderMaterial).uniforms;
 
@@ -218,7 +227,16 @@ export class ParticleSystem {
         renderUniforms.uTime.value = this.time;
         this.positionVariable.material.uniforms.uDelta.value = deltaTime;
         velUniforms.uDelta.value = deltaTime;
+    }
 
+    /**
+     * Phase 2: Run GPU compute and update render textures.
+     *
+     * Call this AFTER UniformBridge.update() has applied its modulations
+     * on top of the config baselines. This ensures the GPU simulation
+     * sees the fully modulated uniform values.
+     */
+    computeAndRender(): void {
         // Update GPGPU
         this.gpuCompute.compute();
 
@@ -227,6 +245,16 @@ export class ParticleSystem {
             this.gpuCompute.getCurrentRenderTarget(this.positionVariable).texture;
         (this.particles.material as THREE.ShaderMaterial).uniforms.textureVelocity.value =
             this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture;
+    }
+
+    /**
+     * Combined update — writes config, then computes.
+     * Kept for backward compatibility with tests and any code
+     * that doesn't use the split-phase protocol.
+     */
+    update(deltaTime: number) {
+        this.writeConfigUniforms(deltaTime);
+        this.computeAndRender();
     }
 
     setPointer(position: THREE.Vector3, active: boolean) {
