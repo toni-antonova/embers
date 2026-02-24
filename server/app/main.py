@@ -5,8 +5,10 @@
 # The --factory flag tells uvicorn to call create_app() for the app instance.
 # ─────────────────────────────────────────────────────────────────────────────
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import FastAPI
@@ -32,8 +34,27 @@ from app.services.pipeline import PipelineOrchestrator
 logger = structlog.get_logger(__name__)
 
 
+def _parse_retry_after(rate_limit: str) -> str:
+    """Extract the window duration from a slowapi rate limit string.
+
+    Examples:
+        "60/minute" → "60"   (60 seconds)
+        "10/second" → "1"    (1 second)
+        "5/hour"    → "3600" (1 hour)
+    Falls back to "60" if the format is unrecognized.
+    """
+    windows = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}
+    try:
+        _, window = rate_limit.strip().split("/")
+        return str(windows.get(window.strip(), 60))
+    except (ValueError, AttributeError):
+        return "60"
+
+
 async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """Return a structured JSON 429 consistent with LumenError responses."""
+    settings = get_settings()
+    retry_after = _parse_retry_after(settings.rate_limit)
     logger.warning(
         "rate_limit_exceeded",
         path=request.url.path,
@@ -43,15 +64,20 @@ async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded)
     return JSONResponse(
         status_code=429,
         content={"error": f"Rate limit exceeded: {exc.detail}"},
-        headers={"Retry-After": "60"},
+        headers={"Retry-After": retry_after},
     )
 
 
-def _configure_otel(exporter_type: str) -> None:
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import TracerProvider
+
+
+def _configure_otel(exporter_type: str) -> "TracerProvider | None":
     """Configure OpenTelemetry tracing.
 
     Supports "console" for dev and "gcp" for Cloud Trace.
-    No-op if the exporter type is unknown.
+    No-op if the exporter type is unknown. Returns the provider
+    so the caller can shut it down during lifespan cleanup.
     """
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -69,15 +95,16 @@ def _configure_otel(exporter_type: str) -> None:
             provider.add_span_processor(BatchSpanProcessor(CloudTraceSpanExporter()))  # type: ignore[no-untyped-call]
         except ImportError:
             logger.warning("gcp_trace_exporter_not_available")
-            return
+            return None
     else:
         logger.warning("unknown_otel_exporter", exporter=exporter_type)
-        return
+        return None
 
     from opentelemetry import trace
 
     trace.set_tracer_provider(provider)
     logger.info("otel_configured", exporter=exporter_type)
+    return provider
 
 
 @asynccontextmanager
@@ -99,9 +126,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     # ── Configure OpenTelemetry ──────────────────────────────────────────────
+    otel_provider = None
     otel_exporter = os.environ.get("OTEL_EXPORTER", "")
     if otel_exporter:
-        _configure_otel(otel_exporter)
+        otel_provider = _configure_otel(otel_exporter)
 
     # Initialize model registry (no models loaded yet)
     registry = ModelRegistry(settings)
@@ -125,13 +153,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Load models in background after app is already serving.
     # Cache warming runs after models finish loading.
+    # IMPORTANT: Store the task reference on app.state to prevent garbage
+    # collection. Without this, Python can GC the Task before it completes,
+    # silently cancelling model loading.
     if not settings.skip_model_load:
-        asyncio.create_task(_load_models_and_warm_cache(registry, cache))
+        task = asyncio.create_task(_load_models_and_warm_cache(registry, cache))
+        task.add_done_callback(_on_model_load_done)
+        app.state._model_load_task = task
 
     yield  # App is running, serving requests
 
-    # Shutdown
+    # ── Shutdown ─────────────────────────────────────────────────────────────
+    # Flush pending OTel spans before process exit. Without this, the
+    # BatchSpanProcessor drops its final batch on Cloud Run scale-to-zero.
+    if otel_provider is not None:
+        otel_provider.shutdown()
+
     await cache.disconnect()
+
+
+def _on_model_load_done(task: asyncio.Task[None]) -> None:
+    """Callback for the background model-load task.
+
+    Without this, exceptions from create_task() are silently swallowed —
+    Python only prints "Task exception was never retrieved" to stderr.
+    This ensures model load failures are logged prominently.
+    """
+    if task.cancelled():
+        logger.error("model_load_task_cancelled")
+    elif exc := task.exception():
+        logger.critical(
+            "model_load_task_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
 
 
 async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache) -> None:
@@ -237,22 +292,25 @@ async def _load_models_and_warm_cache(registry: ModelRegistry, cache: ShapeCache
     except Exception:
         logger.exception("cache_warming_failed")
 
-    # ── Preload top concepts ─────────────────────────────────────────────
+    # ── Preload top concepts (parallel) ──────────────────────────────────
     # Ensure the 8 highest-value concepts are in memory even if
     # load_all_cached missed them (e.g. cache was empty on first deploy).
-    # Skip concepts already loaded by load_all_cached() to avoid
-    # redundant normalize → hash → lock cycles.
+    # Uses asyncio.gather for parallel GCS round-trips instead of
+    # sequential awaits (~8× faster on first deploy).
     top_concepts = ["horse", "dog", "cat", "bird", "dragon", "elephant", "fish", "car"]
-    preloaded = 0
-    for concept in top_concepts:
+
+    async def _preload_one(concept: str) -> bool:
         try:
             existing = await cache.get(concept)
             if existing is not None:
-                continue  # Already in memory from load_all_cached
-            if await cache.preload_to_memory(concept):
-                preloaded += 1
+                return False  # Already in memory from load_all_cached
+            return await cache.preload_to_memory(concept)
         except Exception:
             logger.warning("preload_concept_failed", concept=concept)
+            return False
+
+    results = await asyncio.gather(*[_preload_one(c) for c in top_concepts])
+    preloaded = sum(results)
     logger.info("top_concepts_preloaded", count=preloaded, total=len(top_concepts))
 
 

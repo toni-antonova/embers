@@ -39,7 +39,12 @@ RUN uv pip install torch-cluster==1.6.3 \
 COPY --chown=appuser app/ app/
 
 EXPOSE 8080
+# Default PORT for local dev; Cloud Run overrides via environment.
+ENV PORT=8080
 # --no-sync: all deps are baked into the base image; skip the implicit
 # sync so `uv run` doesn't overwrite the pre-built PyG torch-cluster wheel
 # with the broken PyPI sdist.
-CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+# Shell form (not exec form) enables $PORT expansion at runtime.
+# `exec` replaces the shell process with uvicorn so it receives
+# SIGTERM directly from Cloud Run (needed for graceful shutdown).
+CMD exec uv run --no-sync uvicorn app.main:create_app --factory --host 0.0.0.0 --port $PORT
