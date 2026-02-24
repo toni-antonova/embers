@@ -239,7 +239,23 @@ export class KeywordClassifier implements SemanticBackend {
             };
         }
 
-        // ── STEP 6: Default (no keyword found) ──────────────────────
+        // ── STEP 6: Try to extract a probable noun → route to server ──
+        // Before giving up, check for probable nouns (words > 3 chars
+        // that aren't common stopwords). If found, send them to the
+        // backend for GPU-generated 3D shape with moderate confidence.
+        const probableNoun = KeywordClassifier.extractProbableNoun(words);
+        if (probableNoun) {
+            return {
+                morphTarget: probableNoun,  // server will generate this shape
+                abstractionLevel: 0.3,      // moderate concreteness
+                sentiment,
+                emotionalIntensity,
+                dominantWord: probableNoun,
+                confidence: 0.5,            // above FINAL_CONFIDENCE_THRESHOLD (0.3)
+            };
+        }
+
+        // ── STEP 7: Default (nothing found) ──────────────────────────
         // Return a low-confidence state that tells the consumer
         // "I didn't understand this, don't change the current shape."
         // The empty morphTarget signals "keep whatever is currently active."
@@ -260,5 +276,76 @@ export class KeywordClassifier implements SemanticBackend {
     lookupKeyword(word: string): KeywordMapping | null {
         const normalized = word.toLowerCase().replace(/[^a-z]/g, '');
         return CONCRETE_NOUNS[normalized] || ABSTRACT_CONCEPTS[normalized] || null;
+    }
+
+    // ── STOPWORD SET ──────────────────────────────────────────────────
+    // Common English words that are never useful as 3D shape prompts.
+    // Used to filter non-content words when extracting probable nouns.
+    private static readonly STOPWORDS = new Set([
+        // Articles & determiners
+        'the', 'this', 'that', 'these', 'those', 'some', 'every', 'each',
+        // Pronouns
+        'they', 'them', 'their', 'there', 'here', 'what', 'which', 'where',
+        'when', 'while', 'whom', 'whose', 'with', 'would', 'will', 'were',
+        // Prepositions
+        'from', 'into', 'onto', 'upon', 'over', 'under', 'about', 'after',
+        'before', 'between', 'through', 'around', 'above', 'below', 'along',
+        // Conjunctions & connectors
+        'also', 'another', 'because', 'been', 'being', 'both',
+        // Common verbs (forms that STT frequently outputs)
+        'have', 'having', 'does', 'doing', 'done', 'goes', 'going', 'gone',
+        'come', 'came', 'coming', 'take', 'took', 'taken', 'make', 'made',
+        'give', 'gave', 'given', 'keep', 'kept', 'know', 'knew', 'known',
+        'think', 'thought', 'tell', 'told', 'said', 'says', 'just', 'like',
+        'very', 'really', 'only', 'much', 'many', 'more', 'most', 'even',
+        'than', 'then', 'well', 'back', 'could', 'should', 'want', 'need',
+        'seem', 'seems', 'look', 'feel', 'felt', 'find', 'found', 'call',
+        'called', 'tried', 'trying', 'turn', 'turned', 'leave', 'left',
+        'hear', 'heard', 'help', 'show', 'start', 'began', 'begin',
+        // Auxiliary / short function words
+        'your', 'you', 'are', 'was', 'not', 'but', 'all', 'can', 'had',
+        'her', 'his', 'him', 'how', 'its', 'let', 'may', 'our', 'own',
+        'she', 'too', 'use', 'used',
+        // Common adjectives not useful as shape prompts
+        'good', 'great', 'long', 'little', 'same', 'other', 'such',
+        'first', 'last', 'next', 'still', 'right', 'real',
+        // Relative/filler verbs (3rd person forms STT outputs)
+        'sits', 'eats', 'gets', 'puts', 'runs', 'looks', 'says',
+        'goes', 'comes', 'takes', 'makes', 'gives', 'keeps',
+        // Common greeting/discourse words that STT captures
+        'hello', 'okay', 'yeah', 'sure', 'well', 'actually',
+        'really', 'basically', 'literally', 'maybe', 'probably',
+    ]);
+
+    /**
+     * Extract the most likely noun from a list of words.
+     * Returns null if no probable noun is found.
+     *
+     * Heuristic: longest word > 3 chars that isn't a stopword,
+     * a known action modifier, an AFINN sentiment word, or already
+     * in our keyword dictionaries. Longer words are more likely to
+     * be content nouns suitable as 3D shape prompts.
+     */
+    static extractProbableNoun(words: string[]): string | null {
+        let best: string | null = null;
+        let bestLen = 0;
+
+        for (const word of words) {
+            if (word.length <= 3) continue;
+            if (KeywordClassifier.STOPWORDS.has(word)) continue;
+            if (CONCRETE_NOUNS[word]) continue;
+            if (ABSTRACT_CONCEPTS[word]) continue;
+            if (ACTION_MODIFIERS[word] !== undefined) continue;
+            // AFINN sentiment words (happy, terrible, etc.) have emotional
+            // meaning but make poor 3D shape prompts — skip them.
+            if (AFINN_SUBSET[word] !== undefined) continue;
+
+            if (word.length > bestLen) {
+                best = word;
+                bestLen = word.length;
+            }
+        }
+
+        return best;
     }
 }

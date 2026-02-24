@@ -259,11 +259,33 @@ describe('KeywordClassifier — Edge Cases', () => {
         expect(result.confidence).toBe(0.1);
     });
 
-    it('returns default state for unrecognized words', () => {
+    it('extracts probable noun for unrecognized words (routes to server)', () => {
         const result = classifier.classify('xylophone quantum paradigm');
+        // 'xylophone' is longest unknown word (9 chars vs 7 and 8)
+        expect(result.morphTarget).toBe('xylophone');
+        expect(result.confidence).toBe(0.5);
+        expect(result.dominantWord).toBe('xylophone');
+    });
+
+    it('returns default state for pure stopwords', () => {
+        const result = classifier.classify('the and but');
         expect(result.morphTarget).toBe('');
         expect(result.confidence).toBe(0.1);
         expect(result.dominantWord).toBe('');
+    });
+
+    it('does NOT extract AFINN sentiment words as probable nouns', () => {
+        // 'happy' is in the AFINN lexicon — it has emotional meaning
+        // but makes a terrible shape prompt for the 3D backend
+        const result = classifier.classify('happy');
+        expect(result.morphTarget).toBe('');
+        expect(result.confidence).toBe(0.1);
+    });
+
+    it('skips discourse words (hello, okay, actually)', () => {
+        const result = classifier.classify('hello okay actually');
+        expect(result.morphTarget).toBe('');
+        expect(result.confidence).toBe(0.1);
     });
 });
 
@@ -293,5 +315,76 @@ describe('KeywordClassifier — SemanticBackend Interface', () => {
         expect(Number.isFinite(result.sentiment)).toBe(true);
         expect(Number.isFinite(result.emotionalIntensity)).toBe(true);
         expect(Number.isFinite(result.confidence)).toBe(true);
+    });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 8: extractProbableNoun (unit tests)
+// ══════════════════════════════════════════════════════════════════════
+
+describe('KeywordClassifier — extractProbableNoun', () => {
+    it('picks the longest word as the probable noun', () => {
+        // 'politician' (10) > 'cream' (5) > 'eats' (stopword)
+        expect(KeywordClassifier.extractProbableNoun(
+            ['politician', 'eats', 'cream']
+        )).toBe('politician');
+    });
+
+    it('returns null for empty word list', () => {
+        expect(KeywordClassifier.extractProbableNoun([])).toBeNull();
+    });
+
+    it('returns null when all words are ≤ 3 chars', () => {
+        expect(KeywordClassifier.extractProbableNoun(
+            ['the', 'and', 'but', 'or', 'is', 'it']
+        )).toBeNull();
+    });
+
+    it('returns null when all words are stopwords', () => {
+        expect(KeywordClassifier.extractProbableNoun(
+            ['because', 'between', 'through', 'should']
+        )).toBeNull();
+    });
+
+    it('skips words in CONCRETE_NOUNS dictionary', () => {
+        // 'horse' is 5 chars but in the dictionary
+        expect(KeywordClassifier.extractProbableNoun(
+            ['horse']
+        )).toBeNull();
+    });
+
+    it('skips words in ABSTRACT_CONCEPTS dictionary', () => {
+        expect(KeywordClassifier.extractProbableNoun(
+            ['freedom']
+        )).toBeNull();
+    });
+
+    it('skips ACTION_MODIFIER words', () => {
+        expect(KeywordClassifier.extractProbableNoun(
+            ['galloping']
+        )).toBeNull();
+    });
+
+    it('skips AFINN sentiment words', () => {
+        // 'happy', 'terrible', 'beautiful' have emotional meaning
+        // but make poor 3D shape prompts
+        expect(KeywordClassifier.extractProbableNoun(
+            ['happy', 'terrible', 'beautiful']
+        )).toBeNull();
+    });
+
+    it('extracts noun even when mixed with stopwords and sentiment', () => {
+        // 'spaceship' is the only true content noun
+        expect(KeywordClassifier.extractProbableNoun(
+            ['the', 'happy', 'spaceship', 'goes', 'through']
+        )).toBe('spaceship');
+    });
+
+    it('picks longest when multiple valid nouns present', () => {
+        // 'helicopter' (10) > 'tank' (4)
+        expect(KeywordClassifier.extractProbableNoun(
+            ['tank', 'helicopter']
+        )).toBe('helicopter');
     });
 });

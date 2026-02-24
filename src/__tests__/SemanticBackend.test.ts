@@ -56,9 +56,14 @@ function createMockSpeechEngine() {
 function createMockParticleSystem() {
     return {
         setTarget: vi.fn(),
+        setTargetTexture: vi.fn(),
+        morphTargets: {
+            hasTarget: vi.fn((_: string) => false), // default: server shapes
+        },
         velocityVariable: {
             material: { uniforms: { uDelta: { value: 0.016 } } }
         },
+        size: 128,
     } as any;
 }
 
@@ -200,17 +205,18 @@ describe('SemanticBackend — Loosening', () => {
         // Simulate 0.5 seconds (less than silence gate)
         backend.update(0.5);
 
-        mockSpeech.pushTranscript('hello');
+        // Use pure stopwords so extractProbableNoun returns null → HOLD
+        mockSpeech.pushTranscript('the was');
         backend.update(0.016);
 
-        // noiseOverride should stay null (no loosening)
+        // noiseOverride should stay null (no loosening, and no morph)
         expect(mockBridge.noiseOverride).toBeNull();
     });
 
     it('loosening expires after 0.3s', () => {
-        // Trigger loosening
+        // Trigger loosening with a pure stopword (no morph side-effects)
         backend.update(3.0);
-        mockSpeech.pushTranscript('hello');
+        mockSpeech.pushTranscript('the was');
         backend.update(0.016);
         expect(mockBridge.noiseOverride).toBe(0.3);
 
@@ -443,5 +449,98 @@ describe('SemanticBackend — SessionLogger Integration', () => {
 
         expect(logger.getEventsByType('transcript').length).toBeGreaterThanOrEqual(1);
         expect(logger.getEventsByType('semantic').length).toBeGreaterThanOrEqual(1);
+    });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 10: NOVEL NOUN → SERVER SHAPE ROUTING
+// ══════════════════════════════════════════════════════════════════════
+
+describe('SemanticBackend — Server Shape Routing', () => {
+    it('routes novel nouns to serverClient.generateShape()', async () => {
+        // Create a mock ServerClient
+        const mockServerClient = {
+            generateShape: vi.fn().mockResolvedValue({
+                positions: new Float32Array(100),
+                pipeline: 'partcrafter',
+                generationTimeMs: 5000,
+                partNames: ['body'],
+                cached: false,
+                templateType: 'custom',
+            }),
+            warmUp: vi.fn().mockResolvedValue(true),
+        } as any;
+
+        const backendWithServer = new SemanticBackend(
+            mockSpeech, classifier, mockParticles, mockBridge,
+            null, mockServerClient
+        );
+
+        // 'politician' is not in any dictionary → extractProbableNoun → confidence 0.5
+        mockSpeech.pushTranscript('politician');
+        backendWithServer.update(0.016);
+
+        // Should trigger morph action (confidence 0.5 > threshold 0.3)
+        expect(backendWithServer.lastAction).toBe('morph');
+        expect(backendWithServer.lastState?.dominantWord).toBe('politician');
+
+        // Complete Dissolve phase → executeMorphSwap → requestServerShape
+        for (let i = 0; i < 22; i++) backendWithServer.update(0.016);
+
+        // generateShape should have been called with 'politician'
+        expect(mockServerClient.generateShape).toHaveBeenCalledWith('politician');
+    });
+
+    it('does NOT route known keywords to server', () => {
+        const mockServerClient = {
+            generateShape: vi.fn(),
+        } as any;
+
+        const backendWithServer = new SemanticBackend(
+            mockSpeech, classifier, mockParticles, mockBridge,
+            null, mockServerClient
+        );
+
+        // 'horse' is in CONCRETE_NOUNS → should use hierarchy, not server
+        mockSpeech.pushTranscript('horse');
+        backendWithServer.update(0.016);
+        for (let i = 0; i < 22; i++) backendWithServer.update(0.016);
+
+        // Server should NOT be called for known words
+        expect(mockServerClient.generateShape).not.toHaveBeenCalled();
+    });
+
+    it('does NOT route AFINN sentiment words to server', () => {
+        const mockServerClient = {
+            generateShape: vi.fn(),
+        } as any;
+
+        const backendWithServer = new SemanticBackend(
+            mockSpeech, classifier, mockParticles, mockBridge,
+            null, mockServerClient
+        );
+
+        // 'happy' is an AFINN word → should be filtered out
+        mockSpeech.pushTranscript('happy');
+        backendWithServer.update(0.016);
+
+        // Should NOT trigger morph (confidence 0.1 < threshold 0.3)
+        expect(backendWithServer.lastAction).toBe('hold');
+        expect(mockServerClient.generateShape).not.toHaveBeenCalled();
+    });
+
+    it('falls back gracefully when no ServerClient available', () => {
+        // Backend without server client (default setup)
+        mockSpeech.pushTranscript('politician');
+        backend.update(0.016);
+
+        // Should still trigger morph (confidence 0.5)
+        expect(backend.lastAction).toBe('morph');
+
+        // Complete Dissolve — should not crash despite no server
+        expect(() => {
+            for (let i = 0; i < 22; i++) backend.update(0.016);
+        }).not.toThrow();
     });
 });

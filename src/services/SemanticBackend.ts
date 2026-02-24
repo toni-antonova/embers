@@ -639,6 +639,7 @@ export class SemanticBackend {
                     this.particleSystem.setTarget(state.morphTarget);
                 }
             } else if (this.serverClient) {
+                console.log(`[SemanticBackend] 🌐 Novel noun "${state.dominantWord}" → requesting server shape`);
                 this.requestServerShape(state.dominantWord, state.morphTarget);
             } else {
                 if (state.morphTarget !== this.currentTarget) {
