@@ -22,10 +22,14 @@ export class ServerShapeAdapter {
      *
      * @param response - Decoded server response
      * @param textureSize - Texture dimension (e.g. 128 for 128×128 = 16,384)
+     * @param scale - Position multiplier (default 1.5, matching TuningConfig's
+     *   `serverShapeScale` default). Server normalizes to [-1,1] which appears
+     *   smaller than pre-built shapes. Wired to TuningConfig slider.
      */
     static toDataTexture(
         response: ServerShapeResponse,
         textureSize: number,
+        scale: number = 1.5,
     ): THREE.DataTexture {
         const totalPixels = textureSize * textureSize;
         const data = new Float32Array(totalPixels * 4); // RGBA per pixel
@@ -38,17 +42,17 @@ export class ServerShapeAdapter {
             const px = i * 4;
             const sx = srcIdx * 3;
 
-            // Copy source position
-            data[px + 0] = positions[sx + 0]; // X
-            data[px + 1] = positions[sx + 1]; // Y
-            data[px + 2] = positions[sx + 2]; // Z
+            // Copy source position with scale applied
+            data[px + 0] = positions[sx + 0] * scale; // X
+            data[px + 1] = positions[sx + 1] * scale; // Y
+            data[px + 2] = positions[sx + 2] * scale; // Z
             data[px + 3] = 0; // A (unused)
 
             // Add jitter for expanded particles (beyond the original 2048)
             if (i >= serverCount) {
-                data[px + 0] += (Math.random() - 0.5) * 2 * JITTER_RADIUS;
-                data[px + 1] += (Math.random() - 0.5) * 2 * JITTER_RADIUS;
-                data[px + 2] += (Math.random() - 0.5) * 2 * JITTER_RADIUS;
+                data[px + 0] += (Math.random() - 0.5) * 2 * JITTER_RADIUS * scale;
+                data[px + 1] += (Math.random() - 0.5) * 2 * JITTER_RADIUS * scale;
+                data[px + 2] += (Math.random() - 0.5) * 2 * JITTER_RADIUS * scale;
             }
         }
 

@@ -74,6 +74,9 @@ export class ServerClient {
      */
     async generateShape(
         text: string,
+        // TODO: Wire up for Tier 2 — server supports verb-based prompt
+        // augmentation but no caller passes it yet. Remove or integrate
+        // when Tier 2 action-word routing is implemented.
         verb?: string,
         quality: 'fast' | 'standard' = 'standard',
     ): Promise<ServerShapeResponse | null> {

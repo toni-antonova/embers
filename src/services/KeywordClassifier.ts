@@ -239,21 +239,24 @@ export class KeywordClassifier implements SemanticBackend {
             };
         }
 
-        // ── STEP 6: Try to extract a probable noun → route to server ──
-        // Before giving up, check for probable nouns (words > 3 chars
-        // that aren't common stopwords). If found, send them to the
-        // backend for GPU-generated 3D shape with moderate confidence.
-        const probableNoun = KeywordClassifier.extractProbableNoun(words);
-        if (probableNoun) {
-            return {
-                morphTarget: probableNoun,  // server will generate this shape
-                abstractionLevel: 0.3,      // moderate concreteness
-                sentiment,
-                emotionalIntensity,
-                dominantWord: probableNoun,
-                confidence: 0.5,            // above FINAL_CONFIDENCE_THRESHOLD (0.3)
-            };
-        }
+        // ── STEP 6: Probable noun fallback (DISABLED) ────────────────
+        // Previously routed unknown words to the server with confidence 0.5.
+        // Disabled: abstract words ("street") triggered shapes that looked
+        // wrong. In Complex mode the classifier is bypassed entirely, so this
+        // code is unreachable. In Simple mode, unknown words now hold.
+        // Re-enable when server shape quality is tuned for single-word prompts.
+        //
+        // const probableNoun = KeywordClassifier.extractProbableNoun(words);
+        // if (probableNoun) {
+        //     return {
+        //         morphTarget: probableNoun,
+        //         abstractionLevel: 0.3,
+        //         sentiment,
+        //         emotionalIntensity,
+        //         dominantWord: probableNoun,
+        //         confidence: 0.5,
+        //     };
+        // }
 
         // ── STEP 7: Default (nothing found) ──────────────────────────
         // Return a low-confidence state that tells the consumer
@@ -276,6 +279,66 @@ export class KeywordClassifier implements SemanticBackend {
     lookupKeyword(word: string): KeywordMapping | null {
         const normalized = word.toLowerCase().replace(/[^a-z]/g, '');
         return CONCRETE_NOUNS[normalized] || ABSTRACT_CONCEPTS[normalized] || null;
+    }
+
+    /**
+     * Extract sentiment and emotional intensity ONLY — no keyword/dictionary
+     * lookup, no morphTarget resolution.
+     *
+     * Used in Complex mode where the classifier is bypassed for shape routing
+     * (full phrases go to server), but we still want AFINN sentiment scoring
+     * and action modifier intensity for driving color + movement.
+     */
+    classifySentimentOnly(text: string): Pick<SemanticState, 'sentiment' | 'emotionalIntensity'> {
+        const words = text
+            .toLowerCase()
+            .replace(/[^a-z\s]/g, '')
+            .split(/\s+/)
+            .filter(w => w.length > 0);
+
+        // AFINN sentiment scoring (same as classify Step 3)
+        let sentimentSum = 0;
+        let sentimentCount = 0;
+        for (const word of words) {
+            if (AFINN_SUBSET[word] !== undefined) {
+                sentimentSum += AFINN_SUBSET[word];
+                sentimentCount++;
+            }
+        }
+        const sentiment = sentimentCount > 0
+            ? Math.max(-1, Math.min(1, (sentimentSum / sentimentCount) / AFINN_MAX_SCORE))
+            : 0;
+
+        // Action modifier intensity (same as classify Step 4)
+        let intensityMultiplier = 1.0;
+        let hasModifier = false;
+        for (const word of words) {
+            if (ACTION_MODIFIERS[word] !== undefined) {
+                const modifier = ACTION_MODIFIERS[word];
+                if (!hasModifier || Math.abs(modifier - 1.0) > Math.abs(intensityMultiplier - 1.0)) {
+                    intensityMultiplier = modifier;
+                    hasModifier = true;
+                }
+            }
+        }
+        // Base intensity 0.3 for phrase-level classification (no keyword match)
+        let emotionalIntensity = Math.max(0, Math.min(1, 0.3 * intensityMultiplier));
+
+        // Word arousal override (same as classify Step 4b)
+        let arousalSum = 0;
+        let arousalCount = 0;
+        for (const word of words) {
+            if (AFINN_SUBSET[word] !== undefined) {
+                const arousal = WORD_AROUSAL[word] ?? 0.5;
+                arousalSum += arousal;
+                arousalCount++;
+            }
+        }
+        if (arousalCount > 0) {
+            emotionalIntensity = Math.max(emotionalIntensity, arousalSum / arousalCount);
+        }
+
+        return { sentiment, emotionalIntensity };
     }
 
     // ── STOPWORD SET ──────────────────────────────────────────────────

@@ -50,6 +50,7 @@ import { ServerShapeAdapter } from '../engine/ServerShapeAdapter';
 import type { ServerClient } from './ServerClient';
 import type { SessionLogger } from './SessionLogger';
 import type { AudioEngine } from './AudioEngine';
+import type { TuningConfig } from './TuningConfig';
 
 // ── SEMANTIC EVENT LOG ───────────────────────────────────────────────
 // Every semantic decision is logged for session replay / debugging.
@@ -67,8 +68,6 @@ const LOOSEN_DURATION = 0.3;           // Seconds of noise bump on speech start
 const LOOSEN_NOISE = 0.3;             // Noise amplitude during loosening
 const LOOSEN_SILENCE_GATE = 2.0;      // Min silence (seconds) before loosening triggers
 const FINAL_CONFIDENCE_THRESHOLD = 0.3;
-const INTERIM_CONFIDENCE_THRESHOLD = 0.6;
-const INTERIM_DEBOUNCE_MS = 300;      // Min ms between morph actions from interims
 const ABSTRACTION_DRIFT_RATE = 0.05;   // Rate abstraction rises when no keyword found
 const DEFAULT_SHAPE = 'ring';
 
@@ -112,6 +111,7 @@ export class SemanticBackend {
     private sessionLogger: SessionLogger | null;
     private serverClient: ServerClient | null;
     private audioEngine: AudioEngine | null;
+    private tuningConfig: TuningConfig | null;
 
     // ── STATE ────────────────────────────────────────────────────────
     private currentTarget: string = DEFAULT_SHAPE;
@@ -125,8 +125,11 @@ export class SemanticBackend {
     private isLoosening: boolean = false;
     private loosenTimer: number = 0;
 
-    // Timestamp of last morph action (for interim debounce)
-    private lastMorphTime: number = 0;
+    // Full phrase text stored during Complex mode.
+    // Set in applyMorphFromPhrase(), consumed 0.3s later in executeMorphSwap().
+    // If a new morph triggers during dissolve, this is overwritten — intentional
+    // (latest-wins, same as mid-transition interruption behavior).
+    private pendingFullText: string | null = null;
 
     // ── EVENT QUEUE ──────────────────────────────────────────────────
     // Transcripts arrive asynchronously from the browser's speech API.
@@ -175,6 +178,7 @@ export class SemanticBackend {
         sessionLogger?: SessionLogger | null,
         serverClient?: ServerClient | null,
         audioEngine?: AudioEngine | null,
+        tuningConfig?: TuningConfig | null,
     ) {
         this.speechEngine = speechEngine;
         this.classifier = classifier;
@@ -183,14 +187,16 @@ export class SemanticBackend {
         this.sessionLogger = sessionLogger || null;
         this.serverClient = serverClient || null;
         this.audioEngine = audioEngine || null;
+        this.tuningConfig = tuningConfig || null;
 
         // Subscribe to transcript events — callback only queues, never mutates state
         this.unsubscribe = this.speechEngine.onTranscript(
             (event) => this.pendingTranscripts.push(event)
         );
 
+        const mode = this.tuningConfig?.complexMode ? 'complex' : 'simple';
         console.log(
-            '[SemanticBackend] Wired: Speech → Classification → Morph' +
+            `[SemanticBackend] Wired: Speech → Classification → Morph (mode: ${mode})` +
             (this.serverClient ? ' | Server shapes: ✅ enabled' : ' | Server shapes: ❌ disabled (no ServerClient)')
         );
     }
@@ -358,6 +364,7 @@ export class SemanticBackend {
             this.unsubscribe = null;
         }
         this.pendingTranscripts = [];
+        this.pendingFullText = null;
         // Clear overrides
         this.uniformBridge.abstractionOverride = null;
         this.uniformBridge.noiseOverride = null;
@@ -379,16 +386,14 @@ export class SemanticBackend {
      * Process a single transcript event. Called from update() after
      * draining the queue — never from the async callback.
      *
-     * Final transcripts are processed at lower confidence threshold (0.3),
-     * while interim transcripts require higher confidence (0.6) to avoid
-     * false positives triggering premature morphs.
+     * ROUTING:
+     * - Interim events: reset silence timer and trigger loosening only.
+     *   No classification — prevents per-word flickering.
+     * - Final events (natural speech pauses):
+     *   - Complex mode: bypass classifier, send full phrase to server.
+     *   - Simple mode: classify → pre-built shapes via hierarchy.
      */
     private processTranscript(event: TranscriptEvent): void {
-        const state = this.classifier.classify(event.text);
-        const threshold = event.isFinal
-            ? FINAL_CONFIDENCE_THRESHOLD
-            : INTERIM_CONFIDENCE_THRESHOLD;
-
         // ── SPEECH AFTER MEANINGFUL SILENCE: LOOSEN ──────────────────
         // Only trigger loosening if there was a meaningful pause (>2s).
         // Rapid-fire speech (transcript every 0.5s) should NOT re-trigger
@@ -398,7 +403,8 @@ export class SemanticBackend {
             this.loosenTimer = LOOSEN_DURATION;
             this.uniformBridge.noiseOverride = LOOSEN_NOISE;
             console.log('[SemanticBackend] 🌊 Loosening — speech after silence');
-            this.logEvent(event.text, state, 'loosen');
+            // Log with a lightweight default state for loosening events
+            this.logEvent(event.text, this.makeDefaultState(), 'loosen');
         }
 
         // Reset silence timer on ANY transcript (interim or final)
@@ -407,52 +413,169 @@ export class SemanticBackend {
         // Log transcript event
         this.sessionLogger?.log('transcript', { text: event.text, isFinal: event.isFinal });
 
-        if (state.confidence > threshold) {
-            // ── INTERIM DEBOUNCE ─────────────────────────────────────
-            // Interim results can fire 3-4x/sec with fluctuating confidence.
-            // Two guards prevent flickering:
-            // 1. Skip if the target is the SAME as current (no-op morph)
-            // 2. Skip if less than 300ms since last morph action
-            if (!event.isFinal) {
-                const now = Date.now();
-                if (state.morphTarget === this.currentTarget) {
-                    // Same target — skip, no visual change needed
-                    return;
-                }
-                if (now - this.lastMorphTime < INTERIM_DEBOUNCE_MS) {
-                    // Too soon since last morph — skip to prevent flickering
-                    return;
-                }
-            }
+        // ── SKIP INTERIM EVENTS ──────────────────────────────────────
+        // Only classify on final transcripts (natural speech pauses).
+        // Interim events reset the silence timer (above) but don't
+        // trigger morphs — prevents single-word flickering.
+        if (!event.isFinal) return;
 
-            // ── KEYWORD FOUND → MORPH ────────────────────────────────
-            this.applyMorph(state, event.text);
+        // ── ROUTING: COMPLEX vs SIMPLE MODE ──────────────────────────
+        const isComplex = this.tuningConfig?.complexMode ?? false;
+
+        if (isComplex && this.serverClient) {
+            // ── COMPLEX MODE ─────────────────────────────────────────
+            // Bypass classifier for shape routing. Send every final
+            // transcript to the server as a full-phrase prompt.
+            // Still extract sentiment for color/movement.
+            this.applyMorphFromPhrase(event.text);
         } else {
-            // ── NO KEYWORD → HOLD ────────────────────────────────────
-            // Don't change morph target. Slightly raise abstraction
-            // (less certain = more fluid).
-            this.targetAbstraction = Math.min(1.0,
-                this.targetAbstraction + ABSTRACTION_DRIFT_RATE
-            );
-
-            this._lastState = state;
-            this._lastAction = 'hold';
-
-            // Push sentiment only if we actually detected emotion words.
-            // Without this guard, rapid interim transcripts with no AFINN
-            // matches overwrite the previous emotion → flash of color then reset.
-            if (Math.abs(state.sentiment) > 0.05) {
-                this.uniformBridge.sentimentOverride = state.sentiment;
-                this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
+            // ── SIMPLE MODE ──────────────────────────────────────────
+            // (Also reached if complex mode is on but no serverClient)
+            if (isComplex && !this.serverClient) {
+                console.warn(
+                    '[SemanticBackend] ⚠️ Complex mode active but no ServerClient — ' +
+                    'falling back to Simple mode classification'
+                );
             }
 
-            if (event.isFinal) {
+            const state = this.classifier.classify(event.text);
+
+            if (state.confidence > FINAL_CONFIDENCE_THRESHOLD) {
+                // ── KEYWORD FOUND → MORPH ────────────────────────────
+                this.applyMorph(state, event.text);
+            } else {
+                // ── NO KEYWORD → HOLD ────────────────────────────────
+                // Don't change morph target. Slightly raise abstraction
+                // (less certain = more fluid).
+                this.targetAbstraction = Math.min(1.0,
+                    this.targetAbstraction + ABSTRACTION_DRIFT_RATE
+                );
+
+                this._lastState = state;
+                this._lastAction = 'hold';
+
+                // Push sentiment only if we actually detected emotion words.
+                if (Math.abs(state.sentiment) > 0.05) {
+                    this.uniformBridge.sentimentOverride = state.sentiment;
+                    this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
+                }
+
                 this.logEvent(event.text, state, 'hold');
                 console.log(
                     `[SemanticBackend] HOLD — no keyword (confidence=${state.confidence.toFixed(2)})`
                 );
             }
         }
+    }
+
+    /**
+     * Complex mode: send the full phrase to the server for GPU-generated shape.
+     *
+     * Uses classifySentimentOnly() for color/movement (AFINN + action modifiers)
+     * without keyword/dictionary lookup.
+     *
+     * Starts dissolve transition with hierarchy placeholder (if a known noun is
+     * in the phrase) or ambient sphere while the server generates the shape.
+     * When the server responds, the shape immediately replaces whatever
+     * hierarchy stage is showing (latest-wins, same as mid-transition behavior).
+     */
+    private applyMorphFromPhrase(fullText: string): void {
+        // Guard: skip empty/whitespace-only text (can happen with
+        // garbled speech or browser quirks sending blank final events)
+        const trimmed = fullText.trim();
+        if (!trimmed) {
+            console.warn('[SemanticBackend] ⚠️ Skipping empty phrase in Complex mode');
+            return;
+        }
+
+        // Extract sentiment only — no keyword/dictionary lookup
+        const sentimentResult = this.classifier.classifySentimentOnly(trimmed);
+
+        // Store full text for server request at Dissolve→Reform boundary
+        this.pendingFullText = trimmed;
+
+        // Cancel idle decay if speech arrives
+        if (this.idleDecayActive) {
+            this.idleDecayActive = false;
+            this.uniformBridge.springOverride = null;
+        }
+
+        // Find a known noun in the phrase for hierarchy placeholder.
+        // Use direct dictionary lookup instead of classify() — avoids running
+        // the disabled extractProbableNoun path and prevents future re-enablement
+        // from silently affecting complex mode routing.
+        const words = trimmed.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/);
+        let placeholderMapping: ReturnType<typeof this.classifier.lookupKeyword> = null;
+        let placeholderWord = '';
+        for (const word of words) {
+            const mapping = this.classifier.lookupKeyword(word);
+            if (mapping) {
+                placeholderMapping = mapping;
+                placeholderWord = word;
+                break; // First match wins — use as visual placeholder
+            }
+        }
+
+        if (placeholderMapping) {
+            // A known keyword exists — use its hierarchy as placeholder
+            this.pendingMorphState = {
+                morphTarget: placeholderMapping.target,
+                abstractionLevel: placeholderMapping.abstraction,
+                sentiment: sentimentResult.sentiment,
+                emotionalIntensity: sentimentResult.emotionalIntensity,
+                dominantWord: placeholderWord,
+                confidence: 1.0, // Forced — we're sending to server regardless
+            };
+            this.pendingMorphMapping = placeholderMapping;
+        } else {
+            // No known keyword — use sphere as ambient placeholder
+            this.pendingMorphState = {
+                morphTarget: 'sphere',
+                abstractionLevel: 0.5,
+                sentiment: sentimentResult.sentiment,
+                emotionalIntensity: sentimentResult.emotionalIntensity,
+                dominantWord: trimmed.split(/\s+/)[0] || '',
+                confidence: 1.0, // Forced — we're sending to server regardless
+            };
+            this.pendingMorphMapping = null;
+        }
+
+        // Compute audio-responsive phase durations
+        this.computeTransitionDurations();
+
+        // Start or restart Dissolve phase
+        this.transitionPhase = TransitionPhase.Dissolve;
+        this.transitionElapsed = 0;
+        this.uniformBridge.transitionPhase = TransitionPhase.Dissolve;
+
+        // Apply dissolve overrides
+        this.uniformBridge.springOverride = DISSOLVE_SPRING;
+        if (!this.isLoosening) {
+            this.uniformBridge.noiseOverride = DISSOLVE_NOISE;
+        }
+
+        this._lastState = this.pendingMorphState;
+        this._lastAction = 'morph';
+
+        this.uniformBridge.sentimentOverride = sentimentResult.sentiment;
+        this.uniformBridge.emotionalIntensityOverride = sentimentResult.emotionalIntensity;
+
+        this.logEvent(fullText, this.pendingMorphState, 'morph');
+
+        // Log semantic event
+        this.sessionLogger?.log('semantic', {
+            dominantWord: this.pendingMorphState.dominantWord,
+            morphTarget: this.pendingMorphState.morphTarget,
+            abstractionLevel: this.pendingMorphState.abstractionLevel,
+            sentiment: sentimentResult.sentiment,
+            confidence: this.pendingMorphState.confidence,
+            mode: 'complex',
+            fullText,
+        });
+
+        console.log(
+            `[SemanticBackend] 🧠 COMPLEX MODE — "${fullText}" → server (placeholder: ${this.pendingMorphState.morphTarget})`
+        );
     }
 
     /**
@@ -495,7 +618,6 @@ export class SemanticBackend {
 
         this._lastState = state;
         this._lastAction = 'morph';
-        this.lastMorphTime = Date.now();
 
         this.uniformBridge.sentimentOverride = state.sentiment;
         this.uniformBridge.emotionalIntensityOverride = state.emotionalIntensity;
@@ -612,6 +734,11 @@ export class SemanticBackend {
         if (!state) return;
         const mapping = this.pendingMorphMapping;
 
+        // ── STEP 1: LOCAL PLACEHOLDER ─────────────────────────────────
+        // Set up a hierarchy traversal or direct shape as visual placeholder.
+        // In complex mode this serves as the placeholder while the server
+        // generates the real shape.
+
         if (mapping) {
             // Start hierarchy traversal (overwrites any in-progress one)
             this.hierarchyActive = true;
@@ -632,21 +759,14 @@ export class SemanticBackend {
                 `(word="${state.dominantWord}", stages=${mapping.hierarchy.join('\u2192')})`
             );
         } else {
-            // No keyword mapping — check if we have a local shape or need the server
+            // No hierarchy — set morphTarget directly if available locally
             if (this.particleSystem.morphTargets.hasTarget(state.morphTarget)) {
                 if (state.morphTarget !== this.currentTarget) {
                     this.currentTarget = state.morphTarget;
                     this.particleSystem.setTarget(state.morphTarget);
                 }
-            } else if (this.serverClient) {
-                console.log(`[SemanticBackend] 🌐 Novel noun "${state.dominantWord}" → requesting server shape`);
-                this.requestServerShape(state.dominantWord, state.morphTarget);
-            } else {
-                if (state.morphTarget !== this.currentTarget) {
-                    this.currentTarget = state.morphTarget;
-                    this.particleSystem.setTarget(state.morphTarget);
-                }
             }
+
             this.targetAbstraction = state.abstractionLevel;
 
             if (state.emotionalIntensity > 0.5) {
@@ -655,45 +775,85 @@ export class SemanticBackend {
                 );
             }
         }
+
+        // ── STEP 2: SERVER REQUEST ────────────────────────────────────
+        // If we have a pendingFullText, fire the server request. This
+        // happens in Complex mode (full phrase → server) and in Simple
+        // mode for novel nouns (words with no local target).
+
+        const isComplex = this.tuningConfig?.complexMode ?? false;
+
+        if (isComplex && this.serverClient && this.pendingFullText) {
+            // Complex mode: always send full phrase to server
+            console.log(
+                `[SemanticBackend] \ud83c\udf10 COMPLEX → server for "${this.pendingFullText}" ` +
+                `(placeholder: ${state.morphTarget})`
+            );
+            this.requestServerShape(state.dominantWord, this.pendingFullText, state.morphTarget);
+            this.pendingFullText = null;
+        } else if (!mapping && !this.particleSystem.morphTargets.hasTarget(state.morphTarget) && this.serverClient) {
+            // Simple mode fallback: novel noun with no local target → server
+            console.log(`[SemanticBackend] \ud83c\udf10 Novel noun "${state.dominantWord}" → requesting server shape`);
+            this.requestServerShape(state.dominantWord, state.dominantWord, state.morphTarget);
+        }
     }
 
     /**
-     * Request a shape from the server for a word not in the local library.
-     * Async — particles stay in current state while waiting.
-     * Falls back to closest local shape on failure.
+     * Request a shape from the server.
+     *
+     * @param word - The dominant noun (used as cache key / label)
+     * @param prompt - The text sent to the server as the generation prompt.
+     *   In Complex mode this is the full phrase ("a dragon blows fire").
+     *   In Simple mode this is the dominant noun ("dragon").
+     * @param fallbackTarget - Local shape name to fall back to on failure.
      */
-    private requestServerShape(word: string, fallbackTarget: string): void {
+    private requestServerShape(word: string, prompt: string, fallbackTarget: string): void {
         if (!this.serverClient) return;
 
         // Log the request
         this.sessionLogger?.log('system', {
             event: 'server_request',
             noun: word,
+            prompt,
             timestamp: Date.now(),
         });
 
-        console.log(`[SemanticBackend] 🌐 Requesting server shape for "${word}"...`);
+        console.log(`[SemanticBackend] 🌐 Requesting server shape: prompt="${prompt}"`);
 
-        this.serverClient.generateShape(word).then((response) => {
+        this.serverClient.generateShape(prompt).then((response) => {
             if (response) {
-                // Success — convert to DataTexture and apply
+                // Read scale at response time (not request time) so live
+                // tuner changes during the async server call are respected.
+                const shapeScale = this.tuningConfig?.get('serverShapeScale') ?? 1.5;
+
+                // Success — convert to DataTexture with TuningConfig scale
                 const texture = ServerShapeAdapter.toDataTexture(
                     response,
                     this.particleSystem.size,
+                    shapeScale,
                 );
                 this.particleSystem.setTargetTexture(texture, word);
                 this.currentTarget = word;
 
+                // Cancel hierarchy placeholder traversal — the real
+                // server shape has landed. Without this, hierarchy stage 2/3
+                // would overwrite the server shape ~1.5s later.
+                if (this.hierarchyActive) {
+                    this.hierarchyActive = false;
+                    console.log('[SemanticBackend] Hierarchy cancelled — server shape arrived');
+                }
+
                 console.log(
-                    `[SemanticBackend] ✅ Server shape received for "${word}" ` +
+                    `[SemanticBackend] ✅ Server shape received: prompt="${prompt}" ` +
                     `(${response.pipeline}, ${response.generationTimeMs}ms, ` +
-                    `${response.partNames.length} parts)`,
+                    `${response.partNames.length} parts, scale=${shapeScale})`,
                 );
 
                 // Log the response
                 this.sessionLogger?.log('system', {
                     event: 'server_response',
                     noun: word,
+                    prompt,
                     cached: response.cached,
                     pipeline: response.pipeline,
                     generationTimeMs: response.generationTimeMs,
@@ -703,7 +863,7 @@ export class SemanticBackend {
             } else {
                 // Failed — fall back to closest local shape
                 console.warn(
-                    `[SemanticBackend] ⚠️ Server failed for "${word}", ` +
+                    `[SemanticBackend] ⚠️ Server failed for prompt="${prompt}", ` +
                     `falling back to "${fallbackTarget}"`,
                 );
                 if (fallbackTarget !== this.currentTarget) {

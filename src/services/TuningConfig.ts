@@ -48,6 +48,19 @@ export const MOBILE_OVERRIDES: Record<string, number> = {
     cameraZ: 12,            // Pull camera back for breathing room
 };
 
+// ── COMPLEX MODE OVERRIDES ──────────────────────────────────────────
+// Applied when the user toggles Complex mode. Server-generated meshes
+// need denser, bigger, tighter particle clustering to look solid.
+// These are applied on top of user-saved values and reverted on toggle off.
+export const COMPLEX_OVERRIDES: Record<string, number> = {
+    serverShapeScale: 2.2,      // Bigger server shapes (was 1.5)
+    springK: 5.0,               // Tighter spring → particles cluster firmly
+    noiseAmplitude: 0.10,       // Less curl scatter → shapes stay coherent
+    pointSize: 1.5,             // Fatter dots → fills gaps in sparse meshes
+    drag: 4.0,                  // More damping → less floaty drift
+    breathingAmplitude: 0.02,   // Calmer idle → shapes don't wobble apart
+};
+
 // ── PARAMETER DEFINITION ─────────────────────────────────────────────
 // Each tunable parameter is fully described by this interface.
 // The UI generates sliders automatically from this metadata.
@@ -112,6 +125,14 @@ export const PARAM_DEFS: ParamDef[] = [
         // Works for ALL shapes (ring, sphere, quadruped, etc.), not just ring.
         key: 'formationScale', label: 'Formation Scale',
         defaultValue: 1.6, min: 0.2, max: 3.0, step: 0.1,
+        group: '🔴 Particle Appearance'
+    },
+    {
+        // Scale factor for server-generated shapes.
+        // Server normalizes to [-1,1] which can appear smaller than pre-built shapes.
+        // Increase to match pre-built shape visual size.
+        key: 'serverShapeScale', label: 'Server Shape Scale',
+        defaultValue: 1.5, min: 0.5, max: 3.0, step: 0.1,
         group: '🔴 Particle Appearance'
     },
 
@@ -353,7 +374,10 @@ const STORAGE_KEY = 'dots-tuning-config';
 // ── CONFIG VERSIONING ────────────────────────────────────────────────
 // Bump this whenever defaults change. Old localStorage will be discarded
 // automatically so stale dev settings don't silently override production defaults.
-const CONFIG_VERSION = 10;
+const CONFIG_VERSION = 11;
+
+// ── MODE STORAGE KEY ─────────────────────────────────────────────────
+const MODE_STORAGE_KEY = 'dots-mode';
 
 // ── TUNING CONFIG CLASS ──────────────────────────────────────────────
 export class TuningConfig {
@@ -366,8 +390,57 @@ export class TuningConfig {
     /** Whether this instance uses mobile defaults. */
     readonly isMobile: boolean;
 
+    // ── COMPLEX MODE TOGGLE ──────────────────────────────────────────
+    // Simple mode = pre-built shapes from keyword dictionaries (current behavior).
+    // Complex mode = bypass classifier, send full phrases to server for
+    // GPU-generated shapes.
+    private _complexMode: boolean;
+
+    /** Whether the system is in Complex mode (server-rendered shapes). */
+    private _simpleSnapshot: Map<string, number> | null = null;
+
+    get complexMode(): boolean { return this._complexMode; }
+    set complexMode(v: boolean) {
+        if (v === this._complexMode) return;
+        this._complexMode = v;
+        try { localStorage.setItem(MODE_STORAGE_KEY, v ? 'complex' : 'simple'); } catch { /* noop */ }
+
+        if (v) {
+            // Entering complex mode → snapshot current simple values, apply overrides
+            this._simpleSnapshot = new Map<string, number>();
+            for (const key of Object.keys(COMPLEX_OVERRIDES)) {
+                this._simpleSnapshot.set(key, this.get(key));
+            }
+            for (const [key, value] of Object.entries(COMPLEX_OVERRIDES)) {
+                this.values.set(key, value);
+                for (const listener of this.listeners) listener(key, value);
+            }
+            console.log('[TuningConfig] ✨ Applied complex mode overrides');
+        } else {
+            // Returning to simple → revert to snapshot
+            if (this._simpleSnapshot) {
+                for (const [key, value] of this._simpleSnapshot) {
+                    this.values.set(key, value);
+                    for (const listener of this.listeners) listener(key, value);
+                }
+                this._simpleSnapshot = null;
+                console.log('[TuningConfig] ↩ Reverted to simple mode defaults');
+            }
+        }
+
+        // Notify listeners so UI can re-render the toggle
+        for (const listener of this.listeners) listener('complexMode', v ? 1 : 0);
+    }
+
     constructor(options?: { isMobile?: boolean }) {
         this.isMobile = options?.isMobile ?? IS_MOBILE;
+
+        // 0. Load mode toggle from localStorage.
+        try {
+            this._complexMode = localStorage.getItem(MODE_STORAGE_KEY) === 'complex';
+        } catch {
+            this._complexMode = false;
+        }
 
         // 1. Load defaults from PARAM_DEFS.
         for (const def of PARAM_DEFS) {
@@ -385,7 +458,17 @@ export class TuningConfig {
         // 3. Override with any saved values from localStorage.
         this.loadFromStorage();
 
-        console.log('[TuningConfig] Initialized with', this.values.size, 'parameters');
+        // 4. Apply complex mode overrides if mode was persisted as 'complex'.
+        if (this._complexMode) {
+            for (const [key, value] of Object.entries(COMPLEX_OVERRIDES)) {
+                this.values.set(key, value);
+            }
+        }
+
+        console.log(
+            '[TuningConfig] Initialized with', this.values.size, 'parameters',
+            `(mode: ${this._complexMode ? 'complex' : 'simple'})`,
+        );
     }
 
     // ── GET / SET ────────────────────────────────────────────────────
