@@ -52,13 +52,26 @@ function createMockSpeechEngine() {
     } as any;
 }
 
+// ── MOCK TUNING CONFIG ───────────────────────────────────────────────
+// TuningConfig provides the complexMode toggle. We mock it with a
+// simple getter/setter to avoid localStorage dependency.
+function createMockTuningConfig() {
+    return {
+        complexMode: false,
+        get: vi.fn().mockReturnValue(1.0),
+        set: vi.fn(),
+    } as any;
+}
+
 // ── SETUP / TEARDOWN ─────────────────────────────────────────────────
 let mockAudioEngine: ReturnType<typeof createMockAudioEngine>;
 let mockSpeechEngine: ReturnType<typeof createMockSpeechEngine>;
+let mockTuningConfig: ReturnType<typeof createMockTuningConfig>;
 
 beforeEach(() => {
     mockAudioEngine = createMockAudioEngine();
     mockSpeechEngine = createMockSpeechEngine();
+    mockTuningConfig = createMockTuningConfig();
     // Mock requestAnimationFrame for the polling loop.
     // UIOverlay uses rAF to update bars — in jsdom, we need to control it.
     vi.useFakeTimers();
@@ -76,7 +89,7 @@ afterEach(() => {
 // ══════════════════════════════════════════════════════════════════════
 describe('UIOverlay — Mic Button', () => {
     it('shows mic button with "Start listening" label initially', () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
 
         const btn = screen.getByLabelText('Start listening');
         expect(btn).toBeInTheDocument();
@@ -84,7 +97,7 @@ describe('UIOverlay — Mic Button', () => {
     });
 
     it('toggles to active state after clicking', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
 
         // Click the mic button.
         await act(async () => {
@@ -100,7 +113,7 @@ describe('UIOverlay — Mic Button', () => {
     });
 
     it('toggles back to inactive after stopping', async () => {
-        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} />);
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
 
         // Start → Stop → verify state returns.
         await act(async () => {
@@ -113,6 +126,68 @@ describe('UIOverlay — Mic Button', () => {
         const btn = screen.getByLabelText('Start listening');
         expect(btn).not.toHaveClass('active');
         expect(mockAudioEngine.stop).toHaveBeenCalledTimes(1);
+    });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════
+// SUITE 3: MODE TOGGLE (Simple / Complex)
+// ══════════════════════════════════════════════════════════════════════
+describe('UIOverlay — Mode Toggle', () => {
+    it('renders in Simple mode initially (complexMode=false)', () => {
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+
+        const toggle = screen.getByRole('switch');
+        expect(toggle).toHaveAttribute('aria-checked', 'false');
+        expect(toggle).toHaveAttribute('aria-label', 'Switch to Complex mode');
+    });
+
+    it('toggles to Complex mode on click', async () => {
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('switch'));
+        });
+
+        const toggle = screen.getByRole('switch');
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+        expect(toggle).toHaveAttribute('aria-label', 'Switch to Simple mode');
+    });
+
+    it('updates tuningConfig.complexMode on toggle', async () => {
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('switch'));
+        });
+
+        // tuningConfig should have been mutated
+        expect(mockTuningConfig.complexMode).toBe(true);
+    });
+
+    it('toggles back to Simple on second click', async () => {
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('switch'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('switch'));
+        });
+
+        const toggle = screen.getByRole('switch');
+        expect(toggle).toHaveAttribute('aria-checked', 'false');
+        expect(mockTuningConfig.complexMode).toBe(false);
+    });
+
+    it('supports keyboard activation (Enter key)', async () => {
+        render(<UIOverlay audioEngine={mockAudioEngine} speechEngine={mockSpeechEngine} tuningConfig={mockTuningConfig} />);
+
+        await act(async () => {
+            fireEvent.keyDown(screen.getByRole('switch'), { key: 'Enter' });
+        });
+
+        expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
     });
 });
 

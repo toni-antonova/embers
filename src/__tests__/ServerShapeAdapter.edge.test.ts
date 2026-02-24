@@ -51,7 +51,7 @@ function makeResponse(
 describe('ServerShapeAdapter — Single Point', () => {
     it('all pixels reference the single source point', () => {
         const response = makeResponse(1);
-        const tex = ServerShapeAdapter.toDataTexture(response, 4); // 16 pixels
+        const tex = ServerShapeAdapter.toDataTexture(response, 4, 1.0); // 16 pixels
         const data = tex.image.data! as Float32Array;
 
         // First pixel is exact
@@ -89,7 +89,7 @@ describe('ServerShapeAdapter — Exact Fit', () => {
     it('no jitter when pointCount equals textureSize²', () => {
         // 4×4 = 16 pixels, and we provide exactly 16 points
         const response = makeResponse(16);
-        const tex = ServerShapeAdapter.toDataTexture(response, 4);
+        const tex = ServerShapeAdapter.toDataTexture(response, 4, 1.0);
         const data = tex.image.data! as Float32Array;
 
         // All pixels should be exact copies (no expansion, no jitter)
@@ -110,7 +110,7 @@ describe('ServerShapeAdapter — More Points Than Pixels', () => {
     it('wraps around using modulo when server sends more than needed', () => {
         // 4×4 = 16 pixels, but we provide 32 points
         const response = makeResponse(32);
-        const tex = ServerShapeAdapter.toDataTexture(response, 4);
+        const tex = ServerShapeAdapter.toDataTexture(response, 4, 1.0);
         const data = tex.image.data! as Float32Array;
 
         // Pixel i maps to serverPoint[i % 32], and since i < 32 for all 16 pixels,

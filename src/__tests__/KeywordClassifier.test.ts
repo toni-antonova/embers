@@ -259,12 +259,13 @@ describe('KeywordClassifier — Edge Cases', () => {
         expect(result.confidence).toBe(0.1);
     });
 
-    it('extracts probable noun for unrecognized words (routes to server)', () => {
+    it('returns default state for unrecognized words (extractProbableNoun disabled)', () => {
+        // extractProbableNoun fallback is disabled — unknown words return
+        // default low-confidence state instead of routing to server.
         const result = classifier.classify('xylophone quantum paradigm');
-        // 'xylophone' is longest unknown word (9 chars vs 7 and 8)
-        expect(result.morphTarget).toBe('xylophone');
-        expect(result.confidence).toBe(0.5);
-        expect(result.dominantWord).toBe('xylophone');
+        expect(result.morphTarget).toBe('');
+        expect(result.confidence).toBe(0.1);
+        expect(result.dominantWord).toBe('');
     });
 
     it('returns default state for pure stopwords', () => {

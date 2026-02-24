@@ -38,7 +38,7 @@ describe('ServerShapeAdapter', () => {
 
         it('first N pixels exactly match server positions', () => {
             const response = makeResponse(4);
-            const tex = ServerShapeAdapter.toDataTexture(response, 4); // 4×4 = 16 pixels
+            const tex = ServerShapeAdapter.toDataTexture(response, 4, 1.0); // 4×4 = 16 pixels
             const data = tex.image.data! as Float32Array;
 
             // First 4 pixels should be exact (no jitter)
@@ -52,7 +52,7 @@ describe('ServerShapeAdapter', () => {
 
         it('expanded pixels are near their source point (within jitter radius)', () => {
             const response = makeResponse(4);
-            const tex = ServerShapeAdapter.toDataTexture(response, 4); // 16 pixels total
+            const tex = ServerShapeAdapter.toDataTexture(response, 4, 1.0); // 16 pixels total
             const data = tex.image.data! as Float32Array;
             const JITTER = 0.02;
 

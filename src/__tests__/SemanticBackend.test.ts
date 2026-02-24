@@ -477,19 +477,17 @@ describe('SemanticBackend — Server Shape Routing', () => {
             null, mockServerClient
         );
 
-        // 'politician' is not in any dictionary → extractProbableNoun → confidence 0.5
+        // 'politician' is not in any dictionary.
+        // With extractProbableNoun disabled, this returns HOLD (confidence 0.1).
+        // Unknown words no longer route to server in Simple mode.
         mockSpeech.pushTranscript('politician');
         backendWithServer.update(0.016);
 
-        // Should trigger morph action (confidence 0.5 > threshold 0.3)
-        expect(backendWithServer.lastAction).toBe('morph');
-        expect(backendWithServer.lastState?.dominantWord).toBe('politician');
+        // Should NOT trigger morph — extractProbableNoun is disabled
+        expect(backendWithServer.lastAction).toBe('hold');
 
-        // Complete Dissolve phase → executeMorphSwap → requestServerShape
-        for (let i = 0; i < 22; i++) backendWithServer.update(0.016);
-
-        // generateShape should have been called with 'politician'
-        expect(mockServerClient.generateShape).toHaveBeenCalledWith('politician');
+        // Server should NOT be called (word is below confidence threshold)
+        expect(mockServerClient.generateShape).not.toHaveBeenCalled();
     });
 
     it('does NOT route known keywords to server', () => {
@@ -532,13 +530,14 @@ describe('SemanticBackend — Server Shape Routing', () => {
 
     it('falls back gracefully when no ServerClient available', () => {
         // Backend without server client (default setup)
+        // With extractProbableNoun disabled, 'politician' returns HOLD
         mockSpeech.pushTranscript('politician');
         backend.update(0.016);
 
-        // Should still trigger morph (confidence 0.5)
-        expect(backend.lastAction).toBe('morph');
+        // Should hold (unknown word, below confidence threshold)
+        expect(backend.lastAction).toBe('hold');
 
-        // Complete Dissolve — should not crash despite no server
+        // Should not crash even though unknown word can't route to server
         expect(() => {
             for (let i = 0; i < 22; i++) backend.update(0.016);
         }).not.toThrow();

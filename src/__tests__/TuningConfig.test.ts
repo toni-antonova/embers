@@ -274,7 +274,7 @@ describe('TuningConfig — localStorage Persistence', () => {
 
     it('loads saved values from localStorage on construction', () => {
         // ARRANGE: Pre-seed localStorage with custom values.
-        const seedData = { pointSize: 6.0, springK: 9.0, __version: 10 };
+        const seedData = { pointSize: 6.0, springK: 9.0, __version: 11 };
         localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
 
         // ACT: Create a new config — it should pick up the seeded values.
@@ -401,7 +401,7 @@ describe('TuningConfig — Mobile Overrides', () => {
 
     it('localStorage values override mobile defaults', () => {
         // Seed localStorage with user-saved values
-        const seedData = { pointSize: 3.0, cameraZ: 15, __version: 10 };
+        const seedData = { pointSize: 3.0, cameraZ: 15, __version: 11 };
         localStorage.setItem('dots-tuning-config', JSON.stringify(seedData));
 
         const config = new TuningConfig({ isMobile: true });
