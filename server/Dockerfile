@@ -23,7 +23,7 @@ FROM ${BASE_IMAGE}
 # fallback packages (hy3dgen, groundingdino, SAM-2) and torch-cluster
 # that the base image installed via pip outside the lockfile.
 COPY --chown=appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project --inexact
+RUN uv sync --frozen --no-dev --no-install-project --inexact --no-install-package torch-cluster
 
 # ---- Copy application code (the only thing that changes per deploy) ----
 COPY --chown=appuser app/ app/
