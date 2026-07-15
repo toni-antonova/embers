@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { ParticleSystem } from '../engine/ParticleSystem';
+import { HarmonicsManager } from '../engine/HarmonicsManager';
 import { UniformBridge } from '../engine/UniformBridge';
 import { SemanticBackend } from '../services/SemanticBackend';
 import { SERManager } from '../audio/SERManager';
@@ -128,6 +129,47 @@ export function useThreeScene(
         scene.add(particles.particles);
         particleSystemRef.current = particles;
 
+        // ── CONNECTOME HARMONICS ──────────────────────────────────────
+        // The connectome/Kuramoto view is the IDLE ("brain") state: it shows
+        // when no speech-generated model is active, and automatically steps
+        // aside when the semantic pipeline morphs the dots into a model — then
+        // returns once the pipeline goes back to its default idle shape.
+        // The "h" key is a master switch to disable the brain view entirely.
+        const CONNECTOME_LABEL = 'connectome';
+        const IDLE_SHAPE = 'ring';   // matches SemanticBackend DEFAULT_SHAPE
+        const harmonicsManager = new HarmonicsManager(
+            particles.getVelocityUniforms(), particles.getRenderUniforms(), particles.size,
+        );
+        let harmonicMode = 3;
+        let brainEnabled = true;     // master switch (toggled by "h")
+        harmonicsManager.load()
+            .then(() => {
+                harmonicsManager.setKuramoto();
+                console.log('[useThreeScene] connectome harmonics loaded — idle "brain" view');
+            })
+            .catch((e) => console.warn('[useThreeScene] harmonics load failed:', e));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__harmonics = harmonicsManager;
+
+        // Idle coordinator: brain shows only when the pipeline isn't rendering
+        // a generated model. Edge-triggered so it never fights SemanticBackend
+        // over the morph target.
+        const updateBrainState = () => {
+            const ps = particleSystemRef.current;
+            if (!ps || !harmonicsManager.harmonics.loaded) return;
+            const cur = ps.currentTarget;
+            const modelActive = cur !== IDLE_SHAPE && cur !== CONNECTOME_LABEL;
+            if (!brainEnabled || modelActive) {
+                if (harmonicsManager.isActive) harmonicsManager.disable();
+            } else {
+                // Idle → ensure the connectome layout + oscillation are shown.
+                if (cur !== CONNECTOME_LABEL) {
+                    ps.setTargetTexture(harmonicsManager.connectomeTarget, CONNECTOME_LABEL);
+                }
+                if (!harmonicsManager.isActive) harmonicsManager.enable();
+            }
+        };
+
         // ── UNIFORM BRIDGE ────────────────────────────────────────────────────
         const uniformBridge = new UniformBridge(audioEngine, particles, tuningConfig, workspaceEngine);
         uniformBridgeRef.current = uniformBridge;
@@ -217,6 +259,39 @@ export function useThreeScene(
         };
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+            // Connectome harmonics controls:
+            //   h       → master toggle for the idle "brain" view
+            //   k       → Kuramoto coupled-oscillator model
+            //   [ / ]   → previous / next single harmonic mode
+            //   m       → low-mode standing-wave superposition
+            if (e.key === 'h' && harmonicsManager.harmonics.loaded && particleSystemRef.current) {
+                brainEnabled = !brainEnabled;
+                if (!brainEnabled && particleSystemRef.current.currentTarget === CONNECTOME_LABEL) {
+                    // Leaving the brain view — fall back to the idle shape.
+                    particleSystemRef.current.setTarget(IDLE_SHAPE);
+                }
+                console.log(`[harmonics] brain view ${brainEnabled ? 'enabled' : 'disabled'}`);
+                return;
+            }
+            if (e.key === 'k' && harmonicsManager.harmonics.loaded) {
+                harmonicsManager.setKuramoto();
+                console.log(`[harmonics] ${harmonicsManager.harmonics.selection}`);
+                return;
+            }
+            if ((e.key === '[' || e.key === ']') && harmonicsManager.harmonics.loaded) {
+                harmonicMode += e.key === ']' ? 1 : -1;
+                if (harmonicMode < 0) harmonicMode = 0;
+                harmonicsManager.setMode(harmonicMode);
+                console.log(`[harmonics] ${harmonicsManager.harmonics.selection}`);
+                return;
+            }
+            if (e.key === 'm' && harmonicsManager.harmonics.loaded) {
+                harmonicsManager.setMix([0, 1, 2, 3], undefined, [0, Math.PI / 2, Math.PI, Math.PI / 3]);
+                console.log(`[harmonics] ${harmonicsManager.harmonics.selection}`);
+                return;
+            }
+
             const shapeName = shapeKeys[e.key];
             if (shapeName && particleSystemRef.current) {
                 particleSystemRef.current.setTarget(shapeName);
@@ -286,6 +361,13 @@ export function useThreeScene(
             semanticBackendRef.current?.update(dt);
             uniformBridgeRef.current?.update();
 
+            // Decide whether the idle "brain" view should be showing (it yields
+            // to any speech-generated model), then refresh the harmonic field.
+            updateBrainState();
+            if (particleSystemRef.current) {
+                harmonicsManager.update(particleSystemRef.current.time);
+            }
+
             // Update camera Z from TuningConfig slider
             const z = tuningConfig.get('cameraZ');
             if (camera.position.z !== z) {
@@ -337,6 +419,9 @@ export function useThreeScene(
             delete (window as any).__particles;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             delete (window as any).__semantic;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            delete (window as any).__harmonics;
+            harmonicsManager.dispose();
 
             if (semanticBackendRef.current) {
                 semanticBackendRef.current.dispose();
